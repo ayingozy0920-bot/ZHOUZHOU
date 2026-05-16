@@ -1,0 +1,610 @@
+import { useState, useEffect } from 'react';
+import { Friend, ChatMessage, UserPersona, FavoriteMessage, MomentPost } from '../types';
+import { get, set } from 'idb-keyval';
+
+const FRIENDS_KEY = 'zhouzhou_ji_friends';
+const CHATS_KEY = 'zhouzhou_ji_chats';
+const USER_PROFILE_KEY = 'zhouzhou_ji_user_profile';
+
+export interface BankCard {
+  id: string;
+  bankName: string;
+  cardNumber: string;
+  balance: number;
+  cardType: string;
+  theme: string;
+  backgroundUrl?: string;
+}
+
+export interface Transaction {
+  id: string;
+  type: 'topup' | 'spend' | 'transfer-out' | 'transfer-in';
+  amount: number;
+  title: string;
+  timestamp: number;
+  targetId?: string;
+  paymentMethodId?: string; // 'wallet' or bank card id
+}
+
+export interface UserProfile {
+  name: string;
+  avatar: string;
+  id: string;
+  wechatId?: string;
+  signature?: string;
+  persona?: string;
+  momentsBackground?: string;
+  moments?: MomentPost[];
+  favorites?: FavoriteMessage[];
+  personas?: UserPersona[];
+  activePersonaId?: string;
+  balance?: number;
+  balanceBackground?: string;
+  paymentBackground?: string;
+  bankCards?: BankCard[];
+  transactions?: Transaction[];
+}
+
+const DEFAULT_USER: UserProfile = {
+  name: '我的名字',
+  avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=me',
+  id: 'zhouzhou_ji_user',
+  wechatId: 'zhouzhou_001',
+  signature: '生活明朗，万物可爱',
+  persona: '一个热爱生活、充满好奇心的普通人。',
+  momentsBackground: 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?q=80&w=1000',
+  moments: [],
+  favorites: [],
+  personas: [],
+  balance: 8888.88,
+  bankCards: [
+    {
+      id: 'card-1',
+      bankName: '招商银行',
+      cardNumber: '**** **** **** 8888',
+      balance: 50000,
+      cardType: 'VISA 信用卡',
+      theme: 'genshin-impact',
+      backgroundUrl: 'https://images.unsplash.com/photo-1614728263952-84ea256f9679?q=80&w=1000'
+    },
+    {
+      id: 'card-kitty',
+      bankName: '建设银行',
+      cardNumber: '**** **** **** 6666',
+      balance: 12000,
+      cardType: 'Hello Kitty 联名卡',
+      theme: 'hello-kitty',
+      backgroundUrl: 'https://images.unsplash.com/photo-1590439471364-192aa70c0b53?q=80&w=1000'
+    },
+    {
+      id: 'card-dog',
+      bankName: '工商银行',
+      cardNumber: '**** **** **** 9999',
+      balance: 8000,
+      cardType: '线条小狗 联名卡',
+      theme: 'line-dog',
+      backgroundUrl: 'https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?q=80&w=1000'
+    },
+    {
+      id: 'card-kuromi',
+      bankName: '农业银行',
+      cardNumber: '**** **** **** 7777',
+      balance: 15000,
+      cardType: '库洛米 联名卡',
+      theme: 'kuromi',
+      backgroundUrl: 'https://images.unsplash.com/photo-1550684848-fac1c5b4e853?q=80&w=1000'
+    }
+  ],
+  transactions: [
+    {
+      id: 't-1',
+      type: 'topup',
+      amount: 10000,
+      title: '充值',
+      timestamp: Date.now() - 86400000
+    }
+  ]
+};
+
+const INITIAL_FRIENDS: Friend[] = [
+  {
+    id: 'zhouzhou-assistant',
+    name: '粥粥助手',
+    avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=ai',
+    persona: '你是一个乐于助人的粥粥助手，说话简洁明了。',
+    address: '云端服务器',
+    gender: 'other',
+    createdAt: Date.now() - 30 * 24 * 60 * 60 * 1000, // 30 days ago
+    momentsBackground: 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?q=80&w=1000',
+  moments: [
+    { 
+      id: '1', 
+      authorId: 'zhouzhou-assistant',
+      content: '大家好，我是你的粥粥助手！很高兴能为你服务。', 
+      likes: [],
+      comments: [],
+      visibility: 'public',
+      timestamp: Date.now() - 3600000 
+    },
+    { 
+      id: '2', 
+      authorId: 'zhouzhou-assistant',
+      content: '今天的天气真不错，适合在云端漫步。', 
+      images: ['https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?q=80&w=500'], 
+      likes: [],
+      comments: [],
+      visibility: 'public',
+      timestamp: Date.now() - 86400000 
+    }
+  ],
+  momentsSettings: {
+    autoPostEnabled: true,
+    frequency: 1,
+    scheduledTimes: ["10:00"]
+  },
+    lastMessage: '你好！我是你的粥粥助手。',
+    lastTime: '12:00'
+  }
+];
+
+export function useFriends() {
+  const [user, setUser] = useState<UserProfile>(DEFAULT_USER);
+  const [friends, setFriends] = useState<Friend[]>(INITIAL_FRIENDS);
+  const [chats, setChats] = useState<Record<string, ChatMessage[]>>({});
+  const [isLoaded, setIsLoaded] = useState(false);
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const savedUser = await get(USER_PROFILE_KEY);
+        const savedFriends = await get(FRIENDS_KEY);
+        const savedChats = await get(CHATS_KEY);
+
+        if (savedUser) setUser(savedUser);
+        else {
+          const localUser = localStorage.getItem(USER_PROFILE_KEY);
+          if (localUser) setUser(JSON.parse(localUser));
+        }
+
+        if (savedFriends) setFriends(savedFriends);
+        else {
+          const localFriends = localStorage.getItem(FRIENDS_KEY);
+          if (localFriends) setFriends(JSON.parse(localFriends));
+        }
+
+        if (savedChats) setChats(savedChats);
+        else {
+          const localChats = localStorage.getItem(CHATS_KEY);
+          if (localChats) setChats(JSON.parse(localChats));
+        }
+      } catch (e) {
+        console.error('Failed to load friends data:', e);
+      } finally {
+        setIsLoaded(true);
+      }
+    }
+    loadData();
+  }, []);
+
+  const saveUser = async (newUser: UserProfile) => {
+    setUser(newUser);
+    await set(USER_PROFILE_KEY, newUser).catch(console.error);
+  };
+
+  const saveFriends = async (newFriends: Friend[]) => {
+    setFriends(newFriends);
+    await set(FRIENDS_KEY, newFriends).catch(console.error);
+  };
+
+  const saveChats = async (newChats: Record<string, ChatMessage[]>) => {
+    setChats(newChats);
+    await set(CHATS_KEY, newChats).catch(console.error);
+  };
+
+  const updateUser = (updates: Partial<UserProfile> | ((prev: UserProfile) => Partial<UserProfile>)) => {
+    setUser(prevUser => {
+      const newUpdates = typeof updates === 'function' ? updates(prevUser) : updates;
+      const newUser = { ...prevUser, ...newUpdates };
+      set(USER_PROFILE_KEY, newUser).catch(console.error);
+      return newUser;
+    });
+  };
+
+  const addFriend = (friend: Omit<Friend, 'id' | 'lastMessage' | 'lastTime' | 'createdAt'>) => {
+    const newFriend: Friend = {
+      ...friend,
+      id: `friend-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      createdAt: Date.now(),
+      lastMessage: '刚刚添加了你',
+      lastTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    saveFriends([newFriend, ...friends]);
+  };
+
+  const deleteFriend = (id: string) => {
+    const newFriends = friends.filter(f => f.id !== id);
+    saveFriends(newFriends);
+    
+    const newChats = { ...chats };
+    delete newChats[id];
+    saveChats(newChats);
+  };
+
+  const updateFriend = (id: string, updates: Partial<Friend>) => {
+    const newFriends = friends.map(f => {
+      if (f.id === id) {
+        const newFriend = { ...f, ...updates };
+        // If offline messages are updated, update the last message preview to the last offline message
+        if (updates.isOfflineMode && updates.currentOfflineMessages && updates.currentOfflineMessages.length > 0) {
+          const lastOffline = updates.currentOfflineMessages[updates.currentOfflineMessages.length - 1];
+          newFriend.lastMessage = lastOffline.content;
+          newFriend.lastTime = new Date(lastOffline.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        } else if (updates.isOfflineMode === false) {
+          // If exiting offline mode, we might want to revert to the last real message?
+          // For now, let's keep the last offline message as the preview if that was the most recent interaction
+        }
+        return newFriend;
+      }
+      return f;
+    });
+    saveFriends(newFriends);
+  };
+
+  const toggleBlock = (id: string) => {
+    const newFriends = friends.map(f => f.id === id ? { ...f, isBlocked: !f.isBlocked } : f);
+    saveFriends(newFriends);
+  };
+
+  const addMessage = (friendId: string, message: ChatMessage) => {
+    setChats(prevChats => {
+      const newChats = {
+        ...prevChats,
+        [friendId]: [...(prevChats[friendId] || []), message]
+      };
+      set(CHATS_KEY, newChats).catch(console.error);
+      return newChats;
+    });
+    
+    setFriends(prevFriends => {
+      const newFriends = prevFriends.map(f => {
+        if (f.id === friendId) {
+          return {
+            ...f,
+            lastMessage: message.content,
+            lastTime: new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          };
+        }
+        return f;
+      });
+      set(FRIENDS_KEY, newFriends).catch(console.error);
+      return newFriends;
+    });
+  };
+
+  const updateMessage = (friendId: string, messageIndex: number, updates: Partial<ChatMessage>) => {
+    setChats(prevChats => {
+      const friendChats = prevChats[friendId] || [];
+      if (messageIndex >= 0 && messageIndex < friendChats.length) {
+        const updatedChats = [...friendChats];
+        updatedChats[messageIndex] = { ...updatedChats[messageIndex], ...updates };
+        const newChats = {
+          ...prevChats,
+          [friendId]: updatedChats
+        };
+        set(CHATS_KEY, newChats).catch(console.error);
+        return newChats;
+      }
+      return prevChats;
+    });
+  };
+
+  const importMessages = (friendId: string, messages: ChatMessage[]) => {
+    const newChats = {
+      ...chats,
+      [friendId]: messages
+    };
+    saveChats(newChats);
+    
+    if (messages.length > 0) {
+      const lastMsg = messages[messages.length - 1];
+      const newFriends = friends.map(f => {
+        if (f.id === friendId) {
+          return {
+            ...f,
+            lastMessage: lastMsg.content,
+            lastTime: new Date(lastMsg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          };
+        }
+        return f;
+      });
+      saveFriends(newFriends);
+    }
+  };
+
+  useEffect(() => {
+    const handleDataImported = async () => {
+      const savedUser = await get(USER_PROFILE_KEY);
+      if (savedUser) setUser(savedUser);
+      
+      const savedFriends = await get(FRIENDS_KEY);
+      if (savedFriends) setFriends(savedFriends);
+      
+      const savedChats = await get(CHATS_KEY);
+      if (savedChats) setChats(savedChats);
+    };
+    window.addEventListener('data-imported', handleDataImported);
+    return () => window.removeEventListener('data-imported', handleDataImported);
+  }, []);
+
+  const addFavorite = (fav: FavoriteMessage) => {
+    const newFavorites = [...(user.favorites || []), fav];
+    updateUser({ favorites: newFavorites });
+  };
+
+  const addTransaction = (transaction: Omit<Transaction, 'id' | 'timestamp'>) => {
+    const newTransaction: Transaction = {
+      ...transaction,
+      id: `trans-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: Date.now(),
+    };
+    
+    if (transaction.paymentMethodId && transaction.paymentMethodId !== 'wallet') {
+      // Update bank card balance
+      updateBankCardBalance(transaction.paymentMethodId, transaction.amount, transaction.type === 'topup' || transaction.type === 'transfer-in');
+      updateUser(prevUser => ({ transactions: [newTransaction, ...(prevUser.transactions || [])] }));
+    } else {
+      // Update wallet balance
+      updateUser(prevUser => {
+        let newBalance = prevUser.balance || 0;
+        if (transaction.type === 'topup' || transaction.type === 'transfer-in') {
+          newBalance += transaction.amount;
+        } else {
+          newBalance -= transaction.amount;
+        }
+        return { 
+          transactions: [newTransaction, ...(prevUser.transactions || [])],
+          balance: newBalance
+        };
+      });
+    }
+  };
+
+  const updateBankCardBalance = (cardId: string, amount: number, isAddition: boolean) => {
+    updateUser(prevUser => {
+      const newCards = (prevUser.bankCards || []).map(card => {
+        if (card.id === cardId) {
+          return {
+            ...card,
+            balance: isAddition ? card.balance + amount : card.balance - amount
+          };
+        }
+        return card;
+      });
+      return { bankCards: newCards };
+    });
+  };
+
+  const addMoment = (content: string, images?: string[], location?: string, visibility: 'public' | 'selected' | 'excluded' = 'public', visibleTo?: string[], hiddenFrom?: string[], authorId: string = 'user', isTextCard?: boolean, imageDescription?: string) => {
+    const newMoment: MomentPost = {
+      id: `moment-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      authorId,
+      content,
+      images,
+      location,
+      visibility,
+      visibleTo,
+      hiddenFrom,
+      likes: [],
+      comments: [],
+      timestamp: Date.now(),
+      isTextCard,
+      imageDescription
+    };
+    
+    if (authorId === 'user') {
+      const newMoments = [newMoment, ...(user.moments || [])];
+      updateUser({ moments: newMoments });
+    } else {
+      const newFriends = friends.map(f => {
+        if (f.id === authorId) {
+          return { ...f, moments: [newMoment, ...(f.moments || [])] };
+        }
+        return f;
+      });
+      saveFriends(newFriends);
+    }
+    return newMoment;
+  };
+
+  const toggleLikeMoment = (momentId: string, authorId: string) => {
+    if (authorId === 'user') {
+      const newMoments = (user.moments || []).map(m => {
+        if (m.id === momentId) {
+          const hasLiked = (m.likes || []).includes('user');
+          return {
+            ...m,
+            likes: hasLiked ? m.likes.filter(id => id !== 'user') : [...m.likes, 'user']
+          };
+        }
+        return m;
+      });
+      updateUser({ moments: newMoments });
+    } else {
+      const newFriends = friends.map(f => {
+        if (f.id === authorId) {
+          const newMoments = (f.moments || []).map(m => {
+            if (m.id === momentId) {
+              const hasLiked = (m.likes || []).includes('user');
+              return {
+                ...m,
+                likes: hasLiked ? m.likes.filter(id => id !== 'user') : [...m.likes, 'user']
+              };
+            }
+            return m;
+          });
+          return { ...f, moments: newMoments };
+        }
+        return f;
+      });
+      saveFriends(newFriends);
+    }
+  };
+
+  const addCommentToMoment = (momentId: string, authorId: string, comment: { authorId: string, authorName: string, content: string, replyToId?: string, replyToName?: string }) => {
+    const newComment = {
+      ...comment,
+      id: `comment-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      timestamp: Date.now()
+    };
+
+    if (authorId === 'user') {
+      const newMoments = (user.moments || []).map(m => {
+        if (m.id === momentId) {
+          return { ...m, comments: [...m.comments, newComment] };
+        }
+        return m;
+      });
+      updateUser({ moments: newMoments });
+    } else {
+      const newFriends = friends.map(f => {
+        if (f.id === authorId) {
+          const newMoments = (f.moments || []).map(m => {
+            if (m.id === momentId) {
+              return { ...m, comments: [...m.comments, newComment] };
+            }
+            return m;
+          });
+          return { ...f, moments: newMoments };
+        }
+        return f;
+      });
+      saveFriends(newFriends);
+    }
+    return newComment;
+  };
+
+  const deleteMoment = (momentId: string, authorId: string) => {
+    if (authorId === 'user') {
+      const newMoments = (user.moments || []).filter(m => m.id !== momentId);
+      updateUser({ moments: newMoments });
+    } else {
+      const newFriends = friends.map(f => {
+        if (f.id === authorId) {
+          const newMoments = (f.moments || []).filter(m => m.id !== momentId);
+          return { ...f, moments: newMoments };
+        }
+        return f;
+      });
+      saveFriends(newFriends);
+    }
+  };
+
+  const updateFriendMomentsSettings = (friendId: string, settings: Partial<Friend['momentsSettings']>) => {
+    const newFriends = friends.map(f => {
+      if (f.id === friendId) {
+        return {
+          ...f,
+          momentsSettings: {
+            ...(f.momentsSettings || { autoPostEnabled: false, frequency: 1, scheduledTimes: [] }),
+            ...settings
+          }
+        };
+      }
+      return f;
+    });
+    saveFriends(newFriends);
+  };
+
+  const getAllMoments = () => {
+    const userMoments = (user?.moments || []).map(m => ({ ...m, authorName: user?.name || '我', authorAvatar: user?.avatar || '' }));
+    const friendMoments = (friends || []).flatMap(f => 
+      (f?.moments || []).map(m => ({ ...m, authorName: f?.name || '好友', authorAvatar: f?.avatar || '' }))
+    );
+    
+    return [...userMoments, ...friendMoments].sort((a, b) => (b?.timestamp || 0) - (a?.timestamp || 0));
+  };
+
+  const addBankCard = (card: Omit<BankCard, 'id'>) => {
+    const newCard: BankCard = {
+      ...card,
+      id: `card-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    };
+    const newCards = [...(user.bankCards || []), newCard];
+    updateUser({ bankCards: newCards });
+  };
+
+  const deleteBankCard = (id: string) => {
+    const newCards = (user.bankCards || []).filter(c => c.id !== id);
+    updateUser({ bankCards: newCards });
+  };
+
+  const updateBankCard = (id: string, updates: Partial<BankCard>) => {
+    const newCards = (user.bankCards || []).map(c => c.id === id ? { ...c, ...updates } : c);
+    updateUser({ bankCards: newCards });
+  };
+
+  const removeFavorite = (id: string) => {
+    const newFavorites = (user.favorites || []).filter(f => f.id !== id);
+    updateUser({ favorites: newFavorites });
+  };
+
+  const addPersona = (persona: Omit<UserPersona, 'id'>) => {
+    const newPersona: UserPersona = {
+      ...persona,
+      id: `persona-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    };
+    const newPersonas = [...(user.personas || []), newPersona];
+    updateUser({ personas: newPersonas });
+  };
+
+  const updatePersona = (id: string, updates: Partial<UserPersona>) => {
+    const newPersonas = (user.personas || []).map(p => p.id === id ? { ...p, ...updates } : p);
+    updateUser({ personas: newPersonas });
+  };
+
+  const deletePersona = (id: string) => {
+    const newPersonas = (user.personas || []).filter(p => p.id !== id);
+    const updates: Partial<UserProfile> = { personas: newPersonas };
+    if (user.activePersonaId === id) {
+      updates.activePersonaId = undefined;
+    }
+    updateUser(updates);
+  };
+
+  const togglePersona = (id: string) => {
+    const newPersonas = (user.personas || []).map(p => p.id === id ? { ...p, isEnabled: !p.isEnabled } : p);
+    updateUser({ personas: newPersonas });
+  };
+
+  return { 
+    user, 
+    updateUser, 
+    friends, 
+    chats, 
+    addFriend, 
+    deleteFriend, 
+    updateFriend, 
+    toggleBlock, 
+    addMessage, 
+    updateMessage,
+    importMessages, 
+    isLoaded,
+    addFavorite,
+    removeFavorite,
+    addPersona,
+    updatePersona,
+    deletePersona,
+    togglePersona,
+    addTransaction,
+    updateBankCardBalance,
+    addMoment,
+    deleteMoment,
+    toggleLikeMoment,
+    addCommentToMoment,
+    updateFriendMomentsSettings,
+    getAllMoments,
+    addBankCard,
+    deleteBankCard,
+    updateBankCard
+  };
+}

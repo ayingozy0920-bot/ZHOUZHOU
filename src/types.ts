@@ -1,0 +1,506 @@
+export interface Widget {
+  id: string;
+  type: 'time' | 'weather' | 'music' | 'photo' | 'quote' | 'battery' | 'calendar' | 'todo' | 'countdown' | 'contact' | 'together' | 'schedule' | 'memo' | 'step' | 'mood' | 'healing-battery' | 'ins-split' | 'ticket' | 'collage' | 'ins-split-v2' | 'manga-blink' | 'film-frame' | 'ticket-v2' | 'polaroid-stack' | 'dynamic-cat' | 'live-weather' | 'ins-large-v1' | 'ins-large-v2' | 'ins-weather-calendar' | 'ins-photo-square' | 'ins-profile-card' | 'ins-circle-widget' | 'ins-music-circle-widget' | 'ins-photo-wall-v1' | 'ins-photo-wall-v2' | 'ins-signature-v1' | 'ins-signature-v2' | 'ins-large-calendar' | 'ins-love-music';
+  size: '1x1' | '2x2' | '2x1' | '4x2' | '5x2' | '4x4' | '6x2';
+  category?: string;
+  data?: any;
+}
+
+export interface DesktopItem {
+  id: string;
+  type: 'app' | 'widget' | 'folder';
+  position: { x: number; y: number; page: number };
+  appId?: string;
+  widget?: Widget;
+  folderItems?: string[]; // AppIds
+}
+
+export interface ApiPreset {
+  id: string;
+  name: string;
+  baseUrl: string;
+  apiKey: string;
+  modelName: string;
+}
+
+export interface ThemePreset {
+  id: string;
+  name: string;
+  settings: Partial<AppSettings>;
+}
+
+export interface CharacterProfile {
+  id: string;
+  avatarUrl: string;
+  name: string;
+  gender: string;
+  persona: string;
+  experience: string;
+  background: string;
+  relationship: string;
+}
+
+export interface WorldBookEntry {
+  id: string;
+  name: string;
+  category: string;
+  isEnabled: boolean;
+  scope: 'global' | 'character';
+  linkedCharacterIds: string[]; // IDs from characterProfiles
+  priority: 'high' | 'medium' | 'low'; // mapped to 前, 中, 后
+  content: string;
+  createdAt: number;
+}
+
+export interface ReceivedGift {
+  id: string;
+  productId: string;
+  name: string;
+  image: string;
+  timestamp: number;
+  from: string;
+  characterReaction: string;
+  friendId: string;
+  // Legacy fields for compatibility
+  boxId?: string;
+  coverUrl?: string;
+  receivedAt?: number;
+  characterThoughts?: string;
+}
+
+export interface DiaryEntry {
+  id: string;
+  title: string;
+  content: string;
+  timestamp: number;
+  mood?: string;
+  images?: string[];
+  heartCount?: number;
+  comments?: { friendId: string; friendName: string; content: string; timestamp: number }[];
+}
+
+export interface Song {
+  id: string;
+  title: string;
+  artist: string;
+  albumCover?: string;
+  mediaUrl: string;
+  lyrics?: string;
+  duration?: number;
+  localFile?: Blob;
+}
+
+export interface ListenTogetherState {
+  isActive: boolean;
+  isFolded: boolean;
+  currentSongId: string | null;
+  isPlaying: boolean;
+  playlist: Song[];
+  playbackMode: 'loop' | 'random' | 'single';
+  startTime: number | null;
+  isAccepted: boolean;
+  friendId: string | null;
+  currentTime: number; // current playback position in seconds
+  backgroundUrl?: string; // custom background for the page
+  vinylBackgroundUrl?: string; // custom background for the vinyl center
+}
+
+export interface WeiboCategory {
+  id: string;
+  name: string;
+  prompt: string;
+}
+
+export interface AppSettings {
+  baseUrl: string;
+  apiKey: string;
+  userApiKey?: string;
+  modelName: string;
+  apiPresets: ApiPreset[];
+  autoSummaryThreshold: number;
+  callBackground?: string;
+  isCallBackgroundEnabled?: boolean;
+  isInsBubbleEnabled?: boolean;
+  // Global Beautification
+  themeColor?: string;
+  glassOpacity?: number;
+  fontSize?: 'small' | 'medium' | 'large';
+  fontFamily?: 'sans' | 'serif' | 'mono' | 'rounded' | 'cute-cheese' | 'dynalight' | 'lxgw-wenkai';
+  backgroundBlur?: number;
+  wallpaperUrl?: string;
+  settingsBackgroundUrl?: string;
+  customIcons?: Record<string, string>;
+  hideStatusBar?: boolean;
+  fullScreenMode?: boolean;
+  customFontUrl?: string;
+  homePages?: string[][]; // Array of pages, each page is an array of app IDs
+  themeId?: 'default' | 'rainy-cat' | 'pink-cat' | 'normal';
+  desktopLayout?: DesktopItem[];
+  timeAwarenessEnabled?: boolean;
+  minimaxApiKey?: string;
+  minimaxGroupId?: string;
+  minimaxName?: string;
+  minimaxApiUrl?: string;
+  homeWallpaperUrl?: string;
+  totalPages?: number;
+  // New Theme System
+  lockScreenDelay?: number;
+  lockScreenPin?: string;
+  customBubbleCss?: string;
+  customGlobalCss?: string;
+  themePresets?: ThemePreset[];
+  modernTheme?: boolean;
+  characterProfiles?: CharacterProfile[];
+  worldBookEntries?: WorldBookEntry[];
+  diaryEntries?: DiaryEntry[];
+  // Global Beautification
+  isCuteRabbitThemeEnabled?: boolean;
+  isDarkThemeEnabled?: boolean;
+  globalCustomCss?: string;
+  bubbleCustomCss?: string;
+  appBackgroundUrl?: string;
+  backgroundBlurIntensity?: number;
+  backgroundOpacity?: number;
+  homeWallpaperBlur?: number;
+  homeWallpaperOpacity?: number;
+  settingsBackgroundBlur?: number;
+  settingsBackgroundOpacity?: number;
+  chatWallpaperBlur?: number;
+  chatWallpaperOpacity?: number;
+  chatWallpaperUrl?: string;
+  chatFontColor?: string;
+  customStickers?: Sticker[];
+  blindBoxes?: BlindBox[];
+  blindBoxCoins?: number;
+  perspectiveCards?: number;
+  hintCards?: number;
+  blindBoxBanner?: string;
+  transactions?: Transaction[];
+  walletBalance?: number;
+  bankCards?: BankCard[];
+  diaryTemplate?: string;
+  calendarCity?: string;
+}
+
+export interface BankCard {
+  id: string;
+  bankName: string;
+  cardNumber: string;
+  balance: number;
+}
+
+export interface Transaction {
+  id: string;
+  type: 'blindbox_purchase' | 'recharge' | 'gift_sent';
+  amount: number;
+  description: string;
+  timestamp: number;
+}
+
+export interface BlindBox {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  coverUrl: string;
+  category: string;
+  isCustom: boolean;
+  addedAt: number;
+}
+
+export interface Sticker {
+  id: string;
+  url: string;
+  description: string;
+  addedAt: number;
+}
+
+export interface MemoryEntry {
+  id: string;
+  friendId: string;
+  friendName: string;
+  type: 'chat' | 'call' | 'group' | 'offline';
+  summary: string;
+  timestamp: number;
+}
+
+export interface MomentComment {
+  id: string;
+  authorId: string;
+  authorName: string;
+  authorAvatar?: string;
+  content: string;
+  timestamp: number;
+  replyToId?: string;
+  replyToName?: string;
+  replies?: MomentComment[];
+  likes?: string[];
+}
+
+export interface MomentPost {
+  id: string;
+  authorId: string; // 'user' or friendId
+  authorName?: string;
+  authorAvatar?: string;
+  content: string;
+  images?: string[];
+  imageDescription?: string;
+  location?: string;
+  visibility: 'public' | 'selected' | 'excluded';
+  visibleTo?: string[]; // friend IDs
+  hiddenFrom?: string[]; // friend IDs
+  likes: string[]; // array of IDs (user or friendId)
+  comments: MomentComment[];
+  timestamp: number;
+  categoryId?: string;
+  isTextCard?: boolean;
+}
+
+export interface OfflineMemory {
+  summary: string;
+  rawHistory: ChatMessage[];
+}
+
+export interface MomentsSettings {
+  autoPostEnabled: boolean;
+  frequency: number; // posts per day
+  scheduledTimes: string[]; // e.g. ["09:00", "21:00"]
+}
+
+export interface Friend {
+  id: string;
+  name: string;
+  alias?: string;
+  avatar: string;
+  persona: string;
+  address?: string;
+  isBlocked?: boolean;
+  gender?: 'male' | 'female' | 'other';
+  createdAt: number;
+  momentsBackground?: string;
+  moments?: MomentPost[];
+  momentsSettings?: MomentsSettings;
+  lastMessage?: string;
+  lastTime?: string;
+  chatBackground?: string;
+  memoryCount?: number;
+  voiceId?: string;
+  voiceType?: 'gemini' | 'minimax';
+  language?: string;
+  profileId?: string;
+  mood?: string;
+  affection?: number;
+  offlineMemory?: OfflineMemory;
+  currentOfflineMessages?: ChatMessage[];
+  isOfflineMode?: boolean;
+  offlineConfig?: any;
+  offlineChatBackground?: string;
+  disableActionDescription?: boolean;
+  weiboFans?: number;
+  weiboFollowing?: number;
+  weiboLikes?: number;
+  weiboBackground?: string;
+  isFollowedByMe?: boolean;
+  isFollowingMe?: boolean;
+  weiboVipLevel?: number;
+  weiboDescription?: string;
+  weiboTag?: string;
+  weiboStats?: { fans: string; following: string; likes: string };
+  wechatId?: string;
+  memorySettings?: {
+    contextLimit: number;
+    summaryThreshold: number;
+    summaryBuffer: number;
+    autoSummaryEnabled: boolean;
+    silentSummaryMode: boolean;
+    syncThreshold: number;
+    summaryPrompt?: string;
+  };
+}
+
+export interface OnlineMemoryEntry {
+  id: string;
+  content: string;
+  timestamp: number;
+  type: 'auto' | 'manual';
+  source?: 'chat' | 'weibo';
+}
+
+export interface OfflinePlotEntry {
+  id: string;
+  title: string;
+  timestamp: number;
+  logs: ChatMessage[];
+  summary: string;
+}
+
+export interface MemoryStore {
+  [friendId: string]: {
+    onlineMemories: OnlineMemoryEntry[];
+    offlinePlots: OfflinePlotEntry[];
+  };
+}
+
+export interface ChatMessage {
+  id?: string;
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  type?: 'text' | 'image' | 'video' | 'voice' | 'transfer' | 'location' | 'call' | 'memory' | 'sticker' | 'blindbox-gift' | 'dice' | 'offline-invitation' | 'photo_card';
+  mediaUrl?: string;
+  duration?: number; // for voice or call duration
+  amount?: string; // for transfer
+  transferStatus?: 'pending' | 'received' | 'refunded'; // for transfer
+  description?: string; // for transfer or image
+  callStatus?: 'missed' | 'rejected' | 'accepted' | 'ended'; // for call
+  timestamp: number;
+  translation?: string; // for voice translation
+  hideTranslation?: boolean;
+  quote?: ChatMessage;
+  innerThought?: string; // for AI's inner thoughts
+  isNarration?: boolean;
+  cardText?: string;
+  location?: string; // for photo_card or location message
+  date?: string; // for photo_card
+  timeLabel?: string; // for photo_card
+  ccdMetadata?: {
+    location: string;
+    date: string;
+    timeLabel: string;
+  };
+  giftData?: {
+    boxId: string;
+    boxName: string;
+    coverUrl: string;
+    message: string;
+    price: number;
+    isOpened: boolean;
+  };
+  invitationData?: {
+    friendId: string;
+    friendName: string;
+    openingText: string;
+    status: 'pending' | 'accepted' | 'declined';
+  };
+  isSystemNotification?: boolean;
+  notificationType?: string;
+  notificationData?: any;
+  locationName?: string;
+  isForwarded?: boolean;
+  forwardFrom?: string;
+}
+
+export interface MovieReport {
+  id: string;
+  friendId: string;
+  friendName: string;
+  movieName: string;
+  content: string;
+  timestamp: number;
+  rating: number;
+  director?: string;
+  screenwriter?: string;
+  genre?: string;
+  cast?: string;
+  duration?: string;
+  excerpts?: string;
+  posterUrl?: string;
+}
+
+export interface MovieDanmaku {
+  id: string;
+  content: string;
+  timestamp: number;
+  authorName: string;
+  color?: string;
+}
+
+export type AppId = 
+  | 'home'
+  | 'chat'
+  | 'world-book'
+  | 'settings'
+  | 'meituan'
+  | 'weibo'
+  | 'shopping'
+  | 'parallel-universe'
+  | 'check-phone'
+  | 'dating'
+  | 'calendar'
+  | 'diary'
+  | 'memory'
+  | 'phone'
+  | 'character-profile'
+  | 'moon-shadow';
+
+export interface MallProduct {
+  id: string;
+  name: string;
+  price: number;
+  originalPrice: number;
+  image: string;
+  images?: string[];
+  category: string;
+  sales: number;
+  stock: number;
+  isCustom: boolean;
+  description: string;
+  customDesignNote?: string;
+  specs?: { name: string; options: string[] }[];
+}
+
+export interface CartItem {
+  id: string;
+  productId: string;
+  name: string;
+  price: number;
+  image: string;
+  spec?: string;
+  quantity: number;
+  selected: boolean;
+}
+
+export interface MallOrder {
+  id: string;
+  items: CartItem[];
+  totalAmount: number;
+  status: 'pending' | 'paid' | 'shipped' | 'received' | 'completed' | 'refunded';
+  timestamp: number;
+  address: MallAddress;
+  paymentMethod: 'wechat' | 'alipay' | 'balance';
+}
+
+export interface MallAddress {
+  id: string;
+  name: string;
+  phone: string;
+  area: string;
+  detail: string;
+  isDefault: boolean;
+}
+
+export interface UserPersona {
+  id: string;
+  name: string;
+  wechatId: string;
+  persona: string;
+  signature: string;
+  isEnabled: boolean;
+}
+
+export interface FavoriteMessage {
+  id: string;
+  friendId: string;
+  friendName: string;
+  content: string;
+  timestamp: number;
+  type: string;
+}
+
+export interface AppInfo {
+  id: AppId;
+  name: string;
+  icon: string;
+  color: string;
+  category?: string;
+  customIcon?: string;
+}

@@ -1,0 +1,5 @@
+{
+  "name": "✨粥粥机✨",
+  "description": "一个充满趣味的模拟手机系统，支持AI聊天、朋友圈互动及个性化设置。",
+  "requestFramePermissions": ["microphone", "camera"]
+}

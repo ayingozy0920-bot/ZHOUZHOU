@@ -1,0 +1,340 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@400;700&family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@300;400;500;600;700&family=Zhi+Mang+Xing&family=Dynalight&family=LXGW+WenKai+TC:wght@400;700&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-handwriting: "Zhi Mang Xing", cursive;
+}
+
+@layer base {
+  html, body, #root {
+    margin: 0;
+    padding: 0;
+    width: 100%;
+    height: 100%;
+    background-color: #000; /* Ensure no white flash */
+  }
+
+  /* 当非全屏模式时，允许滚动以查看完整手机外壳 */
+  html:not(.is-fullscreen),
+  body:not(.is-fullscreen),
+  #root:not(.is-fullscreen) {
+    overflow: auto !important;
+    -webkit-overflow-scrolling: touch;
+    height: auto !important;
+    min-height: 100%;
+  }
+
+  /* 全屏模式下禁止滚动条并强制铺满 */
+  html.is-fullscreen,
+  body.is-fullscreen,
+  #root.is-fullscreen {
+    overflow: hidden !important;
+    height: 100% !important;
+    width: 100% !important;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+}
+
+@layer utilities {
+  .animate-spin-slow {
+    animation: spin 8s linear infinite;
+  }
+
+  /* 【样式隔离】：100% 全屏沉浸模式核心样式 */
+  .fullscreen-immersive {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    height: 100vh !important;
+    height: 100dvh !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    z-index: 999999 !important;
+    border-radius: 0 !important;
+    border: none !important;
+    outline: none !important;
+    overflow: hidden !important;
+  }
+
+  /* 适配安卓安全区，确保内容不被遮挡 */
+  .safe-area-padding-top {
+    padding-top: env(safe-area-inset-top) !important;
+  }
+  .safe-area-padding-bottom {
+    padding-bottom: env(safe-area-inset-bottom) !important;
+  }
+
+  /* Custom Scrollbar */
+  .custom-scrollbar::-webkit-scrollbar {
+    width: 4px;
+  }
+  .custom-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(0, 0, 0, 0.1);
+    border-radius: 10px;
+  }
+  .custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(0, 0, 0, 0.1) transparent;
+  }
+
+  .white-scrollbar::-webkit-scrollbar {
+    width: 4px;
+  }
+  .white-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .white-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 10px;
+  }
+  .white-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+  }
+
+  /* No Scrollbar */
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* Modern Theme Global Styles */
+.modern-theme .widget-card {
+  border-radius: 32px !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15) !important;
+  background: rgba(255, 255, 255, 0.7) !important;
+  backdrop-filter: blur(12px) !important;
+}
+
+/* Ins-style Bubble */
+.ins-bubble-user {
+  background-color: #ffeff5 !important;
+  color: #d63384 !important;
+  border-radius: 18px 18px 4px 18px !important;
+  border: 1px solid #f8d7da !important;
+  box-shadow: 0 4px 12px rgba(255, 182, 193, 0.2) !important;
+  position: relative;
+}
+
+.ins-bubble-user::after {
+  content: '♥';
+  position: absolute;
+  bottom: -2px;
+  right: -8px;
+  font-size: 10px;
+  color: #ffb6c1;
+  opacity: 0.6;
+}
+
+.ins-bubble-assistant {
+  background-color: #ffffff !important;
+  color: #333333 !important;
+  border-radius: 18px 18px 18px 4px !important;
+  border: 1px solid #eeeeee !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05) !important;
+  position: relative;
+}
+
+.ins-bubble-assistant::after {
+  content: '✨';
+  position: absolute;
+  bottom: -2px;
+  left: -8px;
+  font-size: 10px;
+  opacity: 0.6;
+}
+
+.ins-bubble-container {
+  overflow: visible !important;
+}
+
+/* Cute Rabbit Theme */
+.cute-rabbit-theme {
+  --bg-color: #fffafb;
+  --primary-pink: #ff85a2;
+  --soft-pink: #fff0f5;
+  --text-main: #5c4b51;
+  --card-bg: rgba(255, 255, 255, 0.9);
+}
+
+.cute-rabbit-theme {
+  background-color: var(--bg-color) !important;
+  color: var(--text-main) !important;
+}
+
+.cute-rabbit-theme .bg-white, 
+.cute-rabbit-theme .bg-slate-50, 
+.cute-rabbit-theme .bg-slate-100,
+.cute-rabbit-theme .bg-slate-200 {
+  background-color: var(--card-bg) !important;
+  backdrop-filter: blur(8px);
+}
+
+.cute-rabbit-theme .text-slate-900, 
+.cute-rabbit-theme .text-slate-800, 
+.cute-rabbit-theme .text-slate-700,
+.cute-rabbit-theme .text-slate-600,
+.cute-rabbit-theme .text-gray-900,
+.cute-rabbit-theme .text-gray-800 {
+  color: var(--text-main) !important;
+}
+
+.cute-rabbit-theme .text-slate-400,
+.cute-rabbit-theme .text-slate-500,
+.cute-rabbit-theme .text-gray-400,
+.cute-rabbit-theme .text-gray-500 {
+  color: #a68b94 !important;
+}
+
+.cute-rabbit-theme .border-slate-100, 
+.cute-rabbit-theme .border-slate-200,
+.cute-rabbit-theme .border-gray-100,
+.cute-rabbit-theme .border-gray-200 {
+  border-color: #fce4ec !important;
+}
+
+.cute-rabbit-theme .bg-blue-500, 
+.cute-rabbit-theme .bg-indigo-500, 
+.cute-rabbit-theme .bg-pink-500,
+.cute-rabbit-theme .bg-rose-500,
+.cute-rabbit-theme .bg-blue-600,
+.cute-rabbit-theme .bg-indigo-600 {
+  background-color: var(--primary-pink) !important;
+  color: white !important;
+}
+
+.cute-rabbit-theme .text-blue-600, 
+.cute-rabbit-theme .text-indigo-600, 
+.cute-rabbit-theme .text-pink-600,
+.cute-rabbit-theme .text-blue-500,
+.cute-rabbit-theme .text-indigo-500 {
+  color: var(--primary-pink) !important;
+}
+
+.cute-rabbit-theme .chat-bubble-user {
+  background-color: var(--primary-pink) !important;
+  color: white !important;
+}
+
+.cute-rabbit-theme .chat-bubble-assistant {
+  background-color: white !important;
+  color: var(--text-main) !important;
+  border: 1px solid #fce4ec;
+}
+
+.cute-rabbit-theme .app-card,
+.cute-rabbit-theme .rounded-2xl.border.shadow-sm {
+  background: var(--card-bg) !important;
+  border: 1px solid #fce4ec !important;
+}
+
+.cute-rabbit-theme input, 
+.cute-rabbit-theme textarea, 
+.cute-rabbit-theme select {
+  background-color: white !important;
+  border-color: #fce4ec !important;
+  color: var(--text-main) !important;
+}
+
+.cute-rabbit-theme .bg-black\/20,
+.cute-rabbit-theme .bg-black\/40 {
+  background-color: rgba(255, 133, 162, 0.1) !important;
+}
+
+.cute-rabbit-theme .text-white {
+  color: var(--text-main) !important;
+}
+
+.cute-rabbit-theme .bg-blue-50 {
+  background-color: #fff0f5 !important;
+}
+
+.cute-rabbit-theme .border-blue-500 {
+  border-color: var(--primary-pink) !important;
+}
+
+.cute-rabbit-theme .text-blue-600 {
+  color: var(--primary-pink) !important;
+}
+
+/* Shimmer and Sparkle for Cute Rabbit */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.shimmer-bg {
+  background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.2) 50%, rgba(255,255,255,0) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 3s infinite linear;
+}
+
+.sparkle-bg {
+  position: relative;
+}
+
+.sparkle-bg::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(circle, rgba(255,255,255,0.8) 1px, transparent 1px);
+  background-size: 24px 24px;
+  opacity: 0.3;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Dark Theme Deep Black */
+.wechat-dark-mode {
+  background-color: #000000 !important;
+  color: #ffffff !important;
+}
+
+.wechat-dark-mode .bg-white,
+.wechat-dark-mode .bg-slate-50,
+.wechat-dark-mode .bg-slate-100,
+.wechat-dark-mode .bg-slate-200,
+.wechat-dark-mode .bg-slate-500/5 {
+  background-color: #111111 !important;
+  color: #ffffff !important;
+}
+
+.wechat-dark-mode .border-slate-100,
+.wechat-dark-mode .border-slate-200,
+.wechat-dark-mode .border-white\/10 {
+  border-color: #222222 !important;
+}
+
+.wechat-dark-mode .text-slate-900,
+.wechat-dark-mode .text-slate-800,
+.wechat-dark-mode .text-slate-700,
+.wechat-dark-mode .text-slate-600,
+.wechat-dark-mode .text-gray-900,
+.wechat-dark-mode .text-gray-800 {
+  color: #eeeeee !important;
+}
+
+.wechat-dark-mode .text-slate-400,
+.wechat-dark-mode .text-slate-500 {
+  color: #888888 !important;
+}

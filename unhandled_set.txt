@@ -1,0 +1,8 @@
+src/components/Apps/WeiboApp.tsx:115:      set('weibo-moments', moments);
+src/components/Apps/WeiboApp.tsx:116:      set('weibo-liked-moments', Array.from(likedMoments));
+src/components/Apps/WeiboApp.tsx:117:      set('weibo-user-profile', userProfile);
+src/components/Apps/WeiboApp.tsx:118:      set('weibo-categories', categories);
+src/components/Apps/WeiboApp.tsx:119:      set('weibo-friends', weiboFriends);
+src/components/Apps/WeiboApp.tsx:120:      set('weibo-chats', weiboChats);
+src/components/Apps/WeiboApp.tsx:121:      set('weibo-groups', weiboGroups);
+src/components/Apps/Diary/DiaryPage.tsx:18:    set(`diary_comment_${friend.id}_${date}`, comment);
