@@ -702,12 +702,12 @@ export default function ParallelUniverseApp({ settings, onBack }: {
         });
         setStickerList(migrated);
       }
-    });
+    }).catch(console.error);
   }, []);
 
   const saveStickers = useCallback((stickers: StickerItem[]) => {
     setStickerList(stickers);
-    set('custom-stickers-parallel', stickers);
+    set('custom-stickers-parallel', stickers).catch(console.warn);
   }, []);
   const [viewState, setViewState] = useState<AppViewState>('messages');
   const [selectedChar, setSelectedChar] = useState<Character | null>(null);
@@ -725,11 +725,11 @@ export default function ParallelUniverseApp({ settings, onBack }: {
         if (s.memoryContextLimit !== undefined) setMemoryContextLimit(s.memoryContextLimit);
         if (s.shareGroupMemory !== undefined) setShareGroupMemory(s.shareGroupMemory);
       }
-    });
+    }).catch(console.error);
   }, []);
 
   useEffect(() => {
-    set('parallel-settings', { enableActions, memoryContextLimit, shareGroupMemory });
+    set('parallel-settings', { enableActions, memoryContextLimit, shareGroupMemory }).catch(console.warn);
   }, [enableActions, memoryContextLimit, shareGroupMemory]);
   useEffect(() => {
     // Force loading voices
@@ -1743,15 +1743,35 @@ function AppSettingsPage({ onBack }: { onBack: () => void }) {
     try {
       const url = baseUrl || 'https://generativelanguage.googleapis.com';
       const key = apiKey || process.env.GEMINI_API_KEY;
-      const endpoint = `${url.replace(/\/+$/, '')}/v1beta/models?key=${key}`;
-      setApiLog(prev => prev + `GET ${endpoint}\n`);
-      const res = await fetch(endpoint);
+      const isOpenAI = url.endsWith('/v1') || url.endsWith('/v1/');
+      
+      let endpoint = '';
+      let res;
+      if (isOpenAI) {
+        endpoint = `${url.replace(/\/+$/, '')}/models`;
+        setApiLog(prev => prev + `GET ${endpoint} (OpenAI Proxy)\n`);
+        res = await fetch(endpoint, {
+          headers: { 'Authorization': `Bearer ${key}` }
+        });
+      } else {
+        endpoint = `${url.replace(/\/+$/, '')}/v1beta/models?key=${key}`;
+        setApiLog(prev => prev + `GET ${endpoint} (Gemini)\n`);
+        res = await fetch(endpoint);
+      }
+      
       if (!res.ok) {
         throw new Error(`HTTP Error ${res.status}: ${res.statusText}`);
       }
       const data = await res.json();
-      if (data.models) {
-        const modelNames = data.models.map((m: any) => m.name.replace('models/', ''));
+      
+      let modelNames: string[] = [];
+      if (isOpenAI && data.data) {
+        modelNames = data.data.map((m: any) => m.id);
+      } else if (data.models) {
+        modelNames = data.models.map((m: any) => m.name.replace('models/', ''));
+      }
+      
+      if (modelNames.length > 0) {
         setModelsList(modelNames);
         setApiLog(prev => prev + `连接成功！获取到 ${modelNames.length} 个模型。\n`);
         if (!modelNames.includes(selectedModel) && modelNames.length > 0) {
@@ -4926,12 +4946,12 @@ ${relevantBooks.map(b => `《${b.title}》: ${b.content}`).join('\n\n')}
                    const filtered = newStickers.filter(s => !existingUrls.has(s.url));
                    const updated = [...stickerList, ...filtered];
                    setStickerList(updated);
-                   set('custom-stickers-parallel', updated);
+                   set('custom-stickers-parallel', updated).catch(console.warn);
                 }}
                 onDeleteEmoji={(urlsToDelete) => {
                    const updated = stickerList.filter(s => !urlsToDelete.includes(s.url));
                    setStickerList(updated);
-                   set('custom-stickers-parallel', updated);
+                   set('custom-stickers-parallel', updated).catch(console.warn);
                 }}
               />
             </>
@@ -6334,7 +6354,7 @@ function CharacterDiaryInterface({ char, userProfile, onClose, onUpdateChar }: {
         }
     } catch (err: any) {
         console.error("生成日记失败", err);
-        const errMsg = err.message || String(err);
+        const errMsg = err?.message || String(err);
         if (errMsg.includes('PROHIBITED_CONTENT')) {
           alert(`生成日记失败: 内容触发了云端强制安全策略(PROHIBITED_CONTENT)。虽然系统已配置最低拦截级别并开启了隐喻伪装，但当前 API 代理仍拦截了此尺度的内容。建议您稍微使用更隐晦的词句，或更换不受限的第三方模型代理点。`);
         } else {

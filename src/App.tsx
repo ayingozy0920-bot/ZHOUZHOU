@@ -133,6 +133,21 @@ export default function App() {
   const handleBackToHome = React.useCallback(() => setActiveApp('home'), []);
 
   useEffect(() => {
+    // Override window.alert to prevent SecurityError in iframes
+    const originalAlert = window.alert;
+    window.alert = (msg) => {
+      try {
+        originalAlert(msg);
+      } catch (e) {
+        console.warn('window.alert blocked:', e, 'Message was:', msg);
+        // Fallback for when alert is blocked
+        console.error("Alert:", msg);
+      }
+    };
+    return () => { window.alert = originalAlert; };
+  }, []);
+
+  useEffect(() => {
     const handleReceiveGift = (e: any) => {
       if (e.detail) {
         // Map event detail to ReceivedGift interface

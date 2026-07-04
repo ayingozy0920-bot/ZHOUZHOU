@@ -390,14 +390,18 @@ const DesktopItemRenderer = React.memo(({ item, settings, apps, iconMap, isEditM
   return (
     <motion.div
       key={item.id}
-      layout
       initial={false}
-      animate={{
-        x: targetX,
-        y: targetY,
-        scale: draggedItem === item.id ? 1.1 : 1,
-        rotate: isEditMode ? [0, -1, 0, 1, 0] : 0,
-      }}
+      animate={
+        draggedItem === item.id
+          ? { scale: 1.1, rotate: isEditMode ? [0, -1, 0, 1, 0] : 0, zIndex: 50 }
+          : {
+              x: targetX,
+              y: targetY,
+              scale: 1,
+              rotate: isEditMode ? [0, -1, 0, 1, 0] : 0,
+              zIndex: 40
+            }
+      }
       transition={{
         rotate: { repeat: Infinity, duration: 0.4, ease: "linear" },
         scale: { duration: 0.2 },

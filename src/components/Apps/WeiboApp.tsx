@@ -112,13 +112,13 @@ export default function WeiboApp({ settings, onBack }: Props) {
 
   useEffect(() => {
     if (isLoaded) {
-      set('weibo-moments', moments);
-      set('weibo-liked-moments', Array.from(likedMoments));
-      set('weibo-user-profile', userProfile);
-      set('weibo-categories', categories);
-      set('weibo-friends', weiboFriends);
-      set('weibo-chats', weiboChats);
-      set('weibo-groups', weiboGroups);
+      set('weibo-moments', moments).catch(console.warn);
+      set('weibo-liked-moments', Array.from(likedMoments)).catch(console.warn);
+      set('weibo-user-profile', userProfile).catch(console.warn);
+      set('weibo-categories', categories).catch(console.warn);
+      set('weibo-friends', weiboFriends).catch(console.warn);
+      set('weibo-chats', weiboChats).catch(console.warn);
+      set('weibo-groups', weiboGroups).catch(console.warn);
     }
   }, [moments, likedMoments, userProfile, categories, weiboFriends, weiboChats, isLoaded]);
 
