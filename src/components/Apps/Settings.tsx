@@ -481,6 +481,27 @@ export default function SettingsApp({
                 </div>
                 <ChevronLeft size={20} className="text-slate-400 rotate-180" />
               </button>
+              <div className="w-full px-4 py-4 flex items-center justify-between border-b hover:bg-white/10 transition-colors">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600"><Lock size={18} /></div>
+                  <div className="flex flex-col">
+                    <span className="font-medium text-slate-800">启用锁屏界面</span>
+                    <span className="text-[10px] text-slate-400">开启后每次加载都会显示锁屏 (滑动手势)</span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setForm({ ...form, lockScreenEnabled: !form.lockScreenEnabled })}
+                  className={cn(
+                    "w-12 h-6 rounded-full transition-colors relative",
+                    form.lockScreenEnabled !== false ? "bg-green-500" : "bg-slate-300"
+                  )}
+                >
+                  <div className={cn(
+                    "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
+                    form.lockScreenEnabled !== false ? "left-7" : "left-1"
+                  )} />
+                </button>
+              </div>
             </div>
 
             {showPasswordSetup && (

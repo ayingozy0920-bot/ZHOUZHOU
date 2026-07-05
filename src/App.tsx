@@ -301,24 +301,27 @@ export default function App() {
   useEffect(() => {
     const checkLockStatus = () => {
       const savedPassword = localStorage.getItem('lockScreenPassword');
-      // If setting exists in settings object (from IDB), prioritize it if localStorage is empty
       const settingsPin = settings.lockScreenPin;
       
-      if (savedPassword) {
-        setIsLocked(true);
-      } else if (settingsPin) {
-        // Sync setting to localStorage if it's in settings but not in localStorage
+      // Sync setting to localStorage if it's in settings but not in localStorage
+      if (settingsPin && !savedPassword) {
         localStorage.setItem('lockScreenPassword', settingsPin);
-        setIsLocked(true);
-      } else {
+      }
+
+      if (settings.lockScreenEnabled === false) {
         setIsLocked(false);
+      } else {
+        // If lock screen is enabled, we start locked.
+        // If there's a password, we'll eventually need it.
+        // If no password, we stay locked until slide-to-unlock (which is handled by isLocked state and drag logic)
+        setIsLocked(true);
       }
     };
     
     if (isLoaded) {
       checkLockStatus();
     }
-  }, [isLoaded, settings.lockScreenPin]);
+  }, [isLoaded, settings.lockScreenPin, settings.lockScreenEnabled]);
 
   // Re-check lock when data is imported
   useEffect(() => {

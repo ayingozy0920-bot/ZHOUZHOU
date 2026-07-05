@@ -152,6 +152,7 @@ export interface AppSettings {
   // New Theme System
   lockScreenDelay?: number;
   lockScreenPin?: string;
+  lockScreenEnabled?: boolean;
   customBubbleCss?: string;
   customGlobalCss?: string;
   themePresets?: ThemePreset[];

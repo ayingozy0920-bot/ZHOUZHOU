@@ -41,6 +41,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   timeAwarenessEnabled: true,
   apiPresets: [],
   fullScreenMode: false,
+  lockScreenEnabled: true,
   diaryEntries: [],
   isCuteRabbitThemeEnabled: false,
   isDarkThemeEnabled: false,
