@@ -1742,12 +1742,14 @@ function ChatWindow({
   };
 
   const sendVoiceMessage = async (text: string) => {
-    // With Web Speech API, we store the text and read it back on click.
+    // Determine duration based on character count (approx 3 characters per second)
+    const duration = Math.max(1, Math.ceil(text.length / 3));
+    
     const msg: ChatMessage = {
       role: 'assistant',
       content: text,
       type: 'voice',
-      duration: Math.ceil(text.length / 3), // Estimate duration
+      duration: duration,
       timestamp: Date.now()
     };
     
@@ -1757,7 +1759,10 @@ function ChatWindow({
       onSendMessage(msg);
     }
     
-    // Auto-play removed as per user request (user must click to play)
+    // Auto-play if MiniMax is enabled
+    if (settings.minimaxEnabled && settings.minimaxApiKey) {
+      speakText(text, friend.voiceId, friend.voiceType || 'minimax', settings).catch(err => console.error('Auto-play TTS error:', err));
+    }
   };
 
   const handleGenerate = async (action?: 'continue' | 'regenerate') => {
@@ -5836,12 +5841,7 @@ function FriendProfile({ friend, settings, onBack, onStartChat, onViewMoments, o
                 "text-xs transition-all duration-300",
                 settings.themeId === 'rainy-cat' ? "text-white/60" : "text-slate-500"
               )}>
-                {friend.voiceType === 'minimax' ? '自定义克隆音色' : 
-                 friend.voiceId === 'Kore' ? '甜妹 (Kore)' :
-                 friend.voiceId === 'Zephyr' ? '少年 (Zephyr)' :
-                 friend.voiceId === 'Puck' ? '奶狗 (Puck)' :
-                 friend.voiceId === 'Charon' ? '御姐 (Charon)' :
-                 friend.voiceId === 'Fenrir' ? '磁性 (Fenrir)' : '默认'}
+                {friend.voiceType === 'minimax' ? `MiniMax: ${friend.voiceId || '未设置'}` : '默认'}
               </span>
               <ChevronLeft size={16} className={cn(
                 "rotate-180 transition-all duration-300",
@@ -6036,12 +6036,12 @@ function FriendProfile({ friend, settings, onBack, onStartChat, onViewMoments, o
                   <div className="space-y-4">
                     <div className="space-y-2">
                       <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                        <Mic size={10} /> Minimax 语音克隆 (推荐)
+                        <Mic size={10} /> Minimax 语音音色 ID
                       </label>
                       <div className="flex gap-2">
                         <input 
                           type="text"
-                          value={friend.voiceType === 'minimax' ? (friend.voiceId || '') : ''}
+                          value={friend.voiceId || ''}
                           onChange={(e) => onUpdate({ voiceId: e.target.value, voiceType: 'minimax' })}
                           placeholder="输入 Minimax 音色 ID"
                           className={cn(
@@ -6051,116 +6051,16 @@ function FriendProfile({ friend, settings, onBack, onStartChat, onViewMoments, o
                         />
                         <button
                           onClick={() => handlePreviewVoice(friend.voiceId || '', 'minimax')}
-                          disabled={isPreviewing || !friend.voiceId || friend.voiceType !== 'minimax'}
+                          disabled={isPreviewing || !friend.voiceId}
                           className={cn(
                             "p-2 rounded-xl transition-all flex items-center justify-center",
-                            isPreviewing || !friend.voiceId || friend.voiceType !== 'minimax' ? "bg-slate-200 text-slate-400" : "bg-blue-500 text-white"
+                            isPreviewing || !friend.voiceId ? "bg-slate-200 text-slate-400" : "bg-blue-500 text-white"
                           )}
                         >
                           <Music size={14} />
                         </button>
                       </div>
-                      <p className="text-[9px] text-slate-400">在 Minimax 官网克隆音色后，将音色 ID 填入此处即可。需在设置中配置 API Key。</p>
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                        <RefreshCw size={10} /> 系统内置音色 (备选)
-                      </label>
-                      <div className="max-h-48 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-                        {availableVoices.length > 0 ? (
-                          <div className="space-y-4">
-                            {/* Male Voices Section */}
-                            <div className="space-y-1">
-                              <div className="text-[9px] font-bold text-blue-500/60 px-1">男声推荐</div>
-                              {availableVoices.filter(v => 
-                                (v.name || '').toLowerCase().includes('male') || 
-                                (v.name || '').toLowerCase().includes('guy') || 
-                                (v.name || '').toLowerCase().includes('man') || 
-                                (v.name || '').toLowerCase().includes('kangkang') || 
-                                (v.name || '').toLowerCase().includes('yunxi')
-                              ).map(voice => (
-                                <div key={voice.voiceURI} className="flex gap-1">
-                                  <button
-                                    onClick={() => {
-                                      onUpdate({ voiceId: voice.voiceURI, voiceType: 'gemini' });
-                                      setIsEditingVoice(false);
-                                    }}
-                                    className={cn(
-                                      "flex-1 py-2 px-2 rounded-lg text-[10px] font-medium text-left transition-all",
-                                      friend.voiceId === voice.voiceURI && friend.voiceType === 'gemini'
-                                        ? "bg-blue-100 text-blue-700 border-blue-200 border"
-                                        : "bg-slate-50 text-slate-600 border border-slate-100 hover:bg-slate-100"
-                                    )}
-                                  >
-                                    {voice.name}
-                                  </button>
-                                  <button
-                                    onClick={() => handlePreviewVoice(voice.voiceURI, 'gemini')}
-                                    disabled={isPreviewing}
-                                    className={cn(
-                                      "p-2 rounded-lg transition-all flex items-center justify-center",
-                                      isPreviewing ? "bg-slate-200 text-slate-400" : "bg-slate-100 hover:bg-slate-200 text-slate-600"
-                                    )}
-                                  >
-                                    <Music size={12} />
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-
-                            {/* All Voices Section */}
-                            <div className="space-y-1">
-                              <div className="text-[9px] font-bold text-slate-400 px-1">全部音色</div>
-                              {availableVoices.map(voice => (
-                                <div key={voice.voiceURI} className="flex gap-1">
-                                  <button
-                                    onClick={() => {
-                                      onUpdate({ voiceId: voice.voiceURI, voiceType: 'gemini' });
-                                      setIsEditingVoice(false);
-                                    }}
-                                    className={cn(
-                                      "flex-1 py-2 px-2 rounded-lg text-[10px] font-medium text-left transition-all",
-                                      friend.voiceId === voice.voiceURI && friend.voiceType === 'gemini'
-                                        ? "bg-blue-100 text-blue-700 border-blue-200 border"
-                                        : "bg-slate-50 text-slate-600 border border-slate-100 hover:bg-slate-100"
-                                    )}
-                                  >
-                                    {voice.name} ({voice.lang})
-                                  </button>
-                                  <button
-                                    onClick={() => handlePreviewVoice(voice.voiceURI, 'gemini')}
-                                    disabled={isPreviewing}
-                                    className={cn(
-                                      "p-2 rounded-lg transition-all flex items-center justify-center",
-                                      isPreviewing ? "bg-slate-200 text-slate-400" : "bg-slate-100 hover:bg-slate-200 text-slate-600"
-                                    )}
-                                  >
-                                    <Music size={12} />
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="space-y-2">
-                            <div className="text-[10px] text-slate-400 py-4 text-center animate-pulse">正在初始化系统音色库...</div>
-                            {/* Fallback mock voices if real ones take too long */}
-                            <div className="space-y-1 opacity-50">
-                              {['Microsoft Kangkang - Chinese (Simplified, PRC)', 'Microsoft Yunxi - Chinese (Simplified, PRC)', 'Google 普通话（中国）'].map(name => (
-                                <div key={name} className="flex gap-1">
-                                  <div className="flex-1 py-2 px-2 rounded-lg text-[10px] font-medium text-left bg-slate-50 text-slate-400 border border-slate-100">
-                                    {name}
-                                  </div>
-                                  <div className="p-2 rounded-lg bg-slate-50 text-slate-300 flex items-center justify-center">
-                                    <Music size={12} />
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                      </div>
+                      <p className="text-[9px] text-slate-400 leading-relaxed">在 Minimax 官网/后台配置克隆音色后，将音色 ID 填入此处。系统将调用您的 API Key 进行合成。</p>
                     </div>
                   </div>
                 ) : isEditingPersona ? (

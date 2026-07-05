@@ -147,6 +147,10 @@ export interface AppSettings {
   minimaxGroupId?: string;
   minimaxName?: string;
   minimaxApiUrl?: string;
+  minimaxModel?: string;
+  minimaxRegion?: 'china' | 'international';
+  minimaxVoiceId?: string;
+  minimaxEnabled?: boolean;
   homeWallpaperUrl?: string;
   totalPages?: number;
   // New Theme System

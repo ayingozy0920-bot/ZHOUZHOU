@@ -46,9 +46,43 @@ export default function SettingsApp({
 
   const [apiLog, setApiLog] = useState('');
 
+  const [isTestingTts, setIsTestingTts] = useState(false);
+
+  const handleTestTts = async () => {
+    if (!form.minimaxApiKey) return showToast('请输入 API Key', 'error');
+    setIsTestingTts(true);
+    try {
+      const response = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: '你好，这是一段测试语音。',
+          settings: form
+        })
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || `HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (data.audio) {
+        const audio = new Audio(`data:audio/mp3;base64,${data.audio}`);
+        audio.play();
+        showToast('✅ 语音合成成功，正在播放');
+      }
+    } catch (e: any) {
+      console.error('TTS test error:', e);
+      showToast(`❌ 测试失败: ${e.message}`, 'error');
+    } finally {
+      setIsTestingTts(false);
+    }
+  };
+
   const fetchModels = async () => {
     setIsTestingConnection(true);
-    setApiLog('开始连接 API 获取模型列表...\n');
+    setApiLog('开始连接 API 获取模型列表 (通过后端代理)...\n');
     try {
       const apiKey = form.apiKey || process.env.GEMINI_API_KEY;
       if (!apiKey) {
@@ -56,62 +90,30 @@ export default function SettingsApp({
         setApiLog(prev => prev + '[错误] 未配置 API Key\n');
         return;
       }
-      const url = form.baseUrl || 'https://generativelanguage.googleapis.com';
-      const cleanUrl = url.replace(/\/+$/, '');
       
-      const endpoints = [
-        // 1. 对于标准的代理地址 (OneAPI/OpenAI格式，通常配有 /v1 尾部) 
-        { 
-          endpoint: `${cleanUrl}/models`, 
-          headers: { 'Authorization': `Bearer ${apiKey}` },
-          desc: 'OpenAI 兼容接口'
-        },
-        // 2. 将可能的 /v1 移除后重试
-        { 
-          endpoint: `${cleanUrl.replace(/\/v1$/, '')}/v1/models`, 
-          headers: { 'Authorization': `Bearer ${apiKey}` },
-          desc: 'OpenAI V1 补全接口'
-        },
-        // 3. 原生 Gemini 格式
-        { 
-          endpoint: `${cleanUrl}/v1beta/models?key=${apiKey}`, 
-          headers: {},
-          desc: 'Gemini 原生接口'
-        }
-      ];
+      const response = await fetch('/api/models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          baseUrl: form.baseUrl,
+          apiKey: apiKey
+        })
+      });
 
-      let res = null;
-      let lastError = null;
-
-      for (const { endpoint, headers, desc } of endpoints) {
-        setApiLog(prev => prev + `尝试 ${desc}: GET ${endpoint}\n`);
-        try {
-          const fetchRes = await fetch(endpoint, { headers });
-          if (fetchRes.ok) {
-            res = fetchRes;
-            setApiLog(prev => prev + `✅ ${desc} 响应成功 (${res.status})\n`);
-            break;
-          } else {
-            setApiLog(prev => prev + `❌ ${desc} 失败: HTTP ${fetchRes.status}\n`);
-            lastError = new Error(`HTTP Error ${fetchRes.status}: ${fetchRes.statusText}`);
-          }
-        } catch (err: any) {
-          setApiLog(prev => prev + `❌ ${desc} 失败: ${err.message}\n`);
-          lastError = err;
-        }
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || `HTTP ${response.status}`);
       }
 
-      if (!res) {
-        throw lastError || new Error("所有模型获取端点均尝试失败");
-      }
+      const data = await response.json();
+      setApiLog(prev => prev + `✅ 响应成功\n`);
       
-      const data = await res.json();
       if (data.models || Array.isArray(data.data) || Array.isArray(data)) {
         const modelsData = data.models || data.data || data;
         const modelNames = modelsData.map((m: any) => (m.name || m.id || '').replace('models/', '')).filter(Boolean);
         setAvailableModels(modelNames);
         setApiLog(prev => prev + `连接成功！获取到 ${modelNames.length} 个模型。\n`);
-        if (!modelNames.includes(form.modelName) && modelNames.length > 0) {
+        if (!modelNames.includes(form.modelName || '') && modelNames.length > 0) {
           setForm(prev => ({ ...prev, modelName: modelNames[0] }));
         }
         showToast(`✅ 成功获取 ${modelNames.length} 个模型！`);
@@ -129,7 +131,7 @@ export default function SettingsApp({
   const testConnection = async () => {
     if (!form.modelName) return showToast('请先选择一个模型再进行测试', 'error');
     setIsTestingConnection(true);
-    setApiLog('开始测试模型对话能力...\n');
+    setApiLog('开始测试模型对话能力 (通过后端代理)...\n');
     try {
       const apiKey = form.apiKey || process.env.GEMINI_API_KEY;
       if (!apiKey) {
@@ -138,16 +140,35 @@ export default function SettingsApp({
         return;
       }
       
-      const { getGeminiClient } = await import('../../lib/gemini');
-      const ai = getGeminiClient({ ...settings, ...form } as any);
       const model = form.modelName;
       setApiLog(prev => prev + `使用模型 ${model} 进行测试...\n`);
-      const result = await ai.models.generateContent({
-        model: model,
-        contents: [{ role: 'user', parts: [{ text: '你是谁？返回一条短文本' }] }]
-      });
       
-      setApiLog(prev => prev + `收到回复：${result.text}\n✅ 测试通过！\n`);
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          system_prompt: 'You are a helpful assistant.',
+          messages: [
+            { 
+              role: 'user', 
+              parts: [{ text: '你是谁？返回一条短文本' }],
+              content: '你是谁？返回一条短文本' 
+            }
+          ],
+          settings: {
+            ...form,
+            modelName: model
+          }
+        })
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || `HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      setApiLog(prev => prev + `收到回复：${data.text}\n✅ 测试通过！\n`);
       showToast('✅ 链接成功！该配置已通过测试。');
       
       const newPreset = { 
@@ -1235,53 +1256,131 @@ export default function SettingsApp({
         )}
 
         {activeSection === 'voice' && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <div className="bg-white rounded-2xl border shadow-sm p-5 space-y-6">
-              <div className="space-y-2">
-                <h3 className="font-bold text-slate-800 flex items-center gap-2">
-                  <Mic size={18} className="text-rose-500" /> Minimax 语音设置
-                </h3>
-              </div>
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">API Key</label>
-                  <input
-                    type="password"
-                    value={form.minimaxApiKey || ''}
-                    onChange={e => setForm({ ...form, minimaxApiKey: e.target.value })}
-                    placeholder="输入 Minimax API Key"
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none"
-                  />
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300 pb-10">
+            <div className={cn(
+              "rounded-2xl border shadow-sm overflow-hidden transition-all duration-500",
+              form.settingsBackgroundUrl ? "bg-transparent border-white/10" : "bg-white"
+            )} style={form.settingsBackgroundUrl ? { backgroundColor: `rgba(255, 255, 255, ${Math.max(0, (form.settingsBackgroundOpacity ?? 0.8) * 0.2)})` } : {}}>
+              <div className="px-5 py-6 space-y-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-rose-100 rounded-xl text-rose-600 shadow-sm"><Mic size={20} /></div>
+                    <div className="flex flex-col">
+                      <span className="font-bold text-slate-800">启用语音生成</span>
+                      <span className="text-[10px] text-slate-400">开启后角色可以发送语音消息</span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setForm({ ...form, minimaxEnabled: !form.minimaxEnabled })}
+                    className={cn(
+                      "w-12 h-6 rounded-full transition-all relative",
+                      form.minimaxEnabled ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]" : "bg-slate-200"
+                    )}
+                  >
+                    <div className={cn(
+                      "absolute top-1 w-4 h-4 bg-white rounded-full transition-all shadow-sm",
+                      form.minimaxEnabled ? "right-1" : "left-1"
+                    )} />
+                  </button>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">Group ID</label>
-                  <input
-                    type="text"
-                    value={form.minimaxGroupId || ''}
-                    onChange={e => setForm({ ...form, minimaxGroupId: e.target.value })}
-                    placeholder="输入 Group ID"
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">语音名称 (用于定制)</label>
-                  <input
-                    type="text"
-                    value={form.minimaxName || ''}
-                    onChange={e => setForm({ ...form, minimaxName: e.target.value })}
-                    placeholder="输入语音名称"
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider">自定义 API 地址 (可选)</label>
-                  <input
-                    type="text"
-                    value={form.minimaxApiUrl || ''}
-                    onChange={e => setForm({ ...form, minimaxApiUrl: e.target.value })}
-                    placeholder="https://api.minimax.chat/v1/text_to_speech"
-                    className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none"
-                  />
+
+                <div className="h-px bg-slate-100/50" />
+
+                <div className="space-y-5">
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                      <Key size={14} className="text-slate-300" /> API KEY
+                    </label>
+                    <input
+                      type="password"
+                      value={form.minimaxApiKey || ''}
+                      onChange={e => setForm({ ...form, minimaxApiKey: e.target.value })}
+                      placeholder="Minimax API Key"
+                      className="w-full px-4 py-3 bg-slate-50/50 border border-slate-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-300 transition-all"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                      <Database size={14} className="text-slate-300" /> Group ID
+                    </label>
+                    <input
+                      type="text"
+                      value={form.minimaxGroupId || ''}
+                      onChange={e => setForm({ ...form, minimaxGroupId: e.target.value })}
+                      placeholder="Minimax Group ID"
+                      className="w-full px-4 py-3 bg-slate-50/50 border border-slate-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-300 transition-all"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                        <Cpu size={14} className="text-slate-300" /> 语音模型
+                      </label>
+                      <select
+                        value={form.minimaxModel || 'speech-01-turbo'}
+                        onChange={e => setForm({ ...form, minimaxModel: e.target.value })}
+                        className="w-full px-4 py-3 bg-slate-50/50 border border-slate-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-300 transition-all appearance-none"
+                      >
+                        <option value="speech-2.8-hd">Speech-2.8 HD (最新)</option>
+                        <option value="speech-2.8-turbo">Speech-2.8 Turbo (最新)</option>
+                        <option value="speech-2.6-hd">Speech-2.6 HD</option>
+                        <option value="speech-2.6-turbo">Speech-2.6 Turbo</option>
+                        <option value="speech-02-hd">Speech-02 HD</option>
+                        <option value="speech-02-turbo">Speech-02 Turbo</option>
+                        <option value="speech-01-hd">Speech-01 HD</option>
+                        <option value="speech-01-turbo">Speech-01 Turbo</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                        <Globe size={14} className="text-slate-300" /> 服务区域
+                      </label>
+                      <select
+                        value={form.minimaxRegion || 'china'}
+                        onChange={e => setForm({ ...form, minimaxRegion: e.target.value as any })}
+                        className="w-full px-4 py-3 bg-slate-50/50 border border-slate-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-300 transition-all appearance-none"
+                      >
+                        <option value="china">中国版 (China)</option>
+                        <option value="international">国际版 (Global)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                      <Mic size={14} className="text-slate-300" /> 全局默认音色 ID
+                    </label>
+                    <input
+                      type="text"
+                      value={form.minimaxVoiceId || ''}
+                      onChange={e => setForm({ ...form, minimaxVoiceId: e.target.value })}
+                      placeholder="例如: male-qn-qingse"
+                      className="w-full px-4 py-3 bg-slate-50/50 border border-slate-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-300 transition-all"
+                    />
+                  </div>
+
+                  <button 
+                    onClick={handleTestTts}
+                    disabled={isTestingTts}
+                    className={cn(
+                      "w-full py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all shadow-sm active:scale-[0.98]",
+                      isTestingTts ? "bg-slate-100 text-slate-400" : "bg-rose-50 text-rose-600 hover:bg-rose-100 border border-rose-200"
+                    )}
+                  >
+                    {isTestingTts ? (
+                      <div className="flex items-center gap-2">
+                        <div className="w-4 h-4 border-2 border-rose-500 border-t-transparent rounded-full animate-spin" />
+                        正在合成测试语音...
+                      </div>
+                    ) : (
+                      <>
+                        <Mic size={18} /> 测试语音播放
+                      </>
+                    )}
+                  </button>
                 </div>
               </div>
             </div>

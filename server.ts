@@ -105,6 +105,98 @@ async function startServer() {
     });
   });
 
+  app.post("/api/models", async (req, res) => {
+    const { baseUrl, apiKey } = req.body;
+    try {
+      const url = baseUrl || 'https://generativelanguage.googleapis.com';
+      const cleanUrl = url.replace(/\/+$/, '');
+      
+      const endpoints = [
+        { 
+          endpoint: `${cleanUrl}/models`, 
+          headers: { 'Authorization': `Bearer ${apiKey}` },
+          desc: 'OpenAI 兼容接口'
+        },
+        { 
+          endpoint: `${cleanUrl.replace(/\/v1$/, '')}/v1/models`, 
+          headers: { 'Authorization': `Bearer ${apiKey}` },
+          desc: 'OpenAI V1 补全接口'
+        },
+        { 
+          endpoint: `${cleanUrl}/v1beta/models?key=${apiKey}`, 
+          headers: {},
+          desc: 'Gemini 原生接口'
+        }
+      ];
+
+      let lastError = null;
+      for (const { endpoint, headers } of endpoints) {
+        try {
+          const fetchRes = await fetch(endpoint, { headers });
+          if (fetchRes.ok) {
+            const data = await fetchRes.json();
+            return res.json(data);
+          }
+        } catch (err) {
+          lastError = err;
+        }
+      }
+      res.status(500).json({ error: lastError?.message || "Failed to fetch models from all endpoints" });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/tts", async (req, res) => {
+    const { text, voiceId, model, settings } = req.body;
+    try {
+      const apiKey = settings.minimaxApiKey;
+      const groupId = settings.minimaxGroupId;
+      const region = settings.minimaxRegion || 'china';
+      const baseUrl = region === 'international' ? 'https://api.minimaxi.com/v1' : 'https://api.minimax.chat/v1';
+      
+      const response = await fetch(`${baseUrl}/text_to_speech/v2`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: model || settings.minimaxModel || 'speech-01-turbo',
+          text: text,
+          stream: false,
+          voice_setting: {
+            voice_id: voiceId || settings.minimaxVoiceId || 'male-qn-qingse',
+            speed: 1.0,
+            vol: 1.0,
+            pitch: 0
+          },
+          audio_setting: {
+            sample_rate: 32000,
+            bitrate: 128000,
+            format: 'mp3',
+            channel: 1
+          }
+        })
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error?.message || err.message || `HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (data.data?.audio) {
+        res.json({ audio: data.data.audio });
+      } else {
+        res.status(500).json({ error: "No audio data returned" });
+      }
+    } catch (error: any) {
+      console.error("TTS error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Vite 中间件
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({

@@ -17,38 +17,33 @@ export const isMaleVoice = (voice: SpeechSynthesisVoice) => {
          name.includes('kangkang') || name.includes('yunxi') || name.includes('yunjian') || name.includes('liaoliao');
 };
 
-export const speakText = async (text: string, voiceId?: string, voiceType?: 'gemini' | 'minimax', settings?: AppSettings) => {
-  if (voiceType === 'minimax' && settings?.minimaxApiKey && settings?.minimaxGroupId && voiceId) {
+export const speakText = async (text: string, voiceId?: string, voiceType?: 'gemini' | 'minimax' | string, settings?: AppSettings) => {
+  // Try MiniMax if enabled or voiceType is minimax
+  if ((settings?.minimaxEnabled || voiceType === 'minimax') && settings?.minimaxApiKey) {
     try {
-      const baseUrl = settings.minimaxApiUrl || 'https://api.minimax.chat/v1/text_to_speech';
-      const url = `${baseUrl}${(baseUrl || '').includes('?') ? '&' : '?'}GroupId=${settings.minimaxGroupId}`;
-      const response = await fetch(url, {
+      const response = await fetch('/api/tts', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${settings.minimaxApiKey}`,
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          voice_id: voiceId,
-          text: text,
-          model: "speech-01",
-          speed: 1.0,
-          vol: 1.0,
-          pitch: 0
+          text,
+          voiceId: voiceId || settings.minimaxVoiceId,
+          settings
         })
       });
 
       if (response.ok) {
-        const blob = await response.blob();
-        const url = URL.createObjectURL(blob);
-        const audio = new Audio(url);
-        audio.play().catch(err => console.error("Audio autoplay failed or blocked:", err));
-        return;
+        const data = await response.json();
+        if (data.audio) {
+          const audio = new Audio(`data:audio/mp3;base64,${data.audio}`);
+          audio.play().catch(err => console.error("Audio autoplay failed or blocked:", err));
+          return;
+        }
       } else {
-        console.error("Minimax TTS error:", await response.text());
+        const err = await response.json();
+        console.error("MiniMax TTS proxy error:", err.error);
       }
     } catch (err) {
-      console.error("Minimax TTS fetch error:", err);
+      console.error("MiniMax TTS fetch error:", err);
     }
   }
 
