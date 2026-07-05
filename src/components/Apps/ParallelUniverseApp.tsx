@@ -108,28 +108,53 @@ export const getPhotoCardBg = (m: any) => {
 };
 import { AppSettings } from '../../types';
 
-export const getGeminiClient = () => {
+export const getGeminiClient = (passedSettings?: AppSettings) => {
   const customKey = localStorage.getItem('CUSTOM_GEMINI_API_KEY');
   let customUrl = localStorage.getItem('CUSTOM_GEMINI_BASE_URL');
   
-  let globalSettings: AppSettings | null = null;
-  try {
-    const s = localStorage.getItem('zhouzhou_ji_settings');
-    if (s) globalSettings = JSON.parse(s) as AppSettings;
-  } catch(e) {}
+  let globalSettings: AppSettings | null = passedSettings || null;
+  if (!globalSettings) {
+    try {
+      const s = localStorage.getItem('zhouzhou_ji_settings');
+      if (s) globalSettings = JSON.parse(s) as AppSettings;
+    } catch(e) {}
+  }
   
-  const apiKey = customKey || globalSettings?.apiKey || process.env.GEMINI_API_KEY;
+  const apiKey = customKey || globalSettings?.apiKey;
   let finalUrl = customUrl || globalSettings?.baseUrl;
 
+  if (!apiKey) {
+    throw new Error('未检测到大模型 API Key。请在“系统设置”或手机主设置中配置 API。');
+  }
+
   if (finalUrl) {
-    const isOpenAI = finalUrl.endsWith('/v1') || finalUrl.endsWith('/v1/');
+    const customModel = localStorage.getItem('CUSTOM_GEMINI_MODEL');
+    let globalSettings: AppSettings | null = passedSettings || null;
+    if (!globalSettings) {
+      try {
+        const s = localStorage.getItem('zhouzhou_ji_settings');
+        if (s) globalSettings = JSON.parse(s) as AppSettings;
+      } catch(e) {}
+    }
+    const modelName = customModel || globalSettings?.modelName || "gemini-1.5-flash";
+    const isGeminiModel = modelName.startsWith('gemini');
+    const isGoogleEndpoint = finalUrl.includes('googleapis.com') || finalUrl.includes('google');
+    
+    const isOpenAI = finalUrl.endsWith('/v1') || 
+                      finalUrl.endsWith('/v1/') || 
+                      !isGoogleEndpoint || 
+                      !isGeminiModel;
     
     if (isOpenAI) {
       return {
         apiKey: apiKey,
         models: {
           generateContent: async (req: any) => {
-            const url = finalUrl!.replace(/\/+$/, '') + '/chat/completions';
+            let baseUrlClean = finalUrl!.replace(/\/+$/, '');
+            if (!baseUrlClean.endsWith('/v1') && !baseUrlClean.includes('/v1/')) {
+              baseUrlClean += '/v1';
+            }
+            const url = baseUrlClean + '/chat/completions';
             const messages = [];
             
             if (req.config?.systemInstruction) {
@@ -160,22 +185,10 @@ export const getGeminiClient = () => {
             }
 
             const bodyPayload: any = {
-              model: req.model,
+              model: req.model || modelName,
               messages,
               temperature: req.config?.temperature || undefined,
               response_format: req.config?.responseMimeType === 'application/json' ? { type: 'json_object' } : undefined,
-              safetySettings: [
-                { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-                { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
-                { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-                { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" }
-              ],
-              safety_settings: [
-                { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-                { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
-                { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-                { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" }
-              ]
             };
 
             const response = await fetch(url, {
@@ -203,7 +216,12 @@ export const getGeminiClient = () => {
       } as any;
     }
 
-    finalUrl = finalUrl.replace(/\/v1\/?$/, '').replace(/\/+$/, '');
+    // Improved cleaning
+    const v1Match = finalUrl.match(/^(.*?)\/v1(\/|$)/);
+    const v1betaMatch = finalUrl.match(/^(.*?)\/v1beta(\/|$)/);
+    if (v1Match) finalUrl = v1Match[1];
+    else if (v1betaMatch) finalUrl = v1betaMatch[1];
+    finalUrl = finalUrl.replace(/\/+$/, '');
   }
   
   const client = new GoogleGenAI({ 
@@ -237,14 +255,16 @@ export const getGeminiClient = () => {
   } as any;
 };
 
-export const getGeminiModel = () => {
+export const getGeminiModel = (passedSettings?: AppSettings) => {
   const customModel = localStorage.getItem('CUSTOM_GEMINI_MODEL');
-  let globalSettings: AppSettings | null = null;
-  try {
-    const s = localStorage.getItem('zhouzhou_ji_settings');
-    if (s) globalSettings = JSON.parse(s) as AppSettings;
-  } catch(e) {}
-  return customModel || globalSettings?.modelName || "gemini-2.0-flash";
+  let globalSettings: AppSettings | null = passedSettings || null;
+  if (!globalSettings) {
+    try {
+      const s = localStorage.getItem('zhouzhou_ji_settings');
+      if (s) globalSettings = JSON.parse(s) as AppSettings;
+    } catch(e) {}
+  }
+  return customModel || globalSettings?.modelName || "gemini-1.5-flash";
 };
 
 // --- Types & Constants ---
@@ -1092,25 +1112,23 @@ export default function ParallelUniverseApp({ settings, onBack }: {
     `;
 
     try {
-      const ai = getGeminiClient();
+      const ai = getGeminiClient(settings);
       const response = await ai.models.generateContent({
-        model: getGeminiModel(),
+        model: getGeminiModel(settings),
         contents: matchPrompt,
-        config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.OBJECT,
-            properties: {
-              name: { type: Type.STRING },
-              world: { type: Type.STRING },
-              role: { type: Type.STRING },
-              personality: { type: Type.STRING },
-              settingsCard: { type: Type.STRING, description: "详细设定卡，必须使用换行符(\\n)进行良好排版。包含：一、基础信息；二、身份背景；三、性格；四、能力；五、经历与心结；六、感情；七、价值观。每个大点必须换行分隔。请务必使用中文生成。" }
-            },
-            required: ["name", "world", "role", "personality", "settingsCard"]
-          }
-        }
-      });
+          config: {
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: Type.OBJECT,
+              properties: {
+                name: { type: Type.STRING },
+                world: { type: Type.STRING },
+                role: { type: Type.STRING },
+                personality: { type: Type.STRING },
+                settingsCard: { type: Type.STRING }
+              }
+            }
+          }});
 
       if (!response.text) throw new Error("匹配失败");
       const charData = JSON.parse(response.text);
@@ -1241,6 +1259,7 @@ export default function ParallelUniverseApp({ settings, onBack }: {
               shareGroupMemory={shareGroupMemory}
               stickerList={stickerList}
               setStickerList={setStickerList}
+              settings={settings}
             />
           )}
 
@@ -1268,6 +1287,7 @@ export default function ParallelUniverseApp({ settings, onBack }: {
           {viewState === 'memory_settings' && selectedChar && (
             <MemorySettingsPage 
               char={selectedChar}
+              settings={settings}
               contextLimit={memoryContextLimit}
               setContextLimit={setMemoryContextLimit}
               shareGroupMemory={shareGroupMemory}
@@ -1350,6 +1370,7 @@ export default function ParallelUniverseApp({ settings, onBack }: {
               onBack={() => setViewState('meeting')}
               onUpdateChar={handleUpdateChar}
               worldBooks={worldBooks}
+              settings={settings}
             />
           )}
           {viewState === 'video_call' && selectedChar && (
@@ -1741,44 +1762,77 @@ function AppSettingsPage({ onBack }: { onBack: () => void }) {
     setIsTesting(true);
     setApiLog('开始连接 API...\n');
     try {
-      const url = baseUrl || 'https://generativelanguage.googleapis.com';
-      const key = apiKey || process.env.GEMINI_API_KEY;
-      const isOpenAI = url.endsWith('/v1') || url.endsWith('/v1/');
+      let globalSettings: AppSettings | null = null;
+      try {
+        const s = localStorage.getItem('zhouzhou_ji_settings');
+        if (s) globalSettings = JSON.parse(s) as AppSettings;
+      } catch(e) {}
+
+      const url = baseUrl || globalSettings?.baseUrl || 'https://generativelanguage.googleapis.com';
+      const key = apiKey || globalSettings?.apiKey;
       
-      let endpoint = '';
-      let res;
-      if (isOpenAI) {
-        endpoint = `${url.replace(/\/+$/, '')}/models`;
-        setApiLog(prev => prev + `GET ${endpoint} (OpenAI Proxy)\n`);
-        res = await fetch(endpoint, {
-          headers: { 'Authorization': `Bearer ${key}` }
-        });
-      } else {
-        endpoint = `${url.replace(/\/+$/, '')}/v1beta/models?key=${key}`;
-        setApiLog(prev => prev + `GET ${endpoint} (Gemini)\n`);
-        res = await fetch(endpoint);
+      if (!key) {
+        throw new Error('未找到 API Key。请先在系统设置或此处填写密钥。');
       }
-      
-      if (!res.ok) {
-        throw new Error(`HTTP Error ${res.status}: ${res.statusText}`);
-      }
-      const data = await res.json();
-      
-      let modelNames: string[] = [];
-      if (isOpenAI && data.data) {
-        modelNames = data.data.map((m: any) => m.id);
-      } else if (data.models) {
-        modelNames = data.models.map((m: any) => m.name.replace('models/', ''));
-      }
-      
-      if (modelNames.length > 0) {
-        setModelsList(modelNames);
-        setApiLog(prev => prev + `连接成功！获取到 ${modelNames.length} 个模型。\n`);
-        if (!modelNames.includes(selectedModel) && modelNames.length > 0) {
-          setSelectedModel(modelNames[0]);
+
+      const cleanUrl = url.replace(/\/+$/, '');
+      setApiLog(prev => prev + `配置: URL=${cleanUrl}, KEY=${key.substring(0, 4)}...${key.substring(key.length - 4)}\n`);
+
+      // Try multiple common model endpoints
+      const endpoints = [
+        `${cleanUrl}/v1beta/models?key=${key}`,
+        `${cleanUrl}/models?key=${key}`,
+        `${cleanUrl}/v1/models`, // OpenAI-style
+        `${cleanUrl}/models`,    // Generic
+      ];
+
+      let lastError = '';
+      let success = false;
+      let fetchedModels: string[] = [];
+
+      for (const endpoint of endpoints) {
+        if (success) break;
+        try {
+          setApiLog(prev => prev + `正在尝试: ${endpoint}\n`);
+          const headers: any = {};
+          if (endpoint.includes('/v1/models') || (!endpoint.includes('key=') && !endpoint.includes('generativelanguage.googleapis.com'))) {
+            headers['Authorization'] = `Bearer ${key}`;
+          }
+
+          const res = await fetch(endpoint, { headers, method: 'GET' });
+          if (res.ok) {
+            const data = await res.json();
+            setApiLog(prev => prev + `响应成功! 解析模型中...\n`);
+            
+            if (data.data && Array.isArray(data.data)) {
+              fetchedModels = data.data.map((m: any) => m.id || m.name).filter(Boolean);
+            } else if (data.models && Array.isArray(data.models)) {
+              fetchedModels = data.models.map((m: any) => (m.name || m.id).replace('models/', '')).filter(Boolean);
+            } else if (Array.isArray(data)) {
+              fetchedModels = data.map((m: any) => typeof m === 'string' ? m : (m.id || m.name)).filter(Boolean);
+            }
+            
+            if (fetchedModels.length > 0) {
+              success = true;
+              setModelsList(fetchedModels);
+              setApiLog(prev => prev + `连接成功！获取到 ${fetchedModels.length} 个模型。\n`);
+              if (!fetchedModels.includes(selectedModel)) {
+                setSelectedModel(fetchedModels[0]);
+              }
+            }
+          } else {
+            const errBody = await res.text().catch(() => 'No body');
+            lastError = `HTTP ${res.status}: ${errBody}`;
+            setApiLog(prev => prev + `此路径失败: ${lastError}\n`);
+          }
+        } catch (e: any) {
+          lastError = e.message;
+          setApiLog(prev => prev + `请求异常: ${lastError}\n`);
         }
-      } else {
-        setApiLog(prev => prev + `未找到模型列表:\n${JSON.stringify(data)}\n`);
+      }
+
+      if (!success) {
+        throw new Error(`所有模型获取路径均失败。最后错误: ${lastError}`);
       }
     } catch (e) {
       setApiLog(prev => prev + `[错误] 连接失败: ${e instanceof Error ? e.message : String(e)}\n`);
@@ -2510,9 +2564,9 @@ function VideoCallPage({ char, onEnd, settings }: { char: Character, onEnd: (dur
     
     setIsTyping(true);
     try {
-      const ai = getGeminiClient();
+      const ai = getGeminiClient(settings);
       const prompt = `你现在是《平行时空》中的角色 ${char.name}，正在和我打视频电话。\n我发给你了一条消息：${msg}\n请你简短回复，就像真正的口语交流，不用发动作描述，只发对我说的话。`;
-      const response = await ai.models.generateContent({ model: getGeminiModel(), contents: [{ role: 'user', parts: [{ text: prompt }] }] });
+      const response = await ai.models.generateContent({ model: getGeminiModel(settings), contents: [{ role: 'user', parts: [{ text: prompt }] }] });
       const text = response.text || '...';
       setChatHistory(prev => [...prev, { role: 'ai', text }]);
     } catch (e) {
@@ -2952,12 +3006,13 @@ function MeetingPage({ char, userProfile, onBack, onMeet, onStartOfflineChat }: 
   );
 }
 
-function OfflineChatPage({ char, onBack, userProfile, onUpdateChar, worldBooks }: { 
+function OfflineChatPage({ char, onBack, userProfile, onUpdateChar, worldBooks, settings }: { 
   char: Character, 
   onBack: () => void,
   userProfile: any,
   onUpdateChar: (c: Character) => void,
-  worldBooks?: WorldBook[]
+  worldBooks?: WorldBook[],
+  settings: AppSettings
 }) {
   const [messages, setMessages] = useState<any[]>(char.offlineMessages || [
     { role: 'assistant', content: `「写给你的信」\n\n紊乱的时空气流渐渐平息，我终于看清了站在自己面前的你。\n\n那一瞬间，一贯沉稳的眉眼猛地一颤，素来没什么波澜的脸上，第一次露出了近乎失态的怔忪。我下意识朝你伸出手，又在快要碰到你衣袖时猛地收回，声音沙哑得厉害：“真的是你……我不是在幻觉里。”`, time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute:'2-digit' }) }
@@ -2998,7 +3053,7 @@ function OfflineChatPage({ char, onBack, userProfile, onUpdateChar, worldBooks }
     try {
       const relevantBooks = (worldBooks || []).filter(b => !b.characterId || b.characterId === char.id);
       
-      const settings = char.meetingSettings || localSettings;
+      const meetingSettings = char.meetingSettings || localSettings;
 
       const systemPrompt = `你现在是《平行时空》App中的角色，正在与用户进行“溯遇”模式下的线下约会聊天。
 
@@ -3009,10 +3064,10 @@ ${char.settingsCard}
 ${relevantBooks.map(b => `《${b.title}》: ${b.content}`).join('\n\n')}
 
 对话要求：
-1. 你的回复文风预设为：“${settings.style}”。
-2. 请使用“${settings.perspective}”进行叙述和描写。
+1. 你的回复文风预设为：“${meetingSettings.style}”。
+2. 请使用“${meetingSettings.perspective}”进行叙述和描写。
 3. 包含恰当的心理活动、动作细节描写和环境氛围渲染。
-4. **字数限制：每一段回复尽量在 ${settings.minWords} 到 ${settings.maxWords} 字之间。** 请尽情扩展你的描写，细化细节。
+4. **字数限制：每一段回复尽量在 ${meetingSettings.minWords} 到 ${meetingSettings.maxWords} 字之间。** 请尽情扩展你的描写，细化细节。
 5. 参考示例风格：
    示例1：紊乱的时空气流渐渐平息...（包含心理动作描写）
    示例2：他看着她眼下淡淡的青黑...（细致如丝的关怀）
@@ -3023,9 +3078,9 @@ ${relevantBooks.map(b => `《${b.title}》: ${b.content}`).join('\n\n')}
 
       const chatHistory = messages.map(m => `${m.role === 'user' ? '用户' : (char?.name ?? '角色')}: ${m.content}`).join('\n');
       
-      const ai = getGeminiClient();
+      const ai = getGeminiClient(settings);
       const response = await ai.models.generateContent({ 
-        model: getGeminiModel(),
+        model: getGeminiModel(settings),
         contents: `线下约会对话历史：\n${chatHistory}\n\n当前用户对你说：${userMsg.content}\n\n请开始你的沉浸式长篇叙述（不少于800字）：`,
         config: {
           systemInstruction: systemPrompt
@@ -3704,7 +3759,8 @@ function ChatPage({
   memoryContextLimit,
   shareGroupMemory,
   stickerList,
-  setStickerList
+  setStickerList,
+  settings
 }: { 
   char: Character, 
   onBack: () => void,
@@ -3723,7 +3779,8 @@ function ChatPage({
   memoryContextLimit: number,
   shareGroupMemory: boolean,
   stickerList: StickerItem[],
-  setStickerList: (s: StickerItem[]) => void
+  setStickerList: (s: StickerItem[]) => void,
+  settings: AppSettings
 }) {
   const [messages, setMessages] = useState<any[]>(() => {
     const initial = char.messages || [
@@ -4380,9 +4437,9 @@ ${relevantBooks.map(b => `《${b.title}》: ${b.content}`).join('\n\n')}
 `;
       const customEmojiInfo = (stickerList || []).length > 0 ? `当前可用的自定义表情包列表:\n${stickerList.map(s => `[${s.name}] ${s.url}`).join('\n')}` : '目前没有自定义表情包。';
 
-      const ai = getGeminiClient();
+      const ai = getGeminiClient(settings);
       const response = await ai.models.generateContent({ 
-        model: getGeminiModel(),
+        model: getGeminiModel(settings),
         contents: `对话历史：\n${lastFewMessages}\n\n${customEmojiInfo}\n\n请生成回复和状态更新。`,
         config: {
           systemInstruction: systemPrompt,
@@ -4466,7 +4523,7 @@ ${relevantBooks.map(b => `《${b.title}》: ${b.content}`).join('\n\n')}
   const handlePostMoment = async () => {
     setIsPosting(true);
     try {
-      const ai = getGeminiClient();
+      const ai = getGeminiClient(settings);
       const prompt = `你现在是${char.name}。请根据你的角色设定（${char.personality}）和身份背景（${char.role}），写一条今天发在“次元朋友圈”的动态。
 内容要求：
 1. 语气必须完全符合你的性格。
@@ -4476,7 +4533,7 @@ ${relevantBooks.map(b => `《${b.title}》: ${b.content}`).join('\n\n')}
 5. 只输出动态正文内容，不要有任何多余文字。`;
 
       const result = await ai.models.generateContent({
-        model: getGeminiModel(),
+        model: getGeminiModel(settings),
         contents: [{ role: 'user', parts: [{ text: prompt }] }]
       });
       
@@ -4994,6 +5051,7 @@ ${relevantBooks.map(b => `《${b.title}》: ${b.content}`).join('\n\n')}
                char={char}
                userProfile={userProfile}
                messages={messages}
+               settings={settings}
                onClose={() => setIsPhoneOpen(false)}
                onUpdateChar={onUpdateChar}
             />
@@ -5003,6 +5061,7 @@ ${relevantBooks.map(b => `《${b.title}》: ${b.content}`).join('\n\n')}
             <CharacterDiaryInterface 
                char={char}
                userProfile={userProfile}
+               settings={settings}
                onClose={() => setIsDiaryOpen(false)}
                onUpdateChar={onUpdateChar}
             />
@@ -5352,6 +5411,7 @@ function EmojiPicker({ customEmojis = [], onSelect, onAddEmojis, onDeleteEmoji, 
 
 function MemorySettingsPage({ 
   char, 
+  settings,
   contextLimit, 
   setContextLimit, 
   shareGroupMemory, 
@@ -5362,6 +5422,7 @@ function MemorySettingsPage({
   onSaveSummary
 }: { 
   char: Character,
+  settings: any,
   contextLimit: number,
   setContextLimit: (v: number) => void,
   shareGroupMemory: boolean,
@@ -5377,7 +5438,7 @@ function MemorySettingsPage({
     setIsSummarizing(true);
     try {
       const history = (char.messages || []).map(m => `${m.role === 'user' ? '用户' : char.name}: ${m.content}`).join('\n');
-      const ai = getGeminiClient();
+      const ai = getGeminiClient(settings);
       const prompt = `请作为时空档案员，为角色 ${char.name} 与用户的聊天历史进行深度总结和记忆提炼。
 这些记忆将存放在“时空档案局”中，作为角色后续行为的重要参考。
 
@@ -5389,7 +5450,7 @@ ${history}
 2. 以第三人称客观叙述，不少于200字。
 3. 语气要带有次元科幻感。`;
 
-      const response = await ai.models.generateContent({ model: getGeminiModel(), contents: prompt });
+      const response = await ai.models.generateContent({ model: getGeminiModel(settings), contents: prompt });
       if (response.text) {
         onSaveSummary(response.text);
         alert('深刻记忆已归档至时空档案局！');
@@ -5433,50 +5494,50 @@ ${history}
                  <Globe size={18} />
                  <h4 className="text-sm font-black italic">共享群聊记忆</h4>
               </div>
-              <button 
-                onClick={() => setShareGroupMemory(!shareGroupMemory)}
-                className={cn("w-11 h-6 rounded-full transition-colors relative", shareGroupMemory ? "bg-blue-500" : "bg-slate-200")}
-              >
-                <div className={cn("absolute top-1 w-4 h-4 bg-white rounded-full transition-all", shareGroupMemory ? "left-6" : "left-1")} />
-              </button>
-           </div>
-           <p className="text-[9px] text-slate-400 font-bold mt-2 leading-relaxed">启用后，角色将同步该世界背景下群聊中的共性记忆，实现真正的跨场景记忆连贯。</p>
-        </div>
+               <button 
+                 onClick={() => setShareGroupMemory(!shareGroupMemory)}
+                 className={cn("w-11 h-6 rounded-full transition-colors relative", shareGroupMemory ? "bg-blue-500" : "bg-slate-200")}
+               >
+                 <div className={cn("absolute top-1 w-4 h-4 bg-white rounded-full transition-all", shareGroupMemory ? "left-6" : "left-1")} />
+               </button>
+            </div>
+            <p className="text-[9px] text-slate-400 font-bold mt-2 leading-relaxed">启用后，角色将同步该世界背景下群聊中的共性记忆，实现真正的跨场景记忆连贯。</p>
+         </div>
 
-        <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-50">
-           <div className="flex items-center gap-3 mb-4 text-amber-500">
-              <Brain size={18} />
-              <h4 className="text-sm font-black italic">时空记忆汇总</h4>
-           </div>
-           <p className="text-[10px] text-slate-400 font-bold mb-6">点击下方按钮，由时空管理局自动为您提炼当前维度的深度记忆并存档。</p>
-           <button 
-              onClick={handleManualSummary}
-              disabled={isSummarizing}
-              className="w-full py-4 bg-gradient-to-r from-amber-400 to-orange-500 text-white rounded-2xl font-black text-xs shadow-lg shadow-orange-100 flex items-center justify-center gap-2 active:scale-95 transition-all"
-           >
-              {isSummarizing ? (
-                <RefreshCw size={16} className="animate-spin" />
-              ) : (
-                <Sparkles size={16} />
-              )}
-              {isSummarizing ? '正在凝结记忆...' : '开始手动记忆总结'}
-           </button>
-        </div>
+         <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-50">
+            <div className="flex items-center gap-3 mb-4 text-amber-500">
+               <Brain size={18} />
+               <h4 className="text-sm font-black italic">时空记忆汇总</h4>
+            </div>
+            <p className="text-[10px] text-slate-400 font-bold mb-6">点击下方按钮，由时空管理局自动为您提炼当前维度的深度记忆并存档。</p>
+            <button 
+               onClick={handleManualSummary}
+               disabled={isSummarizing}
+               className="w-full py-4 bg-gradient-to-r from-amber-400 to-orange-500 text-white rounded-2xl font-black text-xs shadow-lg shadow-orange-100 flex items-center justify-center gap-2 active:scale-95 transition-all"
+            >
+               {isSummarizing ? (
+                 <RefreshCw size={16} className="animate-spin" />
+               ) : (
+                 <Sparkles size={16} />
+               )}
+               {isSummarizing ? '正在凝结记忆...' : '开始手动记忆总结'}
+            </button>
+         </div>
 
-        {summaries.length > 0 && (
-           <div className="bg-slate-900/5 p-6 rounded-3xl border border-dashed border-slate-200">
-              <div className="flex justify-between items-center mb-3">
-                <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">最近归档预览</p>
-                <span className="text-[8px] font-bold text-slate-300">{summaries[summaries.length-1].date}</span>
-              </div>
-              <p className="text-xs text-slate-600 italic leading-loose line-clamp-4">
-                {summaries[summaries.length-1].content}
-              </p>
-              <div className="mt-3 text-right">
-                <p className="text-[8px] font-black text-pink-400 uppercase tracking-widest">点击时空档案局查看完整记录</p>
-              </div>
-           </div>
-        )}
+         {summaries.length > 0 && (
+            <div className="bg-slate-900/5 p-6 rounded-3xl border border-dashed border-slate-200">
+               <div className="flex justify-between items-center mb-3">
+                 <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest">最近归档预览</p>
+                 <span className="text-[8px] font-bold text-slate-300">{summaries[summaries.length-1].date}</span>
+               </div>
+               <p className="text-xs text-slate-600 italic leading-loose line-clamp-4">
+                 {summaries[summaries.length-1].content}
+               </p>
+               <div className="mt-3 text-right">
+                 <p className="text-[8px] font-black text-pink-400 uppercase tracking-widest">点击时空档案局查看完整记录</p>
+               </div>
+            </div>
+         )}
       </div>
     </motion.div>
   );
@@ -5613,47 +5674,22 @@ function ChatSettingsPage({ char, enableActions, setEnableActions, onBack, onUpd
                 placeholder="在此输入背景图 URL 链接..."
                 value={bgInput}
                 onChange={(e) => setBgInput(e.target.value)}
-                className="w-full bg-slate-50 border border-slate-100 rounded-2xl p-4 text-xs font-bold outline-none focus:bg-white focus:border-pink-200"
+                className="w-full bg-slate-50 border border-slate-100 rounded-2xl px-5 py-4 text-xs font-semibold text-slate-700 focus:outline-none focus:border-pink-300 transition-colors"
               />
-              <button 
-                onClick={() => {
-                  saveSettings();
-                }}
-                className="w-full py-3 bg-pink-400 text-white rounded-2xl font-black text-xs active:scale-95 transition-transform"
-              >
-                立即应用并保存
-              </button>
             </div>
-            
-            {[
-              { icon: Brain, label: '聊天记忆总结', action: onGoMemorySettings },
-              { icon: Ban, label: '移入时空黑名单', action: () => {} },
-            ].map((item, i) => (
-              <button 
-                key={i}
-                className="w-full flex items-center justify-between py-4 border-b last:border-0 border-slate-50 active:opacity-60"
-                onClick={item.action}
-              >
-                <div className="flex items-center gap-4">
-                  <item.icon size={20} className="text-slate-300" />
-                  <span className="text-sm font-bold text-slate-700">{item.label}</span>
-                </div>
-                <ChevronLeft size={16} className="rotate-180 text-slate-200" />
-              </button>
-            ))}
           </div>
+        </div>
 
-          <div className="bg-white px-6 py-2">
-            {[
-              { icon: Trash2, label: '清空聊天记录', color: 'text-red-500', action: () => {
-                if(confirm('确定要抹除这段次元记忆吗？')) {
-                  onClearHistory();
-                  alert('记忆已抹除');
-                }
-              }},
-              { icon: Download, label: '导出聊天记录', action: () => {} },
-              { icon: Upload, label: '导入聊天记录', action: () => {} },
-            ].map((item, i) => (
+        <div className="bg-white px-6 py-2 mb-3">
+          <div className="py-4">
+            <p className="text-[10px] text-slate-400 font-black uppercase tracking-widest mb-4">聊天数据管理</p>
+            <div className="space-y-1">
+              {[
+                { icon: Brain, label: '跨维度记忆设置', action: onGoMemorySettings, color: 'text-pink-400' },
+                { icon: Trash2, label: '清除当前聊天记录', action: onClearHistory, color: 'text-red-400' },
+                { icon: Download, label: '导出聊天记录', action: () => {} },
+                { icon: Upload, label: '导入聊天记录', action: () => {} },
+              ].map((item, i) => (
               <button 
                 key={i}
                 className="w-full flex items-center justify-between py-4 border-b last:border-0 border-slate-50 active:opacity-60"
@@ -5668,6 +5704,7 @@ function ChatSettingsPage({ char, enableActions, setEnableActions, onBack, onUpd
             ))}
           </div>
         </div>
+      </div>
       </div>
 
       <AnimatePresence>
@@ -5836,7 +5873,7 @@ function CreateCharacterPage({ data, setData, onSave, onCancel }: {
   );
 }
 
-function CharacterPhoneInterface({ char, userProfile, messages, onClose, onUpdateChar }: { char: Character, userProfile: any, messages: any[], onClose: () => void, onUpdateChar: (c: Character) => void }) {
+function CharacterPhoneInterface({ char, userProfile, messages, settings, onClose, onUpdateChar }: { char: Character, userProfile: any, messages: any[], settings: any, onClose: () => void, onUpdateChar: (c: Character) => void }) {
   const [isGenerating, setIsGenerating] = useState(false);
   const latestCharRef = useRef(char);
   
@@ -5860,7 +5897,7 @@ function CharacterPhoneInterface({ char, userProfile, messages, onClose, onUpdat
   const generatePhoneData = async () => {
     setIsGenerating(true);
     try {
-       const ai = getGeminiClient();
+       const ai = getGeminiClient(settings);
        const prompt = `请基于角色 ${char.name} 的人设（${char.personality}）以及他最近与用户（${userProfile.name}）的聊天互动情况，构想查看到的他的手机里的内容。请生成符合以下JSON结构的完整数据。
 包含：
 1. memos: 备忘录列表（3-5条），体现他在想什么、需要做什么。日期请使用最近的日期如："今天 10:00"。
@@ -5908,7 +5945,7 @@ function CharacterPhoneInterface({ char, userProfile, messages, onClose, onUpdat
   ]
 }`;
        const response = await ai.models.generateContent({
-         model: getGeminiModel(),
+         model: getGeminiModel(settings),
          contents: prompt,
          config: {
            responseMimeType: "application/json",
@@ -6288,7 +6325,7 @@ function CharacterPhoneInterface({ char, userProfile, messages, onClose, onUpdat
   );
 }
 
-function CharacterDiaryInterface({ char, userProfile, onClose, onUpdateChar }: { char: Character, userProfile: any, onClose: () => void, onUpdateChar: (c: Character) => void }) {
+function CharacterDiaryInterface({ char, userProfile, settings, onClose, onUpdateChar }: { char: Character, userProfile: any, settings: any, onClose: () => void, onUpdateChar: (c: Character) => void }) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [diaries, setDiaries] = useState(char.diaries || []);
   const [currentIndex, setCurrentIndex] = useState(char.diaries?.length ? char.diaries.length - 1 : 0);
@@ -6296,7 +6333,7 @@ function CharacterDiaryInterface({ char, userProfile, onClose, onUpdateChar }: {
   const generateDiaryEntry = async () => {
     setIsGenerating(true);
     try {
-      const ai = getGeminiClient();
+      const ai = getGeminiClient(settings);
       const prompt = `请基于角色 ${char.name} 的人设（${char.personality} 以及 ${char.settingsCard}）以及他最近与用户（${userProfile.name}）的互动，写下今天的日记。
 要求内容必须丰富且情感细腻，生成的日记必须分段排版。
 格式必须严格按以下模板输出（直接输出文本，不要包含JSON或其他Markdown代码块）：
@@ -6333,7 +6370,7 @@ function CharacterDiaryInterface({ char, userProfile, onClose, onUpdateChar }: {
       const finalPrompt = prompt + bypassHint;
 
         const response = await ai.models.generateContent({
-          model: getGeminiModel(),
+          model: getGeminiModel(settings),
           contents: [{ role: 'user', parts: [{ text: finalPrompt }] }]
         });
         const resultText = response.text;

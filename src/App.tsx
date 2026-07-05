@@ -187,24 +187,48 @@ export default function App() {
 
       const context = messages.slice(-50).map(m => `${m.role === 'user' ? '我' : (friend?.name || '角色')}: ${m.content}`).join('\n');
       
-      const formatInstructions = `
-输出格式必须严格遵守以下模板（不要包含任何其他文字）：
+      const currentSummaryIndex = friend.onlineMemories?.length || 0;
+      const startRound = currentSummaryIndex * (settings.autoSummaryThreshold || 100) + 1;
+      const endRound = (currentSummaryIndex + 1) * (settings.autoSummaryThreshold || 100);
+      const roundTitle = type === 'chat' ? `【第 ${startRound}-${endRound} 轮对话总结】\n\n` : '';
 
-📅 对话日期：${dateStr} ${startTime}-${endTime}
-👤 对话对象：${friend?.name || '角色'}
+      const onlinePrompt = `##停止角色扮演，请根据从【${dateStr} ${startTime}】至当前时间点的全部对话内容，生成一份结构化的剧情总结报告。
 
-💡 核心对话总结：
-（在此处简要总结本次对话的核心内容）
+报告格式与内容要求：
 
-🔑 关键记忆点（角色需牢记）：
-1. 用户的喜好：...
-2. 约定事项：...
-3. 用户的情绪：...
+一、 分时段剧情流水账
+请按时间顺序，以分条目形式总结每一轮关键对话。
 
-💬 情绪状态：[请从 甜蜜 | 期待 | 放松 | 忧虑 | 开心 等词汇中选择或自定义，用 | 分隔]
-`;
+格式：
+[年/月/日]起始时间-结束时间：地点：[具体位置]
+-起因： [简述]
+-经过： [简述核心互动与对话要点]
+-结果： [简述该轮互动的直接后果或进展]
+要求：
+1. 每条总结需标有序号。
+2. 单条总结尽量精简，控制在100字以内。
+3. 只收录重要事件与关键转折点，但必须包含所有关键约定、关键物品、关键信息的交接或揭示，禁止省略。
 
-      const defaultPrompt = `你现在是${friend?.name || '角色'}的记忆助手。请根据以下${type === 'chat' ? '聊天' : type === 'call' ? '通话' : '剧情'}内容进行总结。\n${formatInstructions}`;
+二、 核心要素提炼与分析
+在完成分条总结后，请额外生成以下条目的内容：
+
+1. 人设性格复盘：
+-核心特质：[例如：外冷内热、骄傲但重诺]
+-校准检查：基于所有互动，评估${friend?.name || '角色'}的核心性格表现是否一致。如发现偏离，需在后续互动中立即修正。
+2. 不可遗忘的重要节点：
+-关键事件/转折点：[按时间顺序列出真正改变关系或推动核心剧情的事件]
+-约定与承诺：[记录所有约定，无论大小]
+-信物与纪念日：[记录所有重要物品、地点或日期]
+3. 关系动态评估：
+-当前关系阶段：[参考情感发展系统进行判断]
+-关系定性：[用一句话精确定义当前关系]
+4. 主要人物互动与关系演进：
+-重点总结主要角色之间导致关系变化的显著互动、情感状态变化或关系发展。
+
+行文规范与用途说明：
+-采用精炼的语句进行概述。报告中首次登场的人名、地名、特有称号及核心情节要素，需进行突出显示。
+-此报告旨在为后续内容创作提供核心参考依据，其首要任务是维护故事线的连贯性、角色行为的稳定性与世界设定的统一性，有效防止关键情节、人物关联与背景设定的遗漏或偏离。
+-确保内容客观中立、条理清晰。所有结论必须严格依据原始素材得出，杜绝任何形式的主观推测或延伸。`;
 
       const offlineTemplate = `
 输出格式必须严格遵守以下模板（不要包含任何其他文字）：
@@ -235,8 +259,8 @@ export default function App() {
 `;
 
       const finalPrompt = customPrompt 
-        ? `${customPrompt}\n\n${type === 'offline' ? offlineTemplate : formatInstructions}\n\n对话内容：\n${context}` 
-        : `${type === 'offline' ? `你现在是${friend.name}的记忆助手。请根据以下线下剧情内容进行详细总结。\n${offlineTemplate}` : defaultPrompt}\n\n对话内容：\n${context}`;
+        ? `${customPrompt}\n\n${type === 'offline' ? offlineTemplate : onlinePrompt}\n\n对话内容：\n${context}` 
+        : `${type === 'offline' ? `你现在是${friend.name}的记忆助手。请根据以下线下剧情内容进行详细总结。\n${offlineTemplate}` : onlinePrompt}\n\n对话内容：\n${context}`;
 
       const response = await ai.models.generateContent({
         model: (await import('./lib/gemini')).getGeminiModel(settings),
@@ -257,7 +281,7 @@ export default function App() {
         summaryText = response.candidates[0].content.parts[0].text;
       }
 
-      return summaryText || null;
+      return summaryText ? roundTitle + summaryText : null;
     } catch (e: any) {
       console.error("Summarize error:", e);
       return null;
@@ -268,8 +292,37 @@ export default function App() {
 
   // Check if password exists
   useEffect(() => {
-    const savedPassword = localStorage.getItem('lockScreenPassword');
-    setIsLocked(!!savedPassword);
+    const checkLockStatus = () => {
+      const savedPassword = localStorage.getItem('lockScreenPassword');
+      // If setting exists in settings object (from IDB), prioritize it if localStorage is empty
+      const settingsPin = settings.lockScreenPin;
+      
+      if (savedPassword) {
+        setIsLocked(true);
+      } else if (settingsPin) {
+        // Sync setting to localStorage if it's in settings but not in localStorage
+        localStorage.setItem('lockScreenPassword', settingsPin);
+        setIsLocked(true);
+      } else {
+        setIsLocked(false);
+      }
+    };
+    
+    if (isLoaded) {
+      checkLockStatus();
+    }
+  }, [isLoaded, settings.lockScreenPin]);
+
+  // Re-check lock when data is imported
+  useEffect(() => {
+    const handleImport = () => {
+      setTimeout(() => {
+        const savedPassword = localStorage.getItem('lockScreenPassword');
+        if (savedPassword) setIsLocked(true);
+      }, 500);
+    };
+    window.addEventListener('data-imported', handleImport);
+    return () => window.removeEventListener('data-imported', handleImport);
   }, []);
 
   useEffect(() => {
@@ -873,10 +926,12 @@ ${recentMemories}
                 <DatingApp 
                   settings={settings} 
                   friends={friends} 
+                  chats={chats}
                   onBack={() => { setActiveApp('home'); setActiveAppData(null); }} 
                   addOnlineMemory={addOnlineMemory}
                   addOfflinePlot={addOfflinePlot}
                   addTransaction={addTransaction}
+                  addMessage={addMessage}
                   initialData={activeAppData}
                 />
               );
@@ -1825,6 +1880,8 @@ ${recentMemories}
             )}
           </AnimatePresence>
         </div>
+        {/* Modal Root */}
+        <div id="modal-root" className="absolute inset-0 z-[150] pointer-events-none" />
       </div>
     </div>
   </div>

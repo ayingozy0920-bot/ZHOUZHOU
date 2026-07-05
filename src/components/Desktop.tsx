@@ -390,27 +390,25 @@ const DesktopItemRenderer = React.memo(({ item, settings, apps, iconMap, isEditM
   return (
     <motion.div
       key={item.id}
-      initial={false}
-      animate={
-        draggedItem === item.id
-          ? { scale: 1.1, rotate: isEditMode ? [0, -1, 0, 1, 0] : 0, zIndex: 50 }
-          : {
-              x: targetX,
-              y: targetY,
-              scale: 1,
-              rotate: isEditMode ? [0, -1, 0, 1, 0] : 0,
-              zIndex: 40
-            }
-      }
+      initial={{ opacity: 0, scale: 0.8, x: targetX, y: targetY }}
+      animate={{
+        opacity: 1,
+        x: targetX,
+        y: targetY,
+        scale: draggedItem === item.id ? 1.1 : 1,
+        rotate: isEditMode ? [0, -1, 0, 1, 0] : 0,
+        zIndex: draggedItem === item.id ? 50 : 40,
+      }}
       transition={{
-        rotate: { repeat: Infinity, duration: 0.4, ease: "linear" },
+        rotate: { repeat: Infinity, duration: 0.5, ease: "linear" },
         scale: { duration: 0.2 },
-        x: { type: 'spring', damping: 30, stiffness: 400 },
-        y: { type: 'spring', damping: 30, stiffness: 400 }
+        x: { type: 'spring', damping: 30, stiffness: 250 },
+        y: { type: 'spring', damping: 30, stiffness: 250 },
+        opacity: { duration: 0.2 }
       }}
       drag={isEditMode}
       dragMomentum={false}
-      dragElastic={0.1}
+      dragElastic={0.05}
       onDragStart={onDragStart}
       onDrag={(_: any, info: any) => onDrag && onDrag(info)}
       onDragEnd={(_: any, info: any) => onDragEnd(info)}

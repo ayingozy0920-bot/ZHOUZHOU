@@ -52,6 +52,119 @@ export const DEFAULT_SETTINGS: AppSettings = {
   chatWallpaperUrl: '',
   homeWallpaperUrl: '',
   totalPages: 1,
+  chatThemes: [
+    {
+      id: 'imessage-theme',
+      name: 'iMessage (蓝白经典)',
+      css: `/* iMessage Pro Theme */
+.chat-app-main { background-color: #ffffff !important; }
+.chat-window-container { background-color: #ffffff !important; }
+.chat-window-header { 
+  background-color: rgba(255, 255, 255, 0.8) !important; 
+  backdrop-filter: blur(20px) !important; 
+  border-bottom: 0.5px solid #d1d1d6 !important; 
+  color: #000 !important;
+  height: 64px !important;
+}
+.chat-window-footer { 
+  background-color: rgba(249, 249, 249, 0.9) !important; 
+  backdrop-filter: blur(20px) !important; 
+  border-top: 0.5px solid #d1d1d6 !important; 
+  padding: 8px 12px !important;
+}
+.chat-input-area { 
+  background-color: #ffffff !important; 
+  border: 1px solid #d1d1d6 !important; 
+  border-radius: 20px !important; 
+  padding: 6px 12px !important;
+}
+
+/* Message Bubbles - User (Blue) */
+.message-bubble-user { 
+  background: #007aff !important; 
+  color: #ffffff !important; 
+  border-radius: 20px 20px 4px 20px !important; 
+  padding: 8px 14px !important;
+  font-size: 16px !important;
+  line-height: 1.4 !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+/* Message Bubbles - Friend (Gray) */
+.message-bubble-assistant, .message-bubble-friend { 
+  background-color: #e9e9eb !important; 
+  color: #000000 !important; 
+  border-radius: 20px 20px 20px 4px !important; 
+  padding: 8px 14px !important;
+  font-size: 16px !important;
+  line-height: 1.4 !important;
+  box-shadow: none !important;
+  border: none !important;
+}
+
+/* Avatars - Round & Mini */
+.chat-avatar { 
+  border-radius: 50% !important; 
+  width: 32px !important; 
+  height: 32px !important;
+  border: 0.5px solid rgba(0,0,0,0.1) !important;
+}
+
+/* Transfer Card Styling */
+.message-type-transfer {
+  background: #f8f8f8 !important;
+  border-radius: 14px !important;
+  border: 1px solid #e5e5ea !important;
+  overflow: hidden !important;
+}
+.transfer-header { background: #ff9500 !important; color: #fff !important; }
+
+/* Icons & Buttons */
+.heart-beat-button { display: none !important; }
+.send-button-icon { color: #007aff !important; }
+
+/* Hide unnecessary UI for minimalist look */
+.chat-window-header .friend-status { display: none !important; }
+`
+    },
+    {
+      id: 'modern-glass',
+      name: '极简毛玻璃',
+      css: `.chat-app-main { background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%) !important; }
+.chat-window-header, .chat-window-footer { background: rgba(255, 255, 255, 0.4) !important; backdrop-filter: blur(10px) !important; border: none !important; }
+.message-bubble-user { background: rgba(59, 130, 246, 0.8) !important; backdrop-filter: blur(5px) !important; border-radius: 20px 20px 0 20px !important; }
+.message-bubble-assistant { background: rgba(255, 255, 255, 0.6) !important; backdrop-filter: blur(5px) !important; border-radius: 20px 20px 20px 0 !important; }`
+    },
+    {
+      id: 'cream-yellow',
+      name: '奶黄简约 (清新明亮)',
+      css: `/* Cream Yellow Theme */
+.chat-app-main { background-color: #fffdf2 !important; }
+.chat-window-header { background-color: #fff9db !important; color: #856404 !important; border-bottom: 2px solid #ffec99 !important; }
+.chat-window-footer { background-color: #fff9db !important; border-top: 2px solid #ffec99 !important; }
+.chat-input-area { background-color: #ffffff !important; border: 2px solid #ffec99 !important; border-radius: 12px !important; }
+
+/* Bubbles */
+.message-bubble-user { 
+  background-color: #fff3bf !important; 
+  color: #856404 !important; 
+  border: 2px solid #ffec99 !important;
+  border-radius: 16px 16px 4px 16px !important;
+}
+.message-bubble-assistant { 
+  background-color: #ffffff !important; 
+  color: #495057 !important; 
+  border: 2px solid #f1f3f5 !important;
+  border-radius: 16px 16px 16px 4px !important;
+}
+
+/* Avatars - Square with border */
+.chat-avatar { border-radius: 10px !important; border: 2px solid #ffec99 !important; padding: 2px !important; background: #fff !important; }
+`
+    }
+  ],
+  activeChatThemeId: '',
 };
 
 export function useSettings() {

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronLeft, Brain, BookOpen, History, MessageSquare, Sparkles } from 'lucide-react';
 import { Friend, ChatMessage, OnlineMemoryEntry, OfflinePlotEntry } from '../../types';
 import { cn } from '../../lib/utils';
@@ -20,6 +21,11 @@ export default function RoleMemoryPage({ friend, memory, onBack }: RoleMemoryPag
   const [selectedPlot, setSelectedPlot] = useState<OfflinePlotEntry | null>(null);
   const [selectedOnlineMemory, setSelectedOnlineMemory] = useState<OnlineMemoryEntry | null>(null);
   const [modalTab, setModalTab] = useState<'summary' | 'logs'>('summary');
+  const [modalRoot, setModalRoot] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    setModalRoot(document.getElementById('modal-root'));
+  }, []);
 
   return (
     <div className="flex flex-col h-full bg-[#FFF9F9] text-[#4A4A4A] font-sans">
@@ -206,14 +212,15 @@ export default function RoleMemoryPage({ friend, memory, onBack }: RoleMemoryPag
       </div>
 
       {/* Plot Detail Modal */}
-      <AnimatePresence>
-        {selectedPlot && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
-          >
+      {modalRoot && createPortal(
+        <AnimatePresence>
+          {selectedPlot && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 z-[200] bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 pointer-events-auto"
+            >
             <motion.div
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
@@ -290,17 +297,20 @@ export default function RoleMemoryPage({ friend, memory, onBack }: RoleMemoryPag
             </motion.div>
           </motion.div>
         )}
-      </AnimatePresence>
+        </AnimatePresence>,
+        modalRoot
+      )}
 
       {/* Online Memory Detail Modal */}
-      <AnimatePresence>
-        {selectedOnlineMemory && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4"
-          >
+      {modalRoot && createPortal(
+        <AnimatePresence>
+          {selectedOnlineMemory && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 z-[200] bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 pointer-events-auto"
+            >
             <motion.div
               initial={{ y: '100%' }}
               animate={{ y: 0 }}
@@ -331,7 +341,9 @@ export default function RoleMemoryPage({ friend, memory, onBack }: RoleMemoryPag
             </motion.div>
           </motion.div>
         )}
-      </AnimatePresence>
+        </AnimatePresence>,
+        modalRoot
+      )}
     </div>
   );
 }

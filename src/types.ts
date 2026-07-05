@@ -111,6 +111,12 @@ export interface WeiboCategory {
   prompt: string;
 }
 
+export interface ChatTheme {
+  id: string;
+  name: string;
+  css: string;
+}
+
 export interface AppSettings {
   baseUrl: string;
   apiKey: string;
@@ -180,6 +186,10 @@ export interface AppSettings {
   bankCards?: BankCard[];
   diaryTemplate?: string;
   calendarCity?: string;
+  chatThemes?: ChatTheme[];
+  bubbleThemes?: ChatTheme[];
+  activeChatThemeId?: string;
+  activeBubbleThemeId?: string;
 }
 
 export interface BankCard {
@@ -290,6 +300,10 @@ export interface Friend {
   profileId?: string;
   mood?: string;
   affection?: number;
+  moodIndex?: number;
+  innerThoughts?: string;
+  relationshipConfirmed?: boolean;
+  isSecretCrush?: boolean;
   offlineMemory?: OfflineMemory;
   currentOfflineMessages?: ChatMessage[];
   isOfflineMode?: boolean;
@@ -345,7 +359,7 @@ export interface ChatMessage {
   id?: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
-  type?: 'text' | 'image' | 'video' | 'voice' | 'transfer' | 'location' | 'call' | 'memory' | 'sticker' | 'blindbox-gift' | 'dice' | 'offline-invitation' | 'photo_card';
+  type?: 'text' | 'image' | 'video' | 'voice' | 'transfer' | 'location' | 'call' | 'memory' | 'sticker' | 'blindbox-gift' | 'dice' | 'offline-invitation' | 'photo_card' | 'date_summary';
   mediaUrl?: string;
   duration?: number; // for voice or call duration
   amount?: string; // for transfer

@@ -95,8 +95,17 @@ export const getGeminiClient = (settings?: AppSettings) => {
       } as any;
     }
 
-    // Native Gemini: stripping any leftover /v1 or trailing slashes
-    baseUrl = baseUrl.replace(/\/v1\/?$/, '').replace(/\/+$/, '');
+    // Native Gemini: improved cleaning to avoid duplicate version paths
+    // If the URL contains /v1 or /v1beta, we should treat the part before it as the base
+    const v1Match = baseUrl.match(/^(.*?)\/v1(\/|$)/);
+    const v1betaMatch = baseUrl.match(/^(.*?)\/v1beta(\/|$)/);
+    
+    if (v1Match) {
+      baseUrl = v1Match[1];
+    } else if (v1betaMatch) {
+      baseUrl = v1betaMatch[1];
+    }
+    baseUrl = baseUrl.replace(/\/+$/, '');
   }
 
   const client = new GoogleGenAI({
@@ -131,5 +140,5 @@ export const getGeminiClient = (settings?: AppSettings) => {
 };
 
 export const getGeminiModel = (settings?: AppSettings) => {
-  return settings?.modelName || "gemini-2.0-flash";
+  return settings?.modelName || "gemini-1.5-flash";
 };

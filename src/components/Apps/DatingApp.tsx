@@ -56,10 +56,12 @@ import { Transaction } from '../../hooks/useFriends';
 interface DatingAppProps {
   settings: AppSettings;
   friends: Friend[];
+  chats?: Record<string, any[]>;
   onBack: () => void;
   addOnlineMemory: (friendId: string, content: string, type?: 'auto' | 'manual', source?: 'chat' | 'weibo') => void;
   addOfflinePlot: (friendId: string, title: string, logs: any[], summary: string) => void;
   addTransaction: (transaction: Omit<Transaction, 'id' | 'timestamp'>) => void;
+  addMessage?: (friendId: string, message: any) => void;
   initialData?: {
     friendId: string;
     openingText: string;
@@ -221,7 +223,7 @@ const MALL_PRODUCTS: MallProduct[] = [
   },
 ];
 
-const DatingApp: React.FC<DatingAppProps> = ({ settings, friends, onBack, addOnlineMemory, addOfflinePlot, addTransaction, initialData }) => {
+const DatingApp: React.FC<DatingAppProps> = ({ settings, friends, chats, onBack, addOnlineMemory, addOfflinePlot, addTransaction, addMessage, initialData }) => {
   const [activeTab, setActiveTab] = useState('home');
   const [showDrawer, setShowDrawer] = useState(false);
   const [currentSceneIndex, setCurrentSceneIndex] = useState(0);
@@ -330,6 +332,7 @@ const DatingApp: React.FC<DatingAppProps> = ({ settings, friends, onBack, addOnl
 
   const [cartCount, setCartCount] = useState(0);
   const [selectedMallCategory, setSelectedMallCategory] = useState('全部');
+  const [postcardFilterId, setPostcardFilterId] = useState<string | 'all'>('all');
   const [currentBannerIndex, setCurrentBannerIndex] = useState(0);
 
   useEffect(() => {
@@ -478,7 +481,7 @@ const DatingApp: React.FC<DatingAppProps> = ({ settings, friends, onBack, addOnl
     localStorage.setItem(`yueyu_wallpaper_${selectedScene.id}`, url);
   };
 
-  const handleFinishDate = async (summaryData: { duration: string, affection: number, photos: number }) => {
+  const handleFinishDate = async (summaryData: { duration: string, affection: number, photos: number, messages?: {role: string, content: string}[] }) => {
     setIsInteracting(false);
     
     // Calculate real duration
@@ -491,17 +494,24 @@ const DatingApp: React.FC<DatingAppProps> = ({ settings, friends, onBack, addOnl
     // Generate Long Summary for Postcard
     try {
       const friendNames = selectedFriendIds.map(id => friends.find(f => f.id === id)?.name).join('和');
-      const prompt = `你正在为一场约会编写总结感想。
+      const chatHistory = summaryData.messages ? summaryData.messages.map(m => `${m.role === 'user' ? '用户' : friendNames}: ${m.content}`).join('\n') : '暂无对话记录';
+      
+      const prompt = `你正在为一场约会编写总结感想，注入角色记忆中。
       场景：${selectedScene.title}
       参与角色：${friendNames}
       约会主题：${customTheme || theme}
       约会时长：${durationStr}
       拍摄照片数量：${summaryData.photos}
+      
+      【约会聊天记录】：
+      ${chatHistory}
+
       要求：
-      1. 你必须完全沉浸在角色中，你是一个真实的人，绝对不能提到你是AI、人工智能、程序或机器人。
-      2. 以角色的口吻，编写一段不少于200字的约会总结。内容要感性、细腻，表达出对这次相处的珍惜和对未来的期待。
-      3. 总结中严禁出现“AI”、“人工智能”、“程序”等词汇。
-      4. 直接输出内容。`;
+      1. 必须用旁观第三人的上帝视角，去回顾这次用户和角色约会所有发生的内容和互动细节。
+      2. 总结内容需要围绕核心剧情与细节展开，生成300字左右的总结。
+      3. 重点记录角色的情绪变化、互动的默契点以及任何值得铭记的瞬间。
+      4. 总结中严禁出现“AI”、“人工智能”、“程序”等词汇。
+      5. 直接输出总结内容，不要包含任何前缀或标题。`;
       
       const { getGeminiClient, getGeminiModel } = await import('../../lib/gemini');
       const ai = getGeminiClient(settings);
@@ -551,12 +561,23 @@ const DatingApp: React.FC<DatingAppProps> = ({ settings, friends, onBack, addOnl
 
       setPostcards(prev => [newPostcard, ...prev]);
 
-      // Save to Memory App
+      // Save to Memory App and Chat
       selectedFriendIds.forEach(id => {
         const friend = friends.find(f => f.id === id);
         const title = `与${friend?.name}在${selectedScene.title}的约会`;
         addOfflinePlot(id, title, [], longSummary);
         addOnlineMemory(id, `记得上次在${selectedScene.title}的约会吗？真的很开心。`, 'auto', 'chat');
+        
+        if (addMessage) {
+          addMessage(id, {
+            role: 'system',
+            content: longSummary,
+            isSystemNotification: true,
+            notificationType: 'date_summary',
+            location: selectedScene.title,
+            timestamp: Date.now()
+          });
+        }
       });
     } catch (error) {
       console.error("Finish Date Error:", error);
@@ -616,6 +637,7 @@ const DatingApp: React.FC<DatingAppProps> = ({ settings, friends, onBack, addOnl
       <YueyuInteraction 
         settings={settings}
         friends={friends}
+        onlineChatHistory={chats?.[selectedFriendIds[0]] || []}
         onBack={() => setIsInteracting(false)}
         onFinish={handleFinishDate}
         sceneId={selectedScene.id}
@@ -2582,8 +2604,29 @@ const DatingApp: React.FC<DatingAppProps> = ({ settings, friends, onBack, addOnl
               </button>
             </div>
             
-            <div className="flex-1 overflow-y-auto px-6 py-8 space-y-12 custom-scrollbar">
-              {friends.map(friend => {
+            <div className="px-6 pt-6 pb-2">
+              <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
+                <button
+                  onClick={() => setPostcardFilterId('all')}
+                  className={`px-4 py-2 rounded-full whitespace-nowrap text-sm font-bold transition-colors ${postcardFilterId === 'all' ? 'bg-slate-800 text-white' : 'bg-white text-slate-500 shadow-sm'}`}
+                >
+                  全部
+                </button>
+                {friends.filter(f => postcards.some(p => p.friendId === f.id)).map(friend => (
+                  <button
+                    key={friend.id}
+                    onClick={() => setPostcardFilterId(friend.id)}
+                    className={`flex items-center gap-2 px-3 py-1.5 rounded-full whitespace-nowrap text-sm font-bold transition-colors ${postcardFilterId === friend.id ? 'bg-slate-800 text-white' : 'bg-white text-slate-500 shadow-sm'}`}
+                  >
+                    <img src={friend.avatar} className="w-6 h-6 rounded-full object-cover" alt="" />
+                    {friend.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-12 custom-scrollbar">
+              {friends.filter(f => postcardFilterId === 'all' || f.id === postcardFilterId).map(friend => {
                 const friendPostcards = postcards.filter(p => p.friendId === friend.id);
                 if (friendPostcards.length === 0) return null;
 

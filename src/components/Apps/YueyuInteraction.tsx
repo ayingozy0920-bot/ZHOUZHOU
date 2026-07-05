@@ -37,15 +37,18 @@ interface SceneInteractionProps {
   wallpaperUrl: string;
   onUpdateWallpaper: (url: string) => void;
   onCapture: (photo: { url: string, date: string, theme: string, thought?: string, friendId?: string }) => void;
-  onFinish: (summary: { duration: string, affection: number, photos: number }) => void;
+  onFinish: (summary: { duration: string, affection: number, photos: number, messages: {role: string, content: string}[] }) => void;
   onSendGift: (gift: { productId: string, name: string, image: string, thought: string }) => void;
   purchasedProducts: { id: string, name: string, image: string }[];
   initialMessage?: string;
+  onlineChatHistory?: any[];
 }
 
 const YueyuInteraction: React.FC<SceneInteractionProps> = ({ 
-  settings, friends, onBack, sceneId, mode, selectedFriendIds, theme, timeOfDay, weather, wallpaperUrl, onUpdateWallpaper, onCapture, onFinish, onSendGift, purchasedProducts, initialMessage
+  settings, friends, onBack, sceneId, mode, selectedFriendIds, theme, timeOfDay, weather, wallpaperUrl, onUpdateWallpaper, onCapture, onFinish, onSendGift, purchasedProducts, initialMessage, onlineChatHistory = []
 }) => {
+  const activeFriends = friends.filter(f => selectedFriendIds.includes(f.id));
+
   const [messages, setMessages] = useState<{role: string, content: string, type?: 'dialogue' | 'narration'}[]>([]);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -65,19 +68,29 @@ const YueyuInteraction: React.FC<SceneInteractionProps> = ({
   const [showSummary, setShowSummary] = useState(false);
   const [capturedPhotosCount, setCapturedPhotosCount] = useState(0);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [meetingSettings, setMeetingSettings] = useState(() => {
-    const saved = localStorage.getItem(`meeting_settings_${activeFriends[0]?.id}`);
-    return saved ? JSON.parse(saved) : { minLen: 10, maxLen: 150, style: '日常风格', perspective: '第一人称' };
-  });
+  const [meetingSettings, setMeetingSettings] = useState({ minLen: 10, maxLen: 150, style: '日常风格', perspective: '第一人称' });
+
+  useEffect(() => {
+    if (activeFriends && activeFriends[0]) {
+      const saved = localStorage.getItem(`meeting_settings_${activeFriends[0].id}`);
+      if (saved) {
+        try {
+          setMeetingSettings(JSON.parse(saved));
+        } catch (e) {
+          console.error('Failed to parse meeting settings', e);
+        }
+      }
+    }
+  }, [activeFriends[0]?.id]);
 
   const saveMeetingSettings = (newSettings: typeof meetingSettings) => {
     setMeetingSettings(newSettings);
-    localStorage.setItem(`meeting_settings_${activeFriends[0]?.id}`, JSON.stringify(newSettings));
+    if (activeFriends && activeFriends[0]) {
+      localStorage.setItem(`meeting_settings_${activeFriends[0].id}`, JSON.stringify(newSettings));
+    }
     setIsSettingsOpen(false);
   };
   const scrollRef = useRef<HTMLDivElement>(null);
-
-  const activeFriends = friends.filter(f => selectedFriendIds.includes(f.id));
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -160,7 +173,8 @@ const YueyuInteraction: React.FC<SceneInteractionProps> = ({
     onFinish({
       duration: elapsedTime,
       affection: 120, // This could be calculated based on interaction
-      photos: capturedPhotosCount
+      photos: capturedPhotosCount,
+      messages: messages
     });
   };
 
@@ -249,24 +263,39 @@ const YueyuInteraction: React.FC<SceneInteractionProps> = ({
       const friendNames = activeFriends.map(f => f.name).join('和');
       const chatHistory = messages.map(m => `${m.role === 'user' ? '用户' : '角色'}${m.type === 'narration' ? '(动作/旁白)' : ''}: ${m.content}`).join('\n');
       
+      const formattedOnlineHistory = onlineChatHistory && onlineChatHistory.length > 0
+        ? onlineChatHistory.slice(-50).map(m => {
+            const sender = m.role === 'user' ? '用户' : (friendNames || '角色');
+            return `[线上聊天记录] ${sender}: ${m.content}`;
+          }).join('\n')
+        : '（暂无线上聊天记录）';
+
       const prompt = `你正在扮演角色 ${friendNames} 与用户进行约会互动。
       场景：${theme}
       当前时间：${timeOfDay}
       天气：${weather}
       
-      【个性化要求】：
+      【重要记忆：你们之前的线上聊天记录（共约50条，供你融入你们的关系默契与最近的话题）】：
+      ${formattedOnlineHistory}
+      
+      【当前互动的设定与个性化要求】：
       - 回复字数限制：${meetingSettings.minLen} 到 ${meetingSettings.maxLen} 字。
       - 文风风格：${meetingSettings.style}。
       - 用户设定采用：${meetingSettings.perspective}。
       
-      历史记录（包含对话和动作描写）：
+      【旁白称谓与视角规则（至关重要）】：
+      - 旁白括号中，描述角色的神态、动作、心理时，必须使用【第三人称】（如使用角色名字“${friendNames}”或使用“他/她”），严禁使用第一人称（如“我”）。
+      - 旁白中提及用户时，必须使用【第二人称】“你”。
+      - 格式示例：正确的旁白：(沈聿珩脸颊微红，轻轻拉住你的手)；错误的旁白：(我脸颊微红，轻轻拉住你的手)。
+      
+      【当前正在进行的约会互动记录】：
       ${chatHistory}
       
       要求：
       1. 你必须完全沉浸在角色中，你是一个真实的人，绝对不能提到你是AI、人工智能、程序或机器人。你的回复要百分百模仿真人。
-      2. 以角色的口吻回复。
+      2. 以角色的口吻回复对话。
       3. 回复必须包含“旁白”（动作、神态、心理描写，放在括号内）和“对话”内容。
-      4. 格式示例：(轻轻拉住你的手，脸颊微红) 我们去那边看看吧。
+      4. 格式示例：(沈聿珩轻轻拉住你的手，脸颊微红) 我们去那边看看吧。
       5. 关键规则：气泡对话框中禁止出现任何动作描写（即括号内容），动作描写必须且只能出现在旁白中。
       6. 角色回复必须是“多段式”的，即包含一段旁白和一段对话，或者多段交替。
       7. 语气要符合约会氛围：温馨、治愈、细腻。
@@ -500,7 +529,7 @@ const YueyuInteraction: React.FC<SceneInteractionProps> = ({
           {/* Chat Messages */}
           <div 
             ref={scrollRef}
-            className="max-h-48 overflow-y-auto space-y-3 mb-2 custom-scrollbar flex flex-col px-2"
+            className="max-h-[60vh] overflow-y-auto space-y-3 mb-2 custom-scrollbar flex flex-col px-2"
           >
             <AnimatePresence>
               {messages.map((msg, i) => {
@@ -542,7 +571,7 @@ const YueyuInteraction: React.FC<SceneInteractionProps> = ({
                     className={cn(
                       "max-w-[85%] px-4 py-2.5 rounded-2xl text-sm font-medium shadow-lg backdrop-blur-md border cursor-pointer transition-all hover:scale-[1.02]",
                       msg.role === 'user' 
-                        ? "bg-pink-400 text-white self-end rounded-tr-none border-pink-300" 
+                        ? "bg-pink-100/95 text-pink-900 self-end rounded-tr-none border-pink-200/50 shadow-pink-900/5" 
                         : "bg-white/95 text-slate-800 self-start rounded-tl-none border-white/40"
                     )}
                     onClick={() => !isEditing && handleEditMessage(i)}

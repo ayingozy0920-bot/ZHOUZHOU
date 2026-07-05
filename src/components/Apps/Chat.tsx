@@ -30,6 +30,7 @@ import {
   PhoneOff,
   Gamepad2,
   PlusCircle,
+  MessageCircle,
   Star,
   Sparkles,
   DoorOpen,
@@ -58,7 +59,7 @@ import {
   ShieldAlert,
   Edit3
 } from 'lucide-react';
-import { AppSettings, Friend, ChatMessage, OfflineMemory, ListenTogetherState, AppId } from '../../types';
+import { AppSettings, Friend, ChatMessage, OfflineMemory, ListenTogetherState, AppId, ChatTheme } from '../../types';
 import { CCDPhotoCard } from './CCDPhotoCard';
 import { motion, AnimatePresence } from 'motion/react';
 import { getGeminiClient, getGeminiModel } from '../../lib/gemini';
@@ -231,8 +232,8 @@ export default function ChatApp({ settings, onBack, onStartCall, externalCallSta
     <div 
       className={cn(
         "flex flex-col w-full relative h-full transition-all duration-500 overflow-hidden chat-app-main",
-        isDark ? (settings.appBackgroundUrl ? "bg-transparent text-white" : "wechat-dark-mode") : 
-        (isRabbit ? "cute-rabbit-theme sparkle-bg" : (settings.appBackgroundUrl ? "bg-transparent text-slate-900" : "bg-slate-100 text-slate-900")),
+        isDark ? (settings.appBackgroundUrl || settings.activeChatThemeId ? "bg-transparent text-white" : "wechat-dark-mode") : 
+        (isRabbit ? "cute-rabbit-theme sparkle-bg" : (settings.appBackgroundUrl || settings.activeChatThemeId ? "bg-transparent text-slate-900" : "bg-slate-100 text-slate-900")),
         settings.fullScreenMode ? "chat-app-fullscreen" : ""
       )}
       style={{
@@ -1389,6 +1390,52 @@ function OfflineInvitationCard({ data, onAccept, onDecline, settings }: { data: 
   );
 }
 
+const isUnlocked60Plus = (friend: Friend, settings: AppSettings) => {
+  if (friend.relationshipConfirmed || friend.isSecretCrush) return true;
+  if (friend.profileId) {
+    const profile = settings.characterProfiles?.find(p => p.id === friend.profileId);
+    if (profile) {
+      const rel = (profile.relationship || '').toLowerCase();
+      if (rel.includes('情侣') || rel.includes('恋爱') || rel.includes('女友') || rel.includes('男友') || rel.includes('老婆') || rel.includes('老公') || rel.includes('结婚') || rel.includes('暗恋') || rel.includes('喜欢') || rel.includes('爱人')) {
+        return true;
+      }
+    }
+  }
+  const persona = (friend.persona || '').toLowerCase();
+  if (persona.includes('情侣') || persona.includes('恋爱') || persona.includes('女友') || persona.includes('男友') || persona.includes('老婆') || persona.includes('老公') || persona.includes('暗恋') || persona.includes('喜欢') || persona.includes('爱人')) {
+    return true;
+  }
+  return false;
+};
+
+const getInitialAffection = (friend: Friend, settings: AppSettings) => {
+  if (typeof friend.affection === 'number') return friend.affection;
+  if (isUnlocked60Plus(friend, settings)) {
+    const persona = (friend.persona || '').toLowerCase();
+    if (persona.includes('情侣') || persona.includes('女友') || persona.includes('男友') || persona.includes('老婆') || persona.includes('老公')) {
+      return 65;
+    }
+    return 45;
+  }
+  return 10;
+};
+
+const getAffectionLevelInfo = (affection: number) => {
+  if (affection <= 20) {
+    return { level: 1, name: '初识', range: [0, 20], text: '1级｜初识' };
+  } else if (affection <= 40) {
+    return { level: 2, name: '认识', range: [20, 40], text: '2级｜认识' };
+  } else if (affection <= 60) {
+    return { level: 3, name: '暗生好感', range: [40, 60], text: '3级｜暗生好感' };
+  } else if (affection <= 80) {
+    return { level: 4, name: '深度暗恋', range: [60, 80], text: '4级｜深度暗恋' };
+  } else if (affection <= 95) {
+    return { level: 5, name: '克制偏爱', range: [80, 95], text: '5级｜克制偏爱' };
+  } else {
+    return { level: 6, name: '静待心意', range: [95, 100], text: '6级｜静待心意' };
+  }
+};
+
 function ChatWindow({ 
   friend, user, friends, messages, settings, onBack, onSendMessage, onUpdateFriend, 
   onImportMessages, onStartCall, externalCallStatus, onClearCallStatus, 
@@ -1798,15 +1845,15 @@ function ChatWindow({
       }
 
       // Inject Offline Memory if available
-      if (!isOfflineMode && friend.offlineMemory?.summary) {
-        systemPrompt += `\n\n【线下剧情记忆回顾】\n以下是你们之前在线下见面时发生的事情摘要：\n${friend.offlineMemory.summary}\n请在当下的线上聊天中保持记忆连贯性，**一定会记住线下所发生的所有事情，并且你可以偶尔主动提及线下发生过的事情和细节**。`;
+      if (friend.offlineMemory?.summary) {
+        systemPrompt += `\n\n【线下剧情记忆回顾】\n以下是你们之前在线下见面时发生的事情摘要：\n${friend.offlineMemory.summary}\n请在当下的互动中保持记忆连贯性，**一定会记住曾经发生过的所有事情，并且你可以偶尔主动提及发生过的事情和细节**。`;
       }
 
       // Inject Online Memories from Memory Store
       const friendMemoryStore = getFriendMemory(friend.id);
-      if (!isOfflineMode && friendMemoryStore.onlineMemories.length > 0) {
+      if (friendMemoryStore.onlineMemories.length > 0) {
         const recentMemories = friendMemoryStore.onlineMemories.slice(0, 5).map(m => `[${m.source === 'weibo' ? '微博' : '聊天'}] ${m.content}`).join('\n- ');
-        systemPrompt += `\n\n【长期记忆回顾】\n以下是你们过往聊天中的重要记忆点，请在对话中自然体现：\n- ${recentMemories}`;
+        systemPrompt += `\n\n【长期记忆回顾】\n以下是你们过往互动中的重要记忆点，请在对话中自然体现：\n- ${recentMemories}`;
       }
 
       if (isOfflineMode) {
@@ -2004,8 +2051,88 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
 当前文风建议：${offlineConfig.writingStyle}。`;
       }
 
+      // Calculate current affection and level
+      const currentAffection = typeof friend.affection === 'number' ? friend.affection : getInitialAffection(friend, settings);
+      const levelInfo = getAffectionLevelInfo(currentAffection);
+      const isUnlocking60Plus = isUnlocked60Plus(friend, settings);
+
+      systemPrompt += `\n\n【核心好感度与心声系统】
+你当前与用户的初始总好感度是：${currentAffection.toFixed(2)}%
+当前好感度阶段：${levelInfo.text}
+
+请你根据这一次的互动质量（例如：用户关心你/转账/温柔互动，好感度合理增加；如果是不耐烦/冷漠/负面互动，好感度合理下降），在回复的最后输出更新标签：
+格式：[HEARTFELT_UPDATE: affection_change=数字 | mood_index=数字 | inner_thoughts=内心想法 | current_status=状态]
+
+参数规则（必须绝对严格遵守，不得违反）：
+1. affection_change：代表本次互动的总好感度变化值（介于 -1.00 到 +1.00 之间的浮点数）。
+   - **单次好感度增长/减少必须控制在 0.25 至 1.00 之间。** (如：+0.35, -0.50, +0.80)
+   - 增加还是减少，必须完全符合你的人设逻辑、当前语境以及互动质量。
+   - **如果当前好感度还未突破 60%，且你和用户的关系尚未得到明确确立/暗恋（isSecretCrush=${friend.isSecretCrush ? 'true' : 'false'}, relationshipConfirmed=${friend.relationshipConfirmed ? 'true' : 'false'}），则你的好感度严禁人为提前调至 60% 以上，你的行为和台词必须贴合当前数值中位。**
+   - 好感度总值没有上限。
+2. mood_index：你当前的心情指数（0% - 100% 之间的整数）。应该根据互动好坏以及你当前好感度、心情起伏自然波动。
+3. inner_thoughts：你对用户的真实、未说出口的内心想法、吐槽或隐藏情感（必须在100字以内，非常私密、真实、富有情绪波动）。
+4. current_status：用一个简短词语表达你此时此刻的心情或正在做的事（例如：“有点小雀跃”、“在心里偷偷骂你”、“正在想你怎么还不回”、“洗完澡躺在床上”），字数在15字以内。
+
+示例标签输出（必须写在回复的最末尾）：
+[HEARTFELT_UPDATE: affection_change=0.55 | mood_index=88 | inner_thoughts=他今天居然主动问我有没有吃饭，虽然只是随口一句，但我真的超级开心…… | current_status=有点开心]`;
+
       const fullContent = await callAI(systemPrompt, slicedMsgs, settings, action);
-      
+
+      // Extract Heartfelt Updates
+      let affectionChange = 0;
+      let moodIndex = typeof friend.moodIndex === 'number' ? friend.moodIndex : 50;
+      let innerThoughts = friend.innerThoughts || '';
+      let currentStatus = friend.mood || '';
+
+      const heartfeltMatch = fullContent.match(/\[HEARTFELT_UPDATE:\s*affection_change=([+-]?\d*(?:\.\d+)?)\s*\|\s*mood_index=(\d+)\s*\|\s*inner_thoughts=([\s\S]*?)\s*\|\s*current_status=([\s\S]*?)(?:\]|$)/i);
+      if (heartfeltMatch) {
+        affectionChange = parseFloat(heartfeltMatch[1]) || 0;
+        // Limit change to [-1, 1] per rules to prevent hallucinated extreme jumps
+        if (affectionChange > 1) affectionChange = 1;
+        if (affectionChange < -1) affectionChange = -1;
+        // Ensure minimum non-zero change magnitude is 0.25 (unless exactly 0)
+        if (affectionChange !== 0 && Math.abs(affectionChange) < 0.25) {
+          affectionChange = affectionChange > 0 ? 0.25 : -0.25;
+        }
+
+        moodIndex = parseInt(heartfeltMatch[2]) || 50;
+        if (moodIndex < 0) moodIndex = 0;
+        if (moodIndex > 100) moodIndex = 100;
+
+        innerThoughts = heartfeltMatch[3].trim().substring(0, 100);
+        currentStatus = heartfeltMatch[4].trim().substring(0, 15);
+
+        // Calculate new total affection
+        const oldAffection = typeof friend.affection === 'number' ? friend.affection : getInitialAffection(friend, settings);
+        let newAffection = oldAffection + affectionChange;
+        if (newAffection < 0) newAffection = 0;
+
+        // Apply rules: if not unlocked, cap at 60%
+        if (!isUnlocking60Plus && newAffection > 60) {
+          newAffection = 60;
+        }
+
+        // Save back to friend state
+        onUpdateFriend({
+          affection: newAffection,
+          moodIndex,
+          innerThoughts,
+          mood: currentStatus
+        });
+      } else {
+        // Failsafe if the AI didn't output it: small random positive change if positive message, or 0
+        const isUserPositive = slicedMsgs[slicedMsgs.length - 1]?.content?.length > 0; 
+        const oldAffection = typeof friend.affection === 'number' ? friend.affection : getInitialAffection(friend, settings);
+        const change = isUserPositive ? 0.35 : 0;
+        let newAffection = oldAffection + change;
+        if (!isUnlocking60Plus && newAffection > 60) {
+          newAffection = 60;
+        }
+        onUpdateFriend({
+          affection: newAffection
+        });
+      }
+
       // Parse commands
       if (fullContent.includes('[START_VIDEO_CALL]')) {
         onStartCall(friend, 'video');
@@ -2045,7 +2172,8 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
       // Clean up content by removing commands and THOUGHT blocks
       let cleanContent = fullContent
         .replace(/THOUGHT[\s\S]*?(?=\n\n|$)/gi, '') // Remove THOUGHT blocks
-        .replace(/\[START_VIDEO_CALL\]|\[START_VOICE_CALL\]|\[SEND_VOICE\]|\[SEND_PHOTO_CARD:.*?\]|\[SEND_PHOTO\]|\[START_LISTEN\]|\[START_TRUTH\]|\[ACCEPT_TRANSFER\]|\[REJECT_TRANSFER\]|\[SEND_TRANSFER:.*?\]|\[SEND_LOCATION:.*?\]|\[SEND_STICKER:.*?\]/g, '')
+        .replace(/\[HEARTFELT_UPDATE:[\s\S]*?(?:\]|$)/gi, '') // Remove Heartfelt Update tag, even if cut off
+        .replace(/\[START_VIDEO_CALL\]|\[START_VOICE_CALL\]|\[SEND_VOICE\]|\[SEND_PHOTO_CARD:.*?\]|\[SEND_PHOTO\]|\[START_LISTEN\]|\[START_TRUTH\]|\[ACCEPT_TRANSFER\]|\[REJECT_TRANSFER\]|\[SEND_TRANSFER:.*?\]|\[SEND_LOCATION:.*?\]|\[SEND_STICKER:.*?\]|\[发送了表情:.*?\]/g, '')
         .trim();
 
         // Failsafe: Remove labels and English translations in parentheses
@@ -2093,7 +2221,7 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
       }
 
       // Handle Sticker commands
-      const stickerMatch = fullContent.match(/\[SEND_STICKER:(.*?)\]/);
+      const stickerMatch = fullContent.match(/\[(?:SEND_STICKER:|发送了表情:\s*)([^,\]]+).*?\]/);
       if (!isOfflineMode && stickerMatch) {
         const stickerId = stickerMatch[1];
         const sticker = settings.customStickers?.find(s => s.id === stickerId);
@@ -2983,9 +3111,9 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
       ...(() => {
         if (!settings.globalCustomCss) return {};
         try {
-          // Check if it looks like JSON before parsing
-          if (settings.globalCustomCss.trim().startsWith('{')) {
-            return JSON.parse(settings.globalCustomCss);
+          const trimmed = settings.globalCustomCss.trim();
+          if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+            return JSON.parse(trimmed);
           }
           return {};
         } catch (e) {
@@ -3099,80 +3227,130 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
       
       {/* Header */}
       <div className={cn(
-        "border-b px-3 py-2 flex items-center justify-between sticky top-0 z-10 transition-all duration-300 relative",
+        "border-b px-3 py-2 flex items-center justify-between sticky top-0 z-10 transition-all duration-300 relative chat-window-header",
         settings.isDarkThemeEnabled ? "bg-black/40 backdrop-blur-md border-white/10 text-white" : 
         (settings.isCuteRabbitThemeEnabled ? "bg-pink-50/60 backdrop-blur-md border-pink-100 text-pink-600" : 
-          (settings.themeId === 'rainy-cat' ? "bg-white/10 backdrop-blur-md border-white/10 text-white" : (settings.appBackgroundUrl ? "bg-white/10 backdrop-blur-md border-slate-200/20" : (isOfflineMode ? "bg-[#ededed] border-slate-300" : "bg-[#f5f5f5] border-slate-200"))))
+          (settings.themeId === 'rainy-cat' ? "bg-white/10 backdrop-blur-md border-white/10 text-white" : (settings.activeChatThemeId ? "bg-transparent border-transparent" : (settings.appBackgroundUrl ? "bg-white/10 backdrop-blur-md border-slate-200/20" : (isOfflineMode ? "bg-[#ededed] border-slate-300" : "bg-[#f5f5f5] border-slate-200")))))
       )} style={{
         ...(settings.fullScreenMode ? { paddingTop: settings.hideStatusBar ? 'env(safe-area-inset-top)' : 'max(env(safe-area-inset-top), 44px)' } : {}),
-        ...(settings.appBackgroundUrl ? { backgroundColor: `rgba(255, 255, 255, ${Math.max(0, (settings.chatWallpaperOpacity ?? 0.8) * 0.2)})` } : {})
+        ...(settings.appBackgroundUrl && !settings.activeChatThemeId ? { backgroundColor: `rgba(255, 255, 255, ${Math.max(0, (settings.chatWallpaperOpacity ?? 0.8) * 0.2)})` } : {})
       }}>
-        <div className="flex items-center gap-2">
-          <button 
-            onClick={() => isOfflineMode ? setActiveModal('exit-offline') : onBack()} 
-            className="p-1 hover:bg-slate-200 rounded-full"
-          >
-            <ChevronLeft size={22} />
-          </button>
-          <div className="flex flex-col">
-            <span className="font-bold text-slate-800 text-base leading-tight">
-              {friend.alias || friend.name}
-              {isOfflineMode && <span className="ml-1 text-[10px] text-orange-600 font-normal bg-orange-50 px-1 rounded border border-orange-100">线下剧情</span>}
-            </span>
+        {settings.activeChatThemeId === 'imessage-v3' ? (
+          /* iMessage Centered Header Layout */
+          <div className="w-full flex items-center justify-between relative" style={{ height: '64px' }}>
+            {/* Left Back Arrow (iMessage Blue) */}
             <button 
-              onClick={() => handleUpdateStatus()}
-              disabled={isLoading}
-              className="flex items-center gap-1 group active:opacity-60 transition-opacity"
+              onClick={() => isOfflineMode ? setActiveModal('exit-offline') : onBack()} 
+              className="p-1 text-[#3a9cfd] hover:opacity-75 transition-opacity flex items-center gap-0.5"
             >
-              <div className={cn("w-1.5 h-1.5 rounded-full bg-green-500", isLoading ? "animate-spin" : "animate-pulse")} />
-              <span className="text-[9px] text-slate-400 group-hover:text-slate-600 transition-colors">
-                {isOfflineMode ? '正在进行线下真实互动...' : (friend.mood || '在线')}
+              <ChevronLeft size={24} strokeWidth={2.5} />
+              <span className="text-[14px] font-normal hidden sm:inline">Back</span>
+            </button>
+
+            {/* Center: Avatar + Name + "iMessage" label */}
+            <div className="absolute left-1/2 -translate-x-1/2 bottom-0 flex flex-col items-center justify-center text-center">
+              <img 
+                src={friend.avatar} 
+                className="w-8 h-8 rounded-full object-cover border border-slate-200/50 shadow-sm mb-0.5" 
+                referrerPolicy="no-referrer"
+              />
+              <span className="text-[12px] text-slate-800 font-semibold leading-tight flex items-center gap-0.5">
+                {friend.alias || friend.name}
+                <ChevronLeft size={10} className="transform -rotate-90 text-slate-400 mt-0.5" />
               </span>
-            </button>
-          </div>
-        </div>
+              <span className="text-[8px] text-slate-400 font-normal tracking-wide uppercase mt-0.5">
+                iMessage
+              </span>
+            </div>
 
-        {isOfflineMode && (
-          <div className="absolute left-1/2 -translate-x-1/2">
-            <button 
-              onClick={handleOfflineHeartfelt}
-              disabled={isLoading}
-              className="p-1.5 bg-red-50 text-red-500 rounded-full hover:bg-red-100 transition-colors disabled:opacity-50"
-            >
-              <Heart size={20} className={isLoading ? "animate-pulse" : ""} />
-            </button>
-          </div>
-        )}
-
-        <div className="flex items-center gap-3">
-          {isOfflineMode ? (
-            <button 
-              onClick={() => setShowOfflineSettings(true)}
-              className="p-1 hover:bg-slate-200 rounded-full"
-            >
-              <Plus size={22} className="text-slate-600" />
-            </button>
-          ) : (
-            <>
+            {/* Right Side Buttons (Native style) */}
+            <div className="flex items-center gap-2">
               <button 
                 onClick={() => setActiveModal('sparkle')}
-                className="p-1.5 bg-pink-50 text-pink-500 rounded-full hover:bg-pink-100 transition-colors"
+                className="p-1.5 text-[#3a9cfd] hover:opacity-75 transition-opacity"
+                title="心声"
               >
                 <Sparkles size={20} />
               </button>
-              <button onClick={() => setShowSettings(true)} className="p-1 hover:bg-slate-200 rounded-full">
-                <MoreHorizontal size={20} className="text-slate-600" />
+              <button 
+                onClick={() => setShowSettings(true)} 
+                className="p-1.5 text-[#3a9cfd] hover:opacity-75 transition-opacity"
+              >
+                <MoreHorizontal size={20} />
               </button>
-            </>
-          )}
-        </div>
+            </div>
+          </div>
+        ) : (
+          /* Standard Header Layout */
+          <>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => isOfflineMode ? setActiveModal('exit-offline') : onBack()} 
+                className="p-1 hover:bg-slate-200 rounded-full"
+              >
+                <ChevronLeft size={22} />
+              </button>
+              <div className="flex flex-col">
+                <span className="font-bold text-slate-800 text-base leading-tight">
+                  {friend.alias || friend.name}
+                  {isOfflineMode && <span className="ml-1 text-[10px] text-orange-600 font-normal bg-orange-50 px-1 rounded border border-orange-100">线下剧情</span>}
+                </span>
+                <button 
+                  onClick={() => handleUpdateStatus()}
+                  disabled={isLoading}
+                  className="flex items-center gap-1 group active:opacity-60 transition-opacity"
+                >
+                  <div className={cn("w-1.5 h-1.5 rounded-full bg-green-500", isLoading ? "animate-spin" : "animate-pulse")} />
+                  <span className="text-[9px] text-slate-400 group-hover:text-slate-600 transition-colors">
+                    {isOfflineMode ? '正在进行线下真实互动...' : (friend.mood || '在线')}
+                  </span>
+                </button>
+              </div>
+            </div>
+
+            {isOfflineMode && (
+              <div className="absolute left-1/2 -translate-x-1/2">
+                <button 
+                  onClick={handleOfflineHeartfelt}
+                  disabled={isLoading}
+                  className="p-1.5 bg-red-50 text-red-500 rounded-full hover:bg-red-100 transition-colors disabled:opacity-50"
+                >
+                  <Heart size={20} className={isLoading ? "animate-pulse" : ""} />
+                </button>
+              </div>
+            )}
+
+            <div className="flex items-center gap-3">
+              {isOfflineMode ? (
+                <button 
+                  onClick={() => setShowOfflineSettings(true)}
+                  className="p-1 hover:bg-slate-200 rounded-full"
+                >
+                  <Plus size={22} className="text-slate-600" />
+                </button>
+              ) : (
+                <>
+                  <button 
+                    onClick={() => setActiveModal('sparkle')}
+                    className="p-1.5 text-slate-600 hover:bg-slate-200 rounded-full transition-colors"
+                  >
+                    <Sparkles size={20} />
+                  </button>
+                  <button onClick={() => setShowSettings(true)} className="p-1 hover:bg-slate-200 rounded-full">
+                    <MoreHorizontal size={20} className="text-slate-600" />
+                  </button>
+                </>
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Messages */}
       <div 
         ref={scrollRef} 
         className={cn(
-          "flex-1 overflow-y-auto overflow-x-hidden p-4 pb-[20px] space-y-4 transition-all duration-300 relative chat-messages-container",
+          "flex-1 overflow-y-auto overflow-x-hidden p-4 pb-[20px] space-y-4 transition-all duration-300 relative chat-message-list",
           settings.isDarkThemeEnabled ? "bg-black" : 
           (settings.isCuteRabbitThemeEnabled ? "bg-pink-50/30" : (settings.themeId === 'rainy-cat' ? "bg-transparent" : (isOfflineMode ? (offlineConfig.bgImage ? "bg-transparent" : "bg-[#e5e5e5]") : (friend.chatBackground || settings.chatWallpaperUrl ? "bg-transparent" : "bg-[#f5f5f5]"))))
         )}
@@ -3223,6 +3401,25 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
               );
             }
             if (msg.isSystemNotification) {
+              if (msg.notificationType === 'date_summary') {
+                return (
+                  <div key={msgKey} className="flex justify-center my-4">
+                    <div className="bg-[#FFF9F9] rounded-2xl p-4 shadow-sm border border-rose-50 mb-2 w-full max-w-[280px]">
+                      <div className="flex items-center gap-2 mb-3">
+                        <div className="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center">
+                          <Camera className="w-4 h-4 text-rose-400" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-slate-700">约会小结</div>
+                          <div className="text-[10px] text-slate-400">{msg.location || '珍藏记忆'}</div>
+                        </div>
+                      </div>
+                      <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-wrap">{msg.content}</p>
+                    </div>
+                  </div>
+                );
+              }
+
               return (
                 <div key={msgKey} className="flex justify-center my-4">
                   <div className={cn(
@@ -3259,7 +3456,7 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
                     src={msg.role === 'user' ? user.avatar : friend.avatar} 
                     alt="avatar" 
                     loading="lazy"
-                    className="w-10 h-10 rounded-lg bg-slate-200 shrink-0 object-cover" 
+                    className="w-10 h-10 rounded-lg bg-slate-200 shrink-0 object-cover chat-avatar" 
                   />
                   <div 
                     data-message-index={i}
@@ -3294,11 +3491,11 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
                     className={cn(
                       "p-2.5 rounded-lg text-sm shadow-sm relative break-all transition-all duration-300 group chat-bubble-container",
                       isMultiSelectMode && "cursor-pointer",
-                      (settings.themeId === 'rainy-cat' || (isOfflineMode && (!msg.type || msg.type === 'text')) || msg.type === 'sticker')
+                      (settings.themeId === 'rainy-cat' || (isOfflineMode && (!msg.type || msg.type === 'text')) || msg.type === 'sticker' || settings.activeChatThemeId || settings.activeBubbleThemeId || settings.globalCustomCss || settings.bubbleCustomCss)
                         ? "bg-transparent shadow-none p-0" 
                         : (settings.isInsBubbleEnabled 
                             ? (msg.role === 'user' ? 'ins-bubble-user' : 'ins-bubble-assistant')
-                            : (msg.role === 'user' ? 'bg-[#95ec69] text-black chat-bubble-user' : 'bg-white text-black chat-bubble-assistant')),
+                            : (msg.role === 'user' ? 'bg-pink-100 text-pink-900 chat-bubble-user' : 'bg-white text-black chat-bubble-assistant')),
                       msg.type === 'image' || msg.type === 'video' ? 'p-1' : '',
                       settings.isInsBubbleEnabled && "ins-bubble-container"
                     )}
@@ -3407,14 +3604,17 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
                                   return (
                                     <div key={idx} className={cn(
                                       "relative px-3 py-2 rounded-lg shadow-[0_1px_2px_rgba(0,0,0,0.05)] text-[15px] leading-relaxed break-words whitespace-pre-wrap w-fit max-w-full font-sans",
-                                      msg.role === 'user' ? "bg-[#95ec69] text-black" : "bg-white text-black border border-slate-100/50"
+                                      (settings.activeChatThemeId || settings.activeBubbleThemeId || settings.globalCustomCss || settings.bubbleCustomCss)
+                                        ? (msg.role === 'user' ? "message-bubble-user" : "message-bubble-assistant")
+                                        : (msg.role === 'user' ? "bg-pink-100 text-pink-900 message-bubble-user" : "bg-white text-black border border-slate-100/50 message-bubble-assistant")
                                     )}>
                                       {content}
                                       {/* WeChat Triangle Tail */}
                                       <div className={cn(
                                         "absolute top-[14px] w-0 h-0 border-[5px] border-transparent",
+                                        (settings.activeChatThemeId || settings.activeBubbleThemeId || settings.globalCustomCss || settings.bubbleCustomCss) && "hidden",
                                         msg.role === 'user' 
-                                          ? "-right-[10px] border-l-[#95ec69]" 
+                                          ? "-right-[10px] border-l-pink-100" 
                                           : "-left-[10px] border-r-white"
                                       )} />
                                     </div>
@@ -3453,15 +3653,23 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
                     <>
                       {(!msg.type || msg.type === 'text') && (
                         <div 
-                          className={cn("flex flex-col gap-1", settings.bubbleCustomCss && "bubble-custom")} 
+                          className={cn(
+                            "flex flex-col gap-1", 
+                            settings.bubbleCustomCss && "bubble-custom",
+                            msg.role === 'user' ? "message-bubble-user" : "message-bubble-assistant"
+                          )} 
                           style={(() => {
                             if (!settings.bubbleCustomCss) return {};
                             try {
-                              return JSON.parse(settings.bubbleCustomCss);
+                              const trimmed = settings.bubbleCustomCss.trim();
+                              // Only parse if it's explicitly a JSON string
+                              if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+                                return JSON.parse(trimmed);
+                              }
                             } catch (e) {
-                              console.error("Invalid bubbleCustomCss JSON:", e);
-                              return {};
+                              // Silently ignore if it's CSS
                             }
+                            return {};
                           })()}
                         >
                           <div>{msg.content}</div>
@@ -3514,14 +3722,14 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
                       {msg.type === 'image' && msg.mediaUrl && (
                         <div 
                           className="space-y-1 cursor-pointer active:opacity-90"
-                    onClick={(e) => {
-                      if (longPressTriggeredRef.current) {
-                        e.stopPropagation();
-                        longPressTriggeredRef.current = false;
-                        return;
-                      }
-                      msg.description && setSelectedDescription(msg.description);
-                    }}
+                          onClick={(e) => {
+                            if (longPressTriggeredRef.current) {
+                              e.stopPropagation();
+                              longPressTriggeredRef.current = false;
+                              return;
+                            }
+                            msg.description && setSelectedDescription(msg.description);
+                          }}
                         >
                           <img src={msg.mediaUrl} alt="sent" className="max-w-full rounded-md" referrerPolicy="no-referrer" />
                           {msg.description && msg.content !== '[图片]' && (
@@ -3546,14 +3754,14 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
                             "flex items-center gap-2 min-w-[60px] cursor-pointer active:opacity-70 relative",
                             settings.themeId === 'rainy-cat' && "bg-white/5 backdrop-blur-md border border-white/10 p-2 rounded-xl"
                           )}
-                    onClick={(e) => {
-                      if (longPressTriggeredRef.current) {
-                        e.stopPropagation();
-                        longPressTriggeredRef.current = false;
-                        return;
-                      }
-                      speakText(msg.content, friend.voiceId, friend.voiceType, settings).catch(err => console.error('TTS preview error:', err));
-                    }}
+                          onClick={(e) => {
+                            if (longPressTriggeredRef.current) {
+                              e.stopPropagation();
+                              longPressTriggeredRef.current = false;
+                              return;
+                            }
+                            speakText(msg.content, friend.voiceId, friend.voiceType, settings).catch(err => console.error('TTS preview error:', err));
+                          }}
                         >
                           <Mic size={16} className={cn(
                             msg.role === 'user' ? (settings.themeId === 'rainy-cat' ? 'text-white' : 'text-black') : (settings.themeId === 'rainy-cat' ? 'text-white/60' : 'text-green-600')
@@ -3564,7 +3772,7 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
                       {msg.type === 'transfer' && (
                         <div className="flex flex-col gap-1">
                           <div className={cn(
-                            "p-3 rounded-lg min-w-[200px] transition-colors",
+                            "p-3 rounded-lg min-w-[200px] transition-colors message-type-transfer",
                             settings.themeId === 'rainy-cat' 
                               ? "bg-white/10 border border-white/10 text-white" 
                               : (msg.transferStatus === 'received' ? 'bg-orange-200 text-orange-800' : 'bg-orange-500 text-white')
@@ -3709,7 +3917,7 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
                   {/* Bubble tail */}
                   <div className={cn(
                     "absolute top-3 w-2 h-2 rotate-45",
-                    (settings.themeId === 'rainy-cat' || (isOfflineMode && (!msg.type || msg.type === 'text'))) ? "hidden" : (msg.role === 'user' ? "-right-1 bg-[#ffc0cb]" : "-left-1 bg-white"),
+                    (settings.activeChatThemeId || settings.themeId === 'rainy-cat' || (isOfflineMode && (!msg.type || msg.type === 'text'))) ? "hidden" : (msg.role === 'user' ? "-right-1 bg-pink-100" : "-left-1 bg-white"),
                     (msg.type === 'image' || msg.type === 'video' || msg.type === 'transfer' || msg.type === 'location') && "hidden"
                   )} />
                 </div>
@@ -3745,67 +3953,106 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
       {/* Sparkle Modal */}
       <AnimatePresence>
         {activeModal === 'sparkle' && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/20 backdrop-blur-sm" onClick={() => setActiveModal(null)}>
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm" onClick={() => setActiveModal(null)}>
             <motion.div 
               initial={{ scale: 0.9, opacity: 0, y: 20 }}
               animate={{ scale: 1, opacity: 1, y: 0 }}
               exit={{ scale: 0.9, opacity: 0, y: 20 }}
               onClick={(e) => e.stopPropagation()}
-              className="bg-[#FFF0F5] rounded-[2.5rem] w-full max-w-sm overflow-hidden shadow-2xl border-4 border-white relative"
+              className="bg-[#FCFBF7] rounded-[2.5rem] w-full max-w-sm overflow-hidden border-4 border-[#2D2D2D] relative shadow-[8px_8px_0px_0px_rgba(45,45,45,1)]"
             >
-              {/* Decorative elements */}
-              <div className="absolute top-0 left-0 w-full h-24 bg-gradient-to-b from-pink-200 to-transparent opacity-50" />
-              <div className="absolute -top-4 -right-4 w-20 h-20 bg-pink-300/20 rounded-full blur-2xl" />
+              {/* Decorative top strip */}
+              <div className="bg-[#2D2D2D] text-[#FCFBF7] text-[8px] font-black uppercase tracking-[0.2em] py-1 text-center font-mono">
+                ✦ SPECIAL ISSUE // HEARTFELT DIARY ✦
+              </div>
               
-              <div className="p-8 relative z-10">
-                <div className="flex flex-col items-center text-center space-y-4">
-                  <div className="relative">
-                    <img src={friend.avatar} className="w-24 h-24 rounded-[2.5rem] border-4 border-white shadow-lg object-cover" />
-                    <div className="absolute -bottom-2 -right-2 bg-white p-2 rounded-full shadow-md">
-                      <Sparkles className="text-pink-400" size={20} />
+              <div className="p-6 relative z-10 space-y-5">
+                {/* Header Row: Cute Magazine Profile Card */}
+                <div className="flex items-center gap-4 border-b-2 border-dashed border-[#2D2D2D] pb-4">
+                  <div className="relative shrink-0">
+                    <img 
+                      src={friend.avatar} 
+                      className="w-18 h-18 rounded-3xl border-3 border-[#2D2D2D] object-cover shadow-[3px_3px_0px_0px_rgba(45,45,45,0.15)] bg-slate-100" 
+                      referrerPolicy="no-referrer"
+                    />
+                    <div className="absolute -bottom-1 -right-1 bg-[#FFF0F3] border-2 border-[#2D2D2D] p-1 rounded-full shadow-sm animate-pulse">
+                      <Sparkles className="text-[#FF4D6D]" size={12} />
                     </div>
                   </div>
                   
-                  <div>
-                    <h3 className="text-xl font-black text-slate-800">{friend.name}</h3>
-                    <p className="text-xs font-bold text-pink-400 mt-1">当前状态：{friend.mood || '开心'}</p>
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <h3 className="text-xl font-extrabold text-[#2D2D2D] truncate">{friend.name}</h3>
+                    <div className="inline-block px-2.5 py-0.5 bg-[#FFF0F3] border-2 border-[#2D2D2D] rounded-full text-[10px] font-black text-[#FF4D6D] shadow-[1px_1px_0px_0px_rgba(45,45,45,1)]">
+                      {friend.mood || '今日晴朗'}
+                    </div>
                   </div>
+                </div>
 
-                  {/* Stats */}
-                  <div className="w-full space-y-4 pt-4">
-                    {/* Affection */}
-                    <div className="space-y-1.5">
-                      <div className="flex justify-between items-center px-1">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">好感度</span>
-                        <span className="text-[10px] font-black text-pink-500">Lv.{(friend.affection || 0) % 10 + 1}</span>
-                      </div>
-                      <div className="h-3 bg-white rounded-full overflow-hidden border border-pink-100 p-0.5 shadow-inner">
-                        <motion.div 
-                          initial={{ width: 0 }}
-                          animate={{ width: `${(friend.affection || 50) % 100}%` }}
-                          className="h-full bg-gradient-to-r from-pink-300 to-pink-500 rounded-full"
-                        />
-                      </div>
-                    </div>
-
-                    {/* Mood */}
-                    <div className="flex items-center justify-between bg-white/60 backdrop-blur-md p-3 rounded-2xl border border-white">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 bg-yellow-100 rounded-full flex items-center justify-center text-yellow-500">
-                          <Smile size={18} />
+                {/* Main Content Area */}
+                <div className="space-y-4">
+                  {/* Affection Level Section (Percentage-based, Cute Badge) */}
+                  {(() => {
+                    const currentAff = typeof friend.affection === 'number' ? friend.affection : getInitialAffection(friend, settings);
+                    const lvlInfo = getAffectionLevelInfo(currentAff);
+                    return (
+                      <div className="bg-[#FFF0F3] border-3 border-[#2D2D2D] rounded-2xl p-4 shadow-[4px_4px_0px_0px_rgba(45,45,45,1)] relative overflow-hidden">
+                        <div className="absolute top-1.5 right-2 bg-white/40 text-[9px] font-black uppercase text-[#FF4D6D] tracking-wide px-1.5 py-0.5 rounded-md border border-[#FF4D6D]/20">
+                          Affection
                         </div>
-                        <span className="text-xs font-bold text-slate-600">心情指数</span>
+                        <div className="flex justify-between items-baseline">
+                          <div>
+                            <span className="text-3xl font-black text-[#FF4D6D] font-mono tracking-tight">
+                              {currentAff.toFixed(1)}%
+                            </span>
+                          </div>
+                          <span className="text-[10px] font-black bg-[#2D2D2D] text-white px-2 py-0.5 rounded-md">
+                            {lvlInfo.text}
+                          </span>
+                        </div>
+                        <div className="mt-2.5 space-y-1">
+                          <div className="h-4 bg-white rounded-lg overflow-hidden border-2 border-[#2D2D2D] p-0.5 relative">
+                            <motion.div 
+                              initial={{ width: 0 }}
+                              animate={{ width: `${Math.min(currentAff, 100)}%` }}
+                              transition={{ type: 'spring', damping: 15 }}
+                              className="h-full bg-gradient-to-r from-[#FF758F] to-[#FF4D6D] rounded-[4px]"
+                            />
+                          </div>
+                          <div className="flex justify-between text-[8px] font-black text-[#FF4D6D] uppercase tracking-wider px-0.5">
+                            <span>0%</span>
+                            <span>{lvlInfo.name}</span>
+                            <span>100%+</span>
+                          </div>
+                        </div>
                       </div>
-                      <span className="text-sm font-black text-slate-800">85%</span>
+                    );
+                  })()}
+
+                  {/* Bento Grid layout */}
+                  <div className="grid grid-cols-2 gap-3">
+                    {/* Mood Index Card */}
+                    <div className="bg-[#FFF9E6] border-2 border-[#2D2D2D] rounded-xl p-3 shadow-[3px_3px_0px_0px_rgba(45,45,45,1)] flex flex-col justify-between">
+                      <div className="flex items-center gap-1.5 text-[#2D2D2D]/60">
+                        <Smile size={12} className="text-[#FFB703]" />
+                        <span className="text-[9px] font-black uppercase tracking-wider">心情指数</span>
+                      </div>
+                      <div className="mt-1 flex items-baseline gap-1">
+                        <span className="text-2xl font-black text-[#2D2D2D] font-mono">
+                          {friend.moodIndex ?? 85}%
+                        </span>
+                        <span className="text-xs font-bold">
+                          {(friend.moodIndex ?? 85) >= 80 ? '😆' : (friend.moodIndex ?? 85) >= 50 ? '🙂' : '🥺'}
+                        </span>
+                      </div>
                     </div>
 
-                    {/* Current Activity */}
-                    <div className="bg-white/60 backdrop-blur-md p-4 rounded-2xl border border-white space-y-2">
-                      <div className="flex items-center gap-2 text-slate-400">
-                        <History size={14} />
-                        <span className="text-[10px] font-black uppercase tracking-widest">正在做什么</span>
+                    {/* Currently Doing Card */}
+                    <div className="bg-[#EAF4FF] border-2 border-[#2D2D2D] rounded-xl p-3 shadow-[3px_3px_0px_0px_rgba(45,45,45,1)] flex flex-col justify-between">
+                      <div className="flex items-center gap-1.5 text-[#2D2D2D]/60">
+                        <History size={12} className="text-[#3A86FF]" />
+                        <span className="text-[9px] font-black uppercase tracking-wider">正在忙碌</span>
                       </div>
-                      <p className="text-xs font-bold text-slate-700 leading-relaxed">
+                      <p className="mt-1 text-[10px] font-black text-[#2D2D2D] leading-tight line-clamp-2">
                         {(() => {
                           const schedule = characterSchedules[friend.id];
                           if (schedule && schedule.items) {
@@ -3823,13 +4070,28 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
                     </div>
                   </div>
 
-                  <button 
-                    onClick={() => setActiveModal(null)}
-                    className="w-full py-4 bg-pink-400 text-white rounded-2xl font-black shadow-lg shadow-pink-200 active:scale-95 transition-all mt-4"
-                  >
-                    太可爱了！
-                  </button>
+                  {/* Inner Thoughts (内心想法 - Newly Added Cute Design Section!) */}
+                  <div className="bg-white border-3 border-[#2D2D2D] rounded-2xl p-4 shadow-[4px_4px_0px_0px_rgba(45,45,45,1)] relative overflow-hidden">
+                    <div className="absolute -top-1 right-2 bg-[#FF4D6D] text-white text-[7px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-b-md">
+                      INNER THOUGHTS
+                    </div>
+                    <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 flex items-center gap-1">
+                      <span>内心独白</span>
+                      <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
+                    </div>
+                    <p className="text-xs font-bold text-slate-600 leading-relaxed italic bg-[#FCFBF7]/50 p-2.5 rounded-xl border border-dashed border-slate-200">
+                      「 {friend.innerThoughts || '本来想约你一起去看落日的，但是感觉有点不好意思开口…… (o>_<o)'} 」
+                    </p>
+                  </div>
                 </div>
+
+                {/* Footer Action Button */}
+                <button 
+                  onClick={() => setActiveModal(null)}
+                  className="w-full py-3 bg-[#FF4D6D] text-white rounded-xl border-3 border-[#2D2D2D] font-black text-sm shadow-[3px_3px_0px_0px_rgba(45,45,45,1)] hover:translate-y-0.5 hover:shadow-[1.5px_1.5px_0px_0px_rgba(45,45,45,1)] active:translate-y-1 active:shadow-none transition-all"
+                >
+                  太可爱了！
+                </button>
               </div>
             </motion.div>
           </div>
@@ -3906,9 +4168,9 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
       {/* Bottom Bar */}
       {!isMultiSelectMode && (
         <div className={cn(
-          "border-t p-3 pb-6 relative transition-all duration-300",
-          settings.themeId === 'rainy-cat' ? "bg-white/5 backdrop-blur-xl border-white/10" : (settings.appBackgroundUrl ? "bg-white/10 backdrop-blur-md border-slate-200/20" : "bg-[#f7f7f7] border-slate-200")
-        )} style={settings.appBackgroundUrl ? { backgroundColor: `rgba(255, 255, 255, ${Math.max(0, (settings.chatWallpaperOpacity ?? 0.8) * 0.2)})` } : {}}>
+          "border-t p-3 pb-6 relative transition-all duration-300 chat-window-footer",
+          settings.themeId === 'rainy-cat' ? "bg-white/5 backdrop-blur-xl border-white/10" : (settings.activeChatThemeId ? "bg-transparent border-transparent" : (settings.appBackgroundUrl ? "bg-white/10 backdrop-blur-md border-slate-200/20" : "bg-[#f7f7f7] border-slate-200"))
+        )} style={settings.appBackgroundUrl && !settings.activeChatThemeId ? { backgroundColor: `rgba(255, 255, 255, ${Math.max(0, (settings.chatWallpaperOpacity ?? 0.8) * 0.2)})` } : {}}>
         {isRecording && (
           <div className="absolute bottom-20 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-md text-white px-6 py-4 rounded-2xl flex flex-col items-center gap-2 z-50">
             <Mic size={40} className="animate-pulse text-green-400" />
@@ -3998,8 +4260,8 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
               onClick={() => handleGenerate()}
               disabled={isLoading}
               className={cn(
-                "p-2.5 rounded-xl disabled:opacity-50 flex items-center justify-center transition-all active:scale-95 shrink-0",
-                settings.themeId === 'rainy-cat' ? "bg-white/10 text-white border border-white/10" : "bg-blue-600 text-white"
+                "p-2 rounded-full disabled:opacity-50 flex items-center justify-center transition-all active:scale-95 shrink-0 transition-colors",
+                settings.themeId === 'rainy-cat' ? "text-white hover:bg-white/10" : "text-slate-600 hover:text-slate-800 hover:bg-slate-200"
               )}
               title="生成回复"
             >
@@ -4083,8 +4345,8 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
               onClick={() => handleGenerate()}
               disabled={isLoading}
               className={cn(
-                "p-2 rounded-md disabled:opacity-50 flex items-center justify-center transition-all active:scale-95 shrink-0",
-                settings.themeId === 'rainy-cat' ? "bg-white/10 text-white border border-white/10" : "bg-blue-600 text-white"
+                "p-1.5 rounded-full disabled:opacity-50 flex items-center justify-center transition-all active:scale-95 shrink-0 transition-colors",
+                settings.themeId === 'rainy-cat' ? "text-white hover:bg-white/10" : "text-slate-600 hover:text-slate-800 hover:bg-slate-200"
               )}
               title="生成回复"
             >
@@ -5852,22 +6114,6 @@ function FriendProfile({ friend, settings, onBack, onStartChat, onViewMoments, o
                         settings.themeId === 'rainy-cat' ? "bg-white/5 border-white/10 text-white" : "bg-slate-50 border-slate-200 focus:ring-2 focus:ring-green-500"
                       )}
                     />
-                    <div className="flex flex-wrap gap-2">
-                      {['普通话', '粤语', '英语', '日语', '韩语'].map(lang => (
-                        <button
-                          key={lang}
-                          onClick={() => setTempValue(lang)}
-                          className={cn(
-                            "px-3 py-1 rounded-full text-xs transition-all",
-                            tempValue === lang 
-                              ? "bg-green-100 text-green-700 border border-green-200" 
-                              : "bg-slate-100 text-slate-600 hover:bg-slate-200"
-                          )}
-                        >
-                          {lang}
-                        </button>
-                      ))}
-                    </div>
                   </div>
                 ) : (
                   <input 
@@ -5939,224 +6185,38 @@ function FriendMoments({
 
   const handleSendComment = (momentId: string, authorId: string) => {
     if (!commentText.trim()) return;
-    
-    const comment = {
-      authorId: 'user',
-      authorName: user?.name ?? '用户',
-      content: commentText,
-      replyToId: replyTo?.id,
-      replyToName: replyTo?.name
-    };
-
+    const comment = { authorId: 'user', authorName: user?.name ?? '用户', content: commentText, replyToId: replyTo?.id, replyToName: replyTo?.name };
     onAddComment(momentId, authorId, comment);
-    setCommentText('');
-    setActiveCommentId(null);
-    setReplyTo(null);
-
-    // AI Auto Reply Logic
-    if (authorId !== 'user') {
-      const friendObj = friends.find(f => f.id === authorId);
-      if (friendObj) {
-        setTimeout(() => {
-          handleAIReplyToComment(friendObj, user, commentText, (replyContent) => {
-            onAddComment(momentId, authorId, {
-              authorId: friendObj.id,
-              authorName: friendObj.name,
-              content: replyContent,
-              replyToId: 'user',
-              replyToName: user?.name ?? '用户'
-            });
-          }, settings);
-        }, 2000);
-      }
-    }
+    setCommentText(''); setActiveCommentId(null); setReplyTo(null);
   };
 
   return (
-    <div className={cn(
-      "flex flex-col h-full relative transition-all duration-500",
-      settings.themeId === 'rainy-cat' ? "bg-black/20 backdrop-blur-xl text-white" : "bg-white"
-    )}>
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        className="hidden" 
-        accept="image/*" 
-        onChange={handleFileChange} 
-      />
-      <div className="absolute top-0 left-0 right-0 z-20 p-3 flex items-center justify-between pointer-events-none" style={settings.fullScreenMode ? { paddingTop: settings.hideStatusBar ? 'env(safe-area-inset-top)' : 'max(env(safe-area-inset-top), 44px)' } : {}}>
-        <button 
-          onClick={onBack} 
-          className={cn(
-            "p-1.5 rounded-full pointer-events-auto backdrop-blur-sm transition-all duration-300",
-            settings.themeId === 'rainy-cat' ? "bg-white/10 hover:bg-white/20 text-white" : "bg-black/20 hover:bg-black/40 text-white"
-          )}
-        >
-          <ChevronLeft size={20} />
-        </button>
-        <Camera size={20} className="text-white drop-shadow-md opacity-0" />
+    <div className={cn("flex flex-col h-full relative transition-all duration-500", settings.themeId === 'rainy-cat' ? "bg-black/20 backdrop-blur-xl text-white" : "bg-white")}>
+      <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
+      <div className="absolute top-0 left-0 right-0 z-20 p-3 flex items-center justify-between pointer-events-none">
+        <button onClick={onBack} className="p-1.5 rounded-full pointer-events-auto bg-black/20 text-white"><ChevronLeft size={20} /></button>
       </div>
-
       <div className="flex-1 overflow-y-auto">
         <div className="relative h-64 mb-12">
-          <img 
-            src={friend.momentsBackground || 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?q=80&w=1000'} 
-            className="w-full h-full object-cover cursor-pointer" 
-            onClick={handleBgClick}
-            title="点击更换背景"
-          />
+          <img src={friend.momentsBackground || 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?q=80&w=1000'} className="w-full h-full object-cover cursor-pointer" onClick={handleBgClick} />
           <div className="absolute bottom-[-20px] right-4 flex items-center gap-3">
             <span className="text-white font-bold drop-shadow-md text-sm mb-4">{friend?.alias || friend?.name || '角色'}</span>
-            <img src={friend.avatar} className={cn(
-              "w-16 h-16 rounded-xl border-2 bg-slate-200 shadow-lg object-cover transition-all duration-300",
-              settings.themeId === 'rainy-cat' ? "border-white/20" : "border-white"
-            )} />
+            <img src={friend.avatar} className="w-16 h-16 rounded-xl border-2 border-white bg-slate-200 shadow-lg object-cover" />
           </div>
         </div>
-
         <div className="px-4 space-y-8 pb-10">
-          {friend.moments && friend.moments.length > 0 ? (
-            friend.moments.map((post, idx) => (
-              <div key={`${post.id}-${idx}`} className="flex gap-3">
-                <img src={friend.avatar} className={cn(
-                  "w-10 h-10 rounded-lg shrink-0 transition-all duration-300",
-                  settings.themeId === 'rainy-cat' ? "bg-white/10" : "bg-slate-100"
-                )} />
-                <div className="flex-1">
-                  <span className={cn(
-                    "font-bold text-sm block mb-1 transition-all duration-300",
-                    settings.themeId === 'rainy-cat' ? "text-white/80" : "text-blue-900"
-                  )}>{friend?.alias || friend?.name || '角色'}</span>
-                  <p className={cn(
-                    "text-sm mb-2 leading-relaxed transition-all duration-300",
-                    settings.themeId === 'rainy-cat' ? "text-white/60" : "text-slate-800"
-                  )}>{post.content}</p>
-                  {post.images && post.images.length > 0 && (
-                    <div className={cn("grid gap-1 mb-3", post.images.length === 1 ? "grid-cols-1 w-2/3" : "grid-cols-3")}>
-                      {post.images.map((img, idx) => (
-                        <img key={idx} src={img} className={cn(
-                          "w-full aspect-square object-cover rounded-sm transition-all duration-300",
-                          settings.themeId === 'rainy-cat' ? "bg-white/5" : "bg-slate-50"
-                        )} />
-                      ))}
-                    </div>
-                  )}
-                  <div className={cn(
-                    "flex justify-between items-center text-xs transition-all duration-300",
-                    settings.themeId === 'rainy-cat' ? "text-white/30" : "text-slate-400"
-                  )}>
-                    <span>{new Date(post.timestamp).toLocaleString()}</span>
-                    <div className="flex items-center gap-2">
-                      <button 
-                        onClick={() => onToggleLike(post.id, post.authorId)}
-                        className={cn(
-                          "flex items-center gap-1 px-2 py-1 rounded transition-all",
-                          (post.likes || []).includes('user') ? "text-red-500 bg-red-50" : "hover:bg-slate-100"
-                        )}
-                      >
-                        <Heart size={12} fill={(post.likes || []).includes('user') ? "currentColor" : "none"} />
-                        <span>{(post.likes || []).length || ''}</span>
-                      </button>
-                      <button 
-                        onClick={() => {
-                          // Generate AI comment for this moment
-                          handleAICommentOnMoment(friend, post, onAddComment, settings);
-                        }}
-                        className="flex items-center gap-1 px-2 py-1 rounded transition-all hover:bg-slate-100 text-purple-600"
-                        title="生成角色评论"
-                      >
-                        <Sparkles size={12} />
-                        <span>AI评论</span>
-                      </button>
-                      <button 
-                        onClick={() => {
-                          setActiveCommentId(activeCommentId === post.id ? null : post.id);
-                          setReplyTo(null);
-                        }}
-                        className={cn(
-                          "p-1 rounded transition-all duration-300",
-                          settings.themeId === 'rainy-cat' ? "bg-white/5 hover:bg-white/10" : "bg-slate-50 hover:bg-slate-100"
-                        )}
-                      >
-                        <MessageSquare size={14} className={cn(
-                          "transition-all duration-300",
-                          settings.themeId === 'rainy-cat' ? "text-white/40" : "text-slate-400"
-                        )} />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Likes & Comments Area */}
-                  {((post.likes || []).length > 0 || (post.comments || []).length > 0) && (
-                    <div className={cn(
-                      "mt-2 rounded-lg p-2 text-xs space-y-1 transition-all",
-                      settings.themeId === 'rainy-cat' ? "bg-white/5" : "bg-slate-50"
-                    )}>
-                      {(post.likes || []).length > 0 && (
-                        <div className="flex items-center gap-1 border-b border-slate-200/50 pb-1 mb-1">
-                          <Heart size={10} className="text-blue-500" />
-                          <span className="text-blue-600 font-medium">
-                            {(post.likes || []).map((id: string) => id === 'user' ? (user?.name || '我') : (friends?.find(f => f.id === id)?.name || '好友')).join(', ')}
-                          </span>
-                        </div>
-                      )}
-                      {(post.comments || []).map((comment: any, idx: number) => (
-                        <div 
-                          key={`${comment.id}-${idx}`} 
-                          className="cursor-pointer hover:bg-slate-200/50 rounded px-1 py-0.5"
-                          onClick={() => {
-                            setActiveCommentId(post.id);
-                            setReplyTo({ id: comment.authorId, name: comment.authorName });
-                          }}
-                        >
-                          <span className="text-blue-600 font-medium">{comment.authorName}</span>
-                          {comment.replyToName && (
-                            <>
-                              <span className="mx-1 text-slate-400">回复</span>
-                              <span className="text-blue-600 font-medium">{comment.replyToName}</span>
-                            </>
-                          )}
-                          <span className="mx-1">:</span>
-                          <span className={settings.themeId === 'rainy-cat' ? "text-white/80" : "text-slate-700"}>{comment.content}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Comment Input */}
-                  {activeCommentId === post.id && (
-                    <div className="mt-2 flex gap-2">
-                      <input 
-                        autoFocus
-                        type="text"
-                        value={commentText}
-                        onChange={(e) => setCommentText(e.target.value)}
-                        placeholder={replyTo ? `回复 ${replyTo.name}...` : "评论..."}
-                        className={cn(
-                          "flex-1 px-3 py-1.5 rounded-lg text-xs outline-none border transition-all",
-                          settings.themeId === 'rainy-cat' ? "bg-white/10 border-white/10 text-white" : "bg-white border-slate-200 focus:border-blue-400"
-                        )}
-                        onKeyDown={(e) => e.key === 'Enter' && handleSendComment(post.id, post.authorId)}
-                      />
-                      <button 
-                        onClick={() => handleSendComment(post.id, post.authorId)}
-                        className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold"
-                      >
-                        发送
-                      </button>
-                    </div>
-                  )}
+          {friend.moments && friend.moments.length > 0 ? friend.moments.map((post, idx) => (
+            <div key={`${post.id}-${idx}`} className="flex gap-3">
+              <img src={friend.avatar} className="w-10 h-10 rounded-lg shrink-0" />
+              <div className="flex-1">
+                <span className="font-bold text-sm block mb-1 text-blue-900">{friend?.alias || friend?.name || '角色'}</span>
+                <p className="text-sm mb-2 text-slate-800">{post.content}</p>
+                <div className="flex justify-between items-center text-xs text-slate-400 mt-2">
+                  <span>{new Date(post.timestamp).toLocaleString()}</span>
                 </div>
               </div>
-            ))
-          ) : (
-            <div className={cn(
-              "text-center py-20 text-sm transition-all duration-300",
-              settings.themeId === 'rainy-cat' ? "text-white/20" : "text-slate-400"
-            )}>
-              暂无动态
             </div>
-          )}
+          )) : <div className="text-center py-20 text-slate-400">暂无动态</div>}
         </div>
       </div>
     </div>
@@ -6166,374 +6226,58 @@ function FriendMoments({
 function DiscoverTab({ 
   user, friends, onUpdate, settings, getAllMoments, onToggleLike, onAddComment, onDeleteMoment, onShowMemoryApp 
 }: { 
-  user: any, 
-  friends: Friend[],
-  onUpdate: (updates: any) => void, 
-  settings: AppSettings,
-  getAllMoments: () => any[],
-  onToggleLike: (momentId: string, authorId: string) => void,
-  onAddComment: (momentId: string, authorId: string, comment: any) => void,
-  onDeleteMoment: (momentId: string, authorId: string) => void,
-  onShowMemoryApp: () => void
+  user: any, friends: Friend[], onUpdate: (updates: any) => void, settings: AppSettings, getAllMoments: () => any[],
+  onToggleLike: (momentId: string, authorId: string) => void, onAddComment: (momentId: string, authorId: string, comment: any) => void,
+  onDeleteMoment: (momentId: string, authorId: string) => void, onShowMemoryApp: () => void
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [activeCommentId, setActiveCommentId] = useState<string | null>(null);
   const [commentText, setCommentText] = useState('');
   const [replyTo, setReplyTo] = useState<{ id: string, name: string } | null>(null);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const moments = getAllMoments() || [];
-  const isRabbit = settings.isCuteRabbitThemeEnabled;
 
-  const handleRefresh = () => {
-    setIsRefreshing(true);
-    // Force refresh friends/moments if needed
-    setTimeout(() => setIsRefreshing(false), 1000);
-  };
-
-  const handleBgClick = () => {
-    fileInputRef.current?.click();
-  };
-
+  const handleBgClick = () => fileInputRef.current?.click();
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const reader = new FileReader();
-      reader.onloadend = () => {
-        onUpdate({ momentsBackground: reader.result as string });
-      };
+      reader.onloadend = () => onUpdate({ momentsBackground: reader.result as string });
       reader.readAsDataURL(file);
     }
   };
-
   const handleSendComment = (momentId: string, authorId: string) => {
     if (!commentText.trim()) return;
-    
-    const comment = {
-      authorId: 'user',
-      authorName: user?.name ?? '用户',
-      content: commentText,
-      replyToId: replyTo?.id,
-      replyToName: replyTo?.name
-    };
-
-    onAddComment(momentId, authorId, comment);
-    setCommentText('');
-    setActiveCommentId(null);
-    setReplyTo(null);
-
-    // AI Auto Reply Logic
-    // 1. If user comments on a character's moment -> Character replies once
-    if (authorId !== 'user') {
-      const friend = friends.find(f => f.id === authorId);
-      if (friend) {
-        // Prevent multiple replies by ensuring this user comment is fresh and character hasn't replied to it yet
-        setTimeout(() => {
-          handleAIReplyToComment(friend, user, commentText, (replyContent) => {
-            onAddComment(momentId, authorId, {
-              authorId: friend.id,
-              authorName: friend.name,
-              content: replyContent,
-              replyToId: 'user',
-              replyToName: user?.name ?? '用户'
-            });
-          }, settings);
-        }, 2000 + Math.random() * 2000); // Random delay to feel more natural
-      }
-    } 
-    // 2. If user replies to a character's comment -> Character replies once more (end of chain)
-    else if (replyTo && replyTo.id !== 'user') {
-      const friend = friends.find(f => f.id === replyTo.id);
-      if (friend) {
-        // Single-level thread: only reply if the user is replying to a character's top-level comment
-        // and character hasn't already joined this specific sub-thread too much
-        const moment = moments.find(m => m.id === momentId);
-        const previousReplies = (moment?.comments || []).filter((c: any) => 
-          c.authorId === friend.id && c.replyToId === 'user'
-        );
-        
-        // Limit to 2 character replies total per moment to prevent infinite loops or clutter
-        if (previousReplies.length < 2) {
-          setTimeout(() => {
-            handleAIReplyToComment(friend, user, commentText, (replyContent) => {
-              onAddComment(momentId, authorId, {
-                authorId: friend.id,
-                authorName: friend.name,
-                content: replyContent,
-                replyToId: 'user',
-                replyToName: user?.name ?? '用户'
-              });
-            }, settings);
-          }, 2000 + Math.random() * 2000);
-        }
-      }
-    }
+    onAddComment(momentId, authorId, { authorId: 'user', authorName: user?.name ?? '用户', content: commentText, replyToId: replyTo?.id, replyToName: replyTo?.name });
+    setCommentText(''); setActiveCommentId(null); setReplyTo(null);
   };
 
   return (
-    <div className={cn(
-      "h-full flex flex-col transition-all duration-500",
-      settings.isDarkThemeEnabled ? "bg-transparent text-white" : 
-      (isRabbit ? "bg-transparent" : (settings.themeId === 'rainy-cat' ? "bg-black/20 backdrop-blur-xl text-white" : (settings.appBackgroundUrl ? "bg-transparent" : "bg-slate-100")))
-    )}>
-      <input 
-        type="file" 
-        ref={fileInputRef} 
-        className="hidden" 
-        accept="image/*" 
-        onChange={handleFileChange} 
-      />
-      
-      <div className="flex-1 overflow-y-auto scroll-smooth" onScroll={(e) => {
-        if (e.currentTarget.scrollTop < -50 && !isRefreshing) handleRefresh();
-      }}>
-        <div className="transition-all duration-300">
-          <div className="relative h-64">
-            <img 
-              src={user.momentsBackground || 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?q=80&w=1000'} 
-              className="w-full h-full object-cover cursor-pointer" 
-              onClick={handleBgClick}
-              title="点击更换背景"
-            />
-            <div className="absolute bottom-[-20px] right-4 flex items-center gap-3 z-10">
-              <span className="text-white font-bold drop-shadow-lg text-base mb-4">{user?.name ?? '用户'}</span>
-              <img src={user.avatar} className={cn(
-                "w-16 h-16 rounded-xl border-4 bg-slate-200 object-cover transition-all duration-300 shadow-md",
-                settings.themeId === 'rainy-cat' ? "border-white/10" : "border-white"
-              )} />
-            </div>
+    <div className={cn("h-full flex flex-col transition-all duration-500", settings.themeId === 'rainy-cat' ? "bg-black/20 backdrop-blur-xl text-white" : "bg-slate-100")}>
+      <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
+      <div className="flex-1 overflow-y-auto scroll-smooth">
+        <div className="relative h-64">
+          <img src={user.momentsBackground || 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?q=80&w=1000'} className="w-full h-full object-cover cursor-pointer" onClick={handleBgClick} />
+          <div className="absolute bottom-[-20px] right-4 flex items-center gap-3 z-10">
+            <span className="text-white font-bold drop-shadow-lg text-base mb-4">{user?.name ?? '用户'}</span>
+            <img src={user.avatar} className="w-16 h-16 rounded-xl border-4 border-white bg-slate-200 object-cover shadow-md" />
           </div>
-          
-          <div className={cn(
-            "transition-all duration-300",
-            settings.isDarkThemeEnabled ? "bg-white/5 backdrop-blur-md" : 
-            (isRabbit ? "bg-white/40 backdrop-blur-sm" : (settings.themeId === 'rainy-cat' ? "bg-white/5 backdrop-blur-xl" : (settings.appBackgroundUrl ? "bg-white/60 backdrop-blur-md" : "bg-white")))
-          )}>
-            <div className="h-12" />
-            
-            {isRefreshing && (
-              <div className="flex justify-center py-2">
-                <RefreshCw size={16} className="animate-spin text-slate-400" />
-              </div>
-            )}
-
-            <div className="space-y-0.5 pb-20">
-              {moments.map((moment, idx) => (
-                <div 
-                  key={`${moment.id}-${idx}`} 
-                  className={cn(
-                    "p-4 flex gap-3 transition-all duration-300 border-b",
-                    settings.isDarkThemeEnabled ? "border-white/5" : 
-                    (isRabbit ? "border-pink-50" : (settings.themeId === 'rainy-cat' ? "border-white/5" : (settings.appBackgroundUrl ? "border-slate-100/50" : "border-slate-50")))
-                  )}
-                >
-              <img src={moment.authorAvatar} className={cn(
-                "w-10 h-10 rounded-lg shrink-0 transition-all duration-300",
-                settings.themeId === 'rainy-cat' ? "bg-white/10" : "bg-slate-200"
-              )} />
+        </div>
+        <div className="bg-white pt-12 pb-20">
+          {moments.map((moment, idx) => (
+            <div key={`${moment.id}-${idx}`} className="p-4 flex gap-3 border-b border-slate-50">
+              <img src={moment.authorAvatar} className="w-10 h-10 rounded-lg shrink-0" />
               <div className="flex-1">
-                <span className={cn(
-                  "font-bold text-sm block mb-1 transition-all duration-300",
-                  settings.themeId === 'rainy-cat' ? "text-white/80" : "text-blue-900"
-                )}>{moment.authorName}</span>
-                <p className={cn(
-                  "text-sm mb-2 leading-relaxed transition-all duration-300",
-                  settings.themeId === 'rainy-cat' ? "text-white/60" : "text-slate-800"
-                )}>{moment.content}</p>
-                
-                {moment.images && moment.images.length > 0 && !moment.isTextCard && (
-                  <div className={cn(
-                    "grid gap-1 mb-3",
-                    moment.images.length === 1 ? "grid-cols-1 w-2/3" : moment.images.length <= 4 ? "grid-cols-2 w-3/4" : "grid-cols-3"
-                  )}>
-                    {moment.images.map((img: string, idx: number) => (
-                      <img key={idx} src={img} className="w-full aspect-square object-cover rounded-sm" />
-                    ))}
-                  </div>
-                )}
-
-                {moment.isTextCard && moment.imageDescription && (
-                  <CCDPhotoCard 
-                    content={moment.imageDescription} 
-                    location={moment.location || friends.find(f => f.id === moment.authorId)?.address}
-                    className="w-4/5 mb-3 scale-90 origin-left"
-                  />
-                )}
-
-                {moment.location && (
-                  <div className="flex items-center gap-1 text-[10px] text-blue-500 mb-2">
-                    <MapPin size={10} />
-                    <span>{moment.location}</span>
-                  </div>
-                )}
-
-                <div className="flex justify-between items-center text-[10px] text-slate-400 relative mt-2">
+                <span className="font-bold text-sm block mb-1 text-blue-900">{moment.authorName}</span>
+                <p className="text-sm mb-2 text-slate-800">{moment.content}</p>
+                <div className="flex justify-between items-center text-[10px] text-slate-400 mt-2">
                   <span>{new Date(moment.timestamp).toLocaleString()}</span>
-                  <div className="flex items-center gap-2">
-                    <div className="relative">
-                      <button 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setActiveMenuId(activeMenuId === moment.id ? null : moment.id);
-                        }}
-                        className={cn(
-                          "p-1 rounded transition-all flex items-center justify-center",
-                          settings.themeId === 'rainy-cat' ? "bg-white/10 hover:bg-white/20" : "bg-slate-100 hover:bg-slate-200"
-                        )}
-                      >
-                        <div className="flex gap-0.5">
-                          <div className="w-1 h-1 rounded-full bg-blue-600" />
-                          <div className="w-1 h-1 rounded-full bg-blue-600" />
-                        </div>
-                      </button>
-                      
-                      <AnimatePresence>
-                        {activeMenuId === moment.id && (
-                          <>
-                            <div className="fixed inset-0 z-40" onClick={() => setActiveMenuId(null)} />
-                            <motion.div
-                              initial={{ opacity: 0, scale: 0.9, x: 20 }}
-                              animate={{ opacity: 1, scale: 1, x: 0 }}
-                              exit={{ opacity: 0, scale: 0.9, x: 20 }}
-                              className={cn(
-                                "absolute right-10 top-[-14px] z-50 flex items-center rounded-lg overflow-hidden shadow-2xl",
-                                "bg-[#3a3a3a] text-white" // WeChat style dark menu
-                              )}
-                            >
-                              {/* Triangle Arrow */}
-                              <div className="absolute right-[-6px] top-[18px] w-0 h-0 border-t-[6px] border-t-transparent border-b-[6px] border-b-transparent border-l-[6px] border-l-[#3a3a3a]" />
-                              
-                              <button 
-                                onClick={() => {
-                                  onToggleLike(moment.id, moment.authorId);
-                                  setActiveMenuId(null);
-                                }}
-                                className="flex items-center justify-center gap-2 px-5 py-2.5 hover:bg-white/10 transition-colors min-w-[80px]"
-                              >
-                                <Heart size={18} fill={(moment.likes || []).includes('user') ? "currentColor" : "none"} className="text-white" />
-                                <span className="text-sm font-medium">{(moment.likes || []).includes('user') ? '取消' : '点赞'}</span>
-                              </button>
-                              <div className="w-[1px] h-6 bg-white/10" />
-                              <button 
-                                onClick={() => {
-                                  setActiveCommentId(moment.id);
-                                  setReplyTo(null);
-                                  setActiveMenuId(null);
-                                }}
-                                className="flex items-center justify-center gap-2 px-5 py-2.5 hover:bg-white/10 transition-colors min-w-[80px]"
-                              >
-                                <MessageSquare size={18} className="text-white" />
-                                <span className="text-sm font-medium">评论</span>
-                              </button>
-                              
-                              {/* Secondary options for AI and Delete, styled to fit or as extras */}
-                              <div className="w-[1px] h-6 bg-white/10" />
-                              <button 
-                                onClick={() => {
-                                  const friend = friends.find(f => f.id === moment.authorId);
-                                  if (friend) {
-                                    handleAICommentOnMoment(friend, moment, onAddComment, settings);
-                                  } else {
-                                    const randomFriend = friends[Math.floor(Math.random() * friends.length)];
-                                    if (randomFriend) {
-                                      handleAICommentOnMoment(randomFriend, moment, onAddComment, settings);
-                                    }
-                                  }
-                                  setActiveMenuId(null);
-                                }}
-                                className="flex items-center justify-center gap-2 px-4 py-2.5 hover:bg-white/10 transition-colors"
-                              >
-                                <Sparkles size={16} className="text-yellow-400" />
-                                <span className="text-xs font-medium">AI</span>
-                              </button>
-                              <div className="w-[1px] h-6 bg-white/10" />
-                              <button 
-                                onClick={() => {
-                                  onDeleteMoment(moment.id, moment.authorId);
-                                  setActiveMenuId(null);
-                                }}
-                                className="flex items-center justify-center gap-2 px-4 py-2.5 hover:bg-white/10 transition-colors text-red-400"
-                              >
-                                <Trash2 size={16} />
-                                <span className="text-xs font-medium">删除</span>
-                              </button>
-                            </motion.div>
-                          </>
-                        )}
-                      </AnimatePresence>
-                    </div>
-                  </div>
+                  <button onClick={() => setActiveCommentId(moment.id)} className="p-1 rounded bg-slate-100"><MessageSquare size={14} /></button>
                 </div>
-
-                {/* Likes & Comments Area */}
-                {((moment.likes || []).length > 0 || (moment.comments || []).length > 0) && (
-                  <div className={cn(
-                    "mt-2 rounded-lg p-2 text-xs space-y-1 transition-all",
-                    settings.themeId === 'rainy-cat' ? "bg-white/5" : "bg-slate-50"
-                  )}>
-                    {(moment.likes || []).length > 0 && (
-                      <div className={cn(
-                        "flex items-center gap-1 pb-1 mb-1",
-                        (moment.comments || []).length > 0 ? "border-b border-slate-200/50" : ""
-                      )}>
-                        <Heart size={10} className="text-blue-500" />
-                        <span className="text-blue-600 font-medium">
-                          {(moment.likes || []).map((id: string) => id === 'user' ? (user?.name || '我') : (friends?.find(f => f.id === id)?.name || '好友')).join(', ')}
-                        </span>
-                      </div>
-                    )}
-                    {(moment.comments || []).map((comment: any, idx: number) => (
-                      <div 
-                        key={`${comment.id}-${idx}`} 
-                        className="cursor-pointer hover:bg-slate-200/50 rounded px-1 py-0.5"
-                        onClick={() => {
-                          setActiveCommentId(moment.id);
-                          setReplyTo({ id: comment.authorId, name: comment.authorName });
-                        }}
-                      >
-                        <span className="text-blue-600 font-medium">{comment.authorName}</span>
-                        {comment.replyToName && (
-                          <>
-                            <span className="mx-1 text-slate-400">回复</span>
-                            <span className="text-blue-600 font-medium">{comment.replyToName}</span>
-                          </>
-                        )}
-                        <span className="mx-1">:</span>
-                        <span className={settings.themeId === 'rainy-cat' ? "text-white/80" : "text-slate-700"}>{comment.content}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Comment Input */}
-                {activeCommentId === moment.id && (
-                  <div className="mt-2 flex gap-2">
-                    <input 
-                      autoFocus
-                      type="text"
-                      value={commentText}
-                      onChange={(e) => setCommentText(e.target.value)}
-                      placeholder={replyTo ? `回复 ${replyTo.name}...` : "评论..."}
-                      className={cn(
-                        "flex-1 px-3 py-1.5 rounded-lg text-xs outline-none border transition-all",
-                        settings.themeId === 'rainy-cat' ? "bg-white/10 border-white/10 text-white" : "bg-white border-slate-200 focus:border-blue-400"
-                      )}
-                      onKeyDown={(e) => e.key === 'Enter' && handleSendComment(moment.id, moment.authorId)}
-                    />
-                    <button 
-                      onClick={() => handleSendComment(moment.id, moment.authorId)}
-                      className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold"
-                    >
-                      发送
-                    </button>
-                  </div>
-                )}
               </div>
             </div>
           ))}
         </div>
-      </div>
-      </div>
       </div>
     </div>
   );
@@ -6643,13 +6387,422 @@ function MeTab({
   );
 }
 
+const DEFAULT_CHAT_THEMES: ChatTheme[] = [
+  {
+    id: 'imessage-v3',
+    name: '🔵 iMessage 极简 (高清直出)',
+    css: `/* 【iMessage 极简大师模板】 */
+
+/* 1. 顶部栏 (Header) */
+.chat-window-header { 
+  background: rgba(255, 255, 255, 0.75) !important; 
+  backdrop-filter: blur(20px) saturate(190%) !important;
+  height: 84px !important;
+  border-bottom: 0.5px solid rgba(0,0,0,0.08) !important;
+}
+
+/* 2. 底部栏 (Footer) */
+.chat-window-footer { 
+  background: rgba(255,255,255,0.8) !important; 
+  backdrop-filter: blur(20px);
+  padding: 8px 16px 24px !important;
+  border-top: none !important;
+}
+.chat-input-area { 
+  background: #ffffff !important; 
+  border: 1px solid #d1d1d6 !important; 
+  border-radius: 22px !important;
+}
+.send-button { 
+  background: #3a9cfd !important; 
+  border-radius: 50% !important; 
+}
+.send-button::after { content: '↑'; color: #fff; font-weight: bold; }
+
+/* 3. 头像 (Avatar) */
+.chat-avatar { 
+  border-radius: 50% !important; 
+  border: 1px solid rgba(0,0,0,0.05) !important;
+  width: 34px !important;
+  height: 34px !important;
+}
+
+/* 4. 角色气泡 (Assistant Bubble) */
+.message-bubble-assistant { 
+  background-color: #e9e9eb !important; 
+  color: #000000 !important; 
+  border-radius: 18px !important;
+  padding: 8px 14px !important;
+  border: none !important;
+  margin-left: 12px !important;
+  position: relative !important;
+  max-width: 85% !important;
+  font-size: 15px !important;
+  line-height: 1.4 !important;
+  isolation: isolate !important;
+}
+.message-bubble-assistant::before {
+  content: '' !important;
+  position: absolute !important;
+  bottom: -1px !important;
+  left: -4px !important;
+  width: 10px !important;
+  height: 12px !important;
+  background-color: #e9e9eb !important;
+  border-bottom-right-radius: 10px 8px !important;
+  z-index: -1 !important;
+}
+
+/* 5. 用户气泡 (User Bubble) */
+.message-bubble-user { 
+  background-color: #52a2f5 !important; 
+  color: #ffffff !important; 
+  border-radius: 18px !important;
+  padding: 8px 14px !important;
+  border: none !important;
+  margin-right: 12px !important;
+  position: relative !important;
+  max-width: 85% !important;
+  font-size: 15px !important;
+  line-height: 1.4 !important;
+  isolation: isolate !important;
+}
+.message-bubble-user::after {
+  content: '' !important;
+  position: absolute !important;
+  bottom: -1px !important;
+  right: -4px !important;
+  width: 10px !important;
+  height: 12px !important;
+  background-color: #52a2f5 !important;
+  border-bottom-left-radius: 10px 8px !important;
+  z-index: -1 !important;
+}
+
+/* 6. 转账卡片 (Transfer Card) */
+.message-type-transfer {
+  background: #f2f2f7 !important;
+  border-radius: 14px !important;
+  color: #000 !important;
+  border: 1px solid #d1d1d6 !important;
+}
+.message-type-transfer .text-orange-500 { color: #3a9cfd !important; }`
+  },
+  {
+    id: 'wechat-v4',
+    name: '🍏 微信全能 3.0 (极速版)',
+    css: `/* 【微信 3.0 全能模板】 */
+
+/* 1. 顶部栏 (Header) */
+.chat-window-header { 
+  background: #ededed !important; 
+  height: 64px !important; 
+  border-bottom: 0.5px solid #d6d6d6 !important; 
+}
+.chat-window-header h2 { font-size: 17px !important; font-weight: 600 !important; }
+
+/* 2. 底部栏 (Footer) */
+.chat-window-footer { 
+  background: #f7f7f7 !important; 
+  border-top: 0.5px solid #dcdcdc !important; 
+}
+.chat-input-area { background: #fff !important; border-radius: 4px !important; }
+.send-button { background: #07c160 !important; color: #fff !important; border-radius: 4px !important; }
+
+/* 3. 头像 (Avatar) */
+.chat-avatar { 
+  border-radius: 4px !important; 
+  width: 44px !important; 
+  height: 44px !important; 
+}
+
+/* 4. 角色气泡 (Assistant Bubble) */
+.message-bubble-assistant { 
+  background: #ffffff !important; 
+  color: #000 !important; 
+  border-radius: 6px !important; 
+  position: relative !important;
+  border: none !important;
+  padding: 10px 14px !important;
+  margin-left: 10px !important;
+}
+.message-bubble-assistant::after { 
+  content: ''; position: absolute; left: -6px; top: 12px; border: 6px solid transparent; border-right-color: #ffffff; 
+}
+
+/* 5. 用户气泡 (User Bubble) */
+.message-bubble-user { 
+  background: #95ec69 !important; 
+  color: #000 !important; 
+  border-radius: 6px !important; 
+  position: relative !important;
+  border: none !important;
+  padding: 10px 14px !important;
+  margin-right: 10px !important;
+}
+.message-bubble-user::after { 
+  content: ''; position: absolute; right: -6px; top: 12px; border: 6px solid transparent; border-left-color: #95ec69; 
+}
+
+/* 6. 转账卡片 (Transfer Card) */
+.message-type-transfer {
+  background: #fa9d3b !important; 
+  border-radius: 12px !important;
+  color: #ffffff !important;
+}
+.message-type-transfer .bg-orange-500 { background: transparent !important; }`
+  },
+  {
+    id: 'cream-yellow-v3',
+    name: '🍮 奶黄甜点大师 2.0',
+    css: `/* 【奶黄甜点美化模板】 */
+
+/* 1. 顶部栏 (Header) */
+.chat-window-header { 
+  background: #fff9db !important; 
+  height: 72px !important; 
+  border-bottom: 3px solid #ffec99 !important; 
+}
+.chat-window-header h2 { color: #856404 !important; font-family: serif !important; font-size: 20px !important; }
+
+/* 2. 底部栏 (Footer) */
+.chat-window-footer { 
+  background: #fff9db !important; 
+  border-top: 2px solid #ffec99 !important; 
+}
+.chat-input-area { background: #fff !important; border: 2px solid #ffec99 !important; border-radius: 14px !important; }
+.send-button { background: #fab005 !important; border-radius: 10px !important; }
+
+/* 3. 头像 (Avatar) */
+.chat-avatar { 
+  border-radius: 14px !important; 
+  border: 4px solid #fff !important; 
+  box-shadow: 0 0 0 2px #ffec99 !important; 
+}
+
+/* 4. 角色气泡 (Assistant Bubble) */
+.message-bubble-assistant { 
+  background: #ffffff !important; 
+  color: #495057 !important; 
+  border-radius: 20px 20px 20px 4px !important; 
+  border: 2px solid #f1f3f5 !important; 
+  padding: 10px 16px !important;
+  box-shadow: 2px 2px 0px #f1f3f5 !important;
+}
+
+/* 5. 用户气泡 (User Bubble) */
+.message-bubble-user { 
+  background: #fff3bf !important; 
+  color: #856404 !important; 
+  border-radius: 20px 20px 4px 20px !important; 
+  border: 2px solid #ffec99 !important; 
+  padding: 10px 16px !important;
+  box-shadow: -2px 2px 0px #ffec99 !important;
+}
+
+/* 6. 转账卡片 (Transfer Card) */
+.message-type-transfer {
+  background: #fff9db !important;
+  border: 2px solid #ffec99 !important;
+  border-radius: 16px !important;
+  color: #856404 !important;
+}
+.message-type-transfer .bg-orange-500 { background: #fab005 !important; }`
+  }
+];
+
+const DEFAULT_BUBBLE_THEMES: ChatTheme[] = [
+  {
+    id: 'bubble-wechat-v3',
+    name: '🍏 微信经典',
+    css: `/* 【微信 3.0 气泡中心模板】 */
+
+/* 1. 角色气泡 (Assistant Bubble) */
+.message-bubble-assistant { 
+  background: #ffffff !important; 
+  color: #000 !important; 
+  border-radius: 6px !important; 
+  position: relative !important;
+  border: none !important;
+  padding: 10px 14px !important;
+  margin-left: 10px !important;
+}
+.message-bubble-assistant::after { 
+  content: ''; position: absolute; left: -6px; top: 12px; border: 6px solid transparent; border-right-color: #ffffff; 
+}
+
+/* 2. 用户气泡 (User Bubble) */
+.message-bubble-user { 
+  background: #95ec69 !important; 
+  color: #000 !important; 
+  border-radius: 6px !important; 
+  position: relative !important;
+  border: none !important;
+  padding: 10px 14px !important;
+  margin-right: 10px !important;
+}
+.message-bubble-user::after { 
+  content: ''; position: absolute; right: -6px; top: 12px; border: 6px solid transparent; border-left-color: #95ec69; 
+}`
+  },
+  {
+    id: 'bubble-qq-v2',
+    name: '🐧 QQ 简约',
+    css: `/* 【QQ 简约气泡模板】 */
+
+/* 1. 角色气泡 (Assistant Bubble) */
+.message-bubble-assistant { 
+  background: #f1f2f6 !important; 
+  color: #000 !important; 
+  border-radius: 18px !important; 
+  padding: 10px 16px !important;
+  border: none !important;
+}
+
+/* 2. 用户气泡 (User Bubble) */
+.message-bubble-user { 
+  background: #0099ff !important; 
+  color: #ffffff !important; 
+  border-radius: 18px !important; 
+  padding: 10px 16px !important;
+  border: none !important;
+}`
+  }
+];
+
 function BeautificationPage({ settings, onBack, onUpdate }: { settings: AppSettings, onBack: () => void, onUpdate: (updates: Partial<AppSettings>) => void }) {
   const [tempSettings, setTempSettings] = useState<Partial<AppSettings>>(settings);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showThemeGallery, setShowThemeGallery] = useState(true);
+  const [showBubbleGallery, setShowBubbleGallery] = useState(true);
+
+  // Use default themes if no custom ones exist or to show them initially
+  const allThemes = [...DEFAULT_CHAT_THEMES, ...(tempSettings.chatThemes || [])];
+  const allBubbleThemes = [...DEFAULT_BUBBLE_THEMES, ...(tempSettings.bubbleThemes || [])];
 
   const handleSave = () => {
     onUpdate(tempSettings);
     onBack();
+  };
+
+  const handleApplyTheme = (theme: ChatTheme) => {
+    if (tempSettings.activeChatThemeId === theme.id) {
+      // Toggle off: if clicking the active one, clear it
+      const updates = {
+        globalCustomCss: '',
+        activeChatThemeId: '',
+        bubbleCustomCss: '',
+        activeBubbleThemeId: ''
+      };
+      setTempSettings({ ...tempSettings, ...updates });
+      onUpdate(updates);
+    } else {
+      const updates = {
+        globalCustomCss: theme.css,
+        activeChatThemeId: theme.id,
+        bubbleCustomCss: '',
+        activeBubbleThemeId: ''
+      };
+      setTempSettings({ ...tempSettings, ...updates });
+      onUpdate(updates);
+    }
+  };
+
+  const handleApplyBubbleTheme = (theme: ChatTheme) => {
+    if (tempSettings.activeBubbleThemeId === theme.id) {
+      // Toggle off
+      const updates = {
+        bubbleCustomCss: '',
+        activeBubbleThemeId: ''
+      };
+      setTempSettings({ ...tempSettings, ...updates });
+      onUpdate(updates);
+    } else {
+      const updates = {
+        bubbleCustomCss: theme.css,
+        activeBubbleThemeId: theme.id,
+        globalCustomCss: '',
+        activeChatThemeId: ''
+      };
+      setTempSettings({ ...tempSettings, ...updates });
+      onUpdate(updates);
+    }
+  };
+
+  const handleCopyToInput = (theme: ChatTheme, type: 'global' | 'bubble') => {
+    if (type === 'global') {
+      setTempSettings({ ...tempSettings, globalCustomCss: theme.css, activeChatThemeId: '' });
+    } else {
+      setTempSettings({ ...tempSettings, bubbleCustomCss: theme.css, activeBubbleThemeId: '' });
+    }
+    // No alert needed, it's visible in the textarea
+  };
+
+  const handleAddPreset = (type: 'global' | 'bubble') => {
+    const css = type === 'global' ? tempSettings.globalCustomCss : tempSettings.bubbleCustomCss;
+    if (!css) return;
+    const name = prompt(`请输入新${type === 'global' ? '主题' : '气泡'}预设的名称:`);
+    if (name) {
+      const newTheme: ChatTheme = {
+        id: `custom-${Date.now()}`,
+        name,
+        css
+      };
+      if (type === 'global') {
+        setTempSettings({
+          ...tempSettings,
+          chatThemes: [...(tempSettings.chatThemes || []), newTheme]
+        });
+      } else {
+        setTempSettings({
+          ...tempSettings,
+          bubbleThemes: [...(tempSettings.bubbleThemes || []), newTheme]
+        });
+      }
+    }
+  };
+
+  const handleDeleteTheme = (id: string, type: 'global' | 'bubble') => {
+    if (confirm('确定要删除这个预设模板吗？')) {
+      if (type === 'global') {
+        setTempSettings({
+          ...tempSettings,
+          chatThemes: (tempSettings.chatThemes || []).filter(t => t.id !== id)
+        });
+      } else {
+        setTempSettings({
+          ...tempSettings,
+          bubbleThemes: (tempSettings.bubbleThemes || []).filter(t => t.id !== id)
+        });
+      }
+    }
+  };
+
+  const handleCopyCode = (css: string | undefined) => {
+    if (!css) {
+      alert('没有可复制的代码');
+      return;
+    }
+    
+    // Robust clipboard approach
+    try {
+      const textArea = document.createElement("textarea");
+      textArea.value = css;
+      textArea.style.position = "fixed";
+      textArea.style.left = "-9999px";
+      textArea.style.top = "0";
+      document.body.appendChild(textArea);
+      textArea.select();
+      document.execCommand("copy");
+      document.body.removeChild(textArea);
+      alert('CSS 代码已成功复制到粘贴板');
+    } catch (err) {
+      navigator.clipboard.writeText(css).then(() => {
+        alert('CSS 代码已成功复制到粘贴板');
+      }).catch(() => {
+        alert('复制失败，请尝试手动长按选择文本复制');
+      });
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -6669,6 +6822,12 @@ function BeautificationPage({ settings, onBack, onUpdate }: { settings: AppSetti
       tempSettings.isDarkThemeEnabled ? "bg-transparent text-white" : 
       (tempSettings.isCuteRabbitThemeEnabled ? "bg-transparent" : (settings.appBackgroundUrl ? "bg-transparent" : "bg-white text-slate-900"))
     )}>
+      {/* Live Preview Style Injection */}
+      <style>{`
+        ${tempSettings.globalCustomCss || ''}
+        ${tempSettings.bubbleCustomCss || ''}
+      `}</style>
+
       {/* Header */}
       <div className={cn(
         "px-4 py-3 flex items-center gap-4 border-b transition-all duration-300",
@@ -6682,6 +6841,230 @@ function BeautificationPage({ settings, onBack, onUpdate }: { settings: AppSetti
       </div>
 
       <div className="flex-1 overflow-y-auto p-4 space-y-6">
+        {/* Real-time Live Preview Box */}
+        <div className={cn(
+          "p-4 rounded-3xl space-y-3 border-2 transition-all",
+          tempSettings.isDarkThemeEnabled ? "bg-white/5 border-white/10" : "bg-slate-50 border-slate-200 shadow-sm"
+        )}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Sparkles className="text-pink-500 animate-pulse" size={18} />
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                实时效果预览 (Live Preview)
+              </span>
+            </div>
+            <span className="text-[10px] text-slate-400 bg-slate-200/50 px-2 py-0.5 rounded-full font-mono">
+              {tempSettings.activeChatThemeId ? '模版: ' + allThemes.find(t => t.id === tempSettings.activeChatThemeId)?.name : '自定义 CSS 代码已生效'}
+            </span>
+          </div>
+          
+          <div className="p-4 rounded-2xl bg-white/70 backdrop-blur-sm space-y-4 border border-slate-200/50 overflow-hidden relative" style={{ minHeight: '130px' }}>
+            {/* Mock Chat Bubbles */}
+            <div className="flex justify-start items-end gap-2">
+              <div className="w-8 h-8 rounded-full bg-slate-300 chat-avatar shrink-0" />
+              <div className="message-bubble-assistant text-sm leading-relaxed max-w-[75%] shadow-sm">
+                这是对方发来的消息气泡效果 💬
+              </div>
+            </div>
+            
+            <div className="flex justify-end items-end gap-2">
+              <div className="message-bubble-user text-sm leading-relaxed max-w-[75%] shadow-sm">
+                这是你发出的消息气泡效果 ✨
+              </div>
+              <div className="w-8 h-8 rounded-full bg-slate-400 chat-avatar shrink-0" />
+            </div>
+          </div>
+        </div>
+        {/* Theme Center Section */}
+        <div className={cn(
+          "p-4 rounded-3xl space-y-4 border-2 transition-all",
+          tempSettings.isDarkThemeEnabled ? "bg-white/5 border-white/10" : "bg-gradient-to-br from-pink-50 to-white border-pink-100 shadow-sm"
+        )}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Palette className="text-pink-500" size={20} />
+              <h3 className="font-black text-sm uppercase tracking-wider">聊天主题中心</h3>
+            </div>
+            <button 
+              onClick={() => setShowThemeGallery(!showThemeGallery)}
+              className="text-xs font-bold text-pink-500 bg-pink-100 px-3 py-1 rounded-full"
+            >
+              {showThemeGallery ? '关闭预设' : '挑选预设模板'}
+            </button>
+          </div>
+
+          <AnimatePresence mode="wait">
+            {showThemeGallery && (
+              <motion.div 
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="grid grid-cols-2 gap-2 overflow-hidden"
+              >
+                {allThemes.map((theme) => (
+                  <div key={theme.id} className="relative group">
+                    <button
+                      onClick={() => handleApplyTheme(theme)}
+                      className={cn(
+                        "w-full p-3 rounded-2xl text-left transition-all border-2",
+                        tempSettings.activeChatThemeId === theme.id 
+                          ? "bg-pink-500 border-pink-500 text-white shadow-md scale-[1.02]" 
+                          : "bg-white border-slate-100 text-slate-800 hover:border-pink-300 shadow-sm"
+                      )}
+                    >
+                      <div className="text-xs font-bold truncate">{theme.name}</div>
+                      <div className="text-[9px] opacity-60 mt-1">
+                        {tempSettings.activeChatThemeId === theme.id ? '正在使用 (点击取消)' : '点击预览并修改'}
+                      </div>
+                    </button>
+                    <div className="absolute -top-1 -right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleCopyToInput(theme, 'global'); }}
+                        className="w-6 h-6 bg-blue-500 text-white rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition-transform"
+                        title="复制模板到输入框修改"
+                      >
+                        <Copy size={12} />
+                      </button>
+                      {theme.id.startsWith('custom-') && (
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleDeleteTheme(theme.id, 'global'); }}
+                          className="w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition-transform"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-400">当前 CSS 代码 (可手动修改)</label>
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => handleAddPreset('global')}
+                  className="text-[10px] bg-pink-100 text-pink-600 px-2 py-1 rounded-md font-bold hover:bg-pink-200"
+                >
+                  存为预设
+                </button>
+                <button 
+                  onClick={() => handleCopyCode(tempSettings.globalCustomCss)}
+                  className="text-[10px] bg-slate-100 text-slate-600 px-2 py-1 rounded-md font-bold hover:bg-slate-200"
+                >
+                  一键复制
+                </button>
+              </div>
+            </div>
+            <textarea
+              value={tempSettings.globalCustomCss || ''}
+              onChange={(e) => setTempSettings({ ...tempSettings, globalCustomCss: e.target.value, activeChatThemeId: '' })}
+              className={cn(
+                "w-full h-40 p-3 font-mono text-[10px] rounded-2xl outline-none border-2 transition-all",
+                tempSettings.isDarkThemeEnabled ? "bg-white/5 border-pink-200/30 text-white" : "bg-white border-pink-100 text-slate-800 focus:border-pink-300 shadow-inner"
+              )}
+              placeholder="输入全局 CSS 样式... 或从上方挑选预设模板"
+            />
+          </div>
+        </div>
+
+        {/* Bubble Theme Center Section */}
+        <div className={cn(
+          "p-4 rounded-3xl space-y-4 border-2 transition-all",
+          tempSettings.isDarkThemeEnabled ? "bg-white/5 border-white/10" : "bg-gradient-to-br from-blue-50 to-white border-blue-100 shadow-sm"
+        )}>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <MessageCircle className="text-blue-500" size={20} />
+              <h3 className="font-black text-sm uppercase tracking-wider">聊天气泡中心</h3>
+            </div>
+            <button 
+              onClick={() => setShowBubbleGallery(!showBubbleGallery)}
+              className="text-xs font-bold text-blue-500 bg-blue-100 px-3 py-1 rounded-full"
+            >
+              {showBubbleGallery ? '关闭预设' : '挑选气泡模板'}
+            </button>
+          </div>
+
+          <AnimatePresence mode="wait">
+            {showBubbleGallery && (
+              <motion.div 
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                className="grid grid-cols-2 gap-2 overflow-hidden"
+              >
+                {allBubbleThemes.map((theme) => (
+                  <div key={theme.id} className="relative group">
+                    <button
+                      onClick={() => handleApplyBubbleTheme(theme)}
+                      className={cn(
+                        "w-full p-3 rounded-2xl text-left transition-all border-2",
+                        tempSettings.activeBubbleThemeId === theme.id 
+                          ? "bg-blue-500 border-blue-500 text-white shadow-md scale-[1.02]" 
+                          : "bg-white border-slate-100 text-slate-800 hover:border-blue-300 shadow-sm"
+                      )}
+                    >
+                      <div className="text-xs font-bold truncate">{theme.name}</div>
+                      <div className="text-[9px] opacity-60 mt-1">
+                        {tempSettings.activeBubbleThemeId === theme.id ? '正在使用 (点击取消)' : '点击应用气泡'}
+                      </div>
+                    </button>
+                    <div className="absolute -top-1 -right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleCopyToInput(theme, 'bubble'); }}
+                        className="w-6 h-6 bg-purple-500 text-white rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition-transform"
+                        title="复制模板到输入框修改"
+                      >
+                        <Copy size={12} />
+                      </button>
+                      {theme.id.startsWith('custom-') && (
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleDeleteTheme(theme.id, 'bubble'); }}
+                          className="w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center shadow-lg hover:scale-110 transition-transform"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-400">当前气泡 CSS (可手动修改)</label>
+              <div className="flex gap-2">
+                <button 
+                  onClick={() => handleAddPreset('bubble')}
+                  className="text-[10px] bg-blue-100 text-blue-600 px-2 py-1 rounded-md font-bold hover:bg-blue-200"
+                >
+                  存为预设
+                </button>
+                <button 
+                  onClick={() => handleCopyCode(tempSettings.bubbleCustomCss)}
+                  className="text-[10px] bg-slate-100 text-slate-600 px-2 py-1 rounded-md font-bold hover:bg-slate-200"
+                >
+                  一键复制
+                </button>
+              </div>
+            </div>
+            <textarea
+              value={tempSettings.bubbleCustomCss || ''}
+              onChange={(e) => setTempSettings({ ...tempSettings, bubbleCustomCss: e.target.value, activeBubbleThemeId: '' })}
+              className={cn(
+                "w-full h-32 p-3 font-mono text-[10px] rounded-2xl outline-none border-2 transition-all",
+                tempSettings.isDarkThemeEnabled ? "bg-white/5 border-blue-200/30 text-white" : "bg-white border-blue-100 text-slate-800 focus:border-blue-300 shadow-inner"
+              )}
+              placeholder="输入气泡 CSS 样式... 或从上方挑选气泡模板"
+            />
+          </div>
+        </div>
+
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <label className="text-sm font-bold">可爱小兔主题</label>
@@ -6717,26 +7100,13 @@ function BeautificationPage({ settings, onBack, onUpdate }: { settings: AppSetti
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-bold">全局自定义 CSS</label>
-            <textarea
-              value={tempSettings.globalCustomCss || ''}
-              onChange={(e) => setTempSettings({ ...tempSettings, globalCustomCss: e.target.value })}
-              className={cn(
-                "w-full h-24 p-3 font-mono text-xs rounded-xl outline-none border-2 transition-all",
-                tempSettings.isDarkThemeEnabled ? "bg-white/5 border-pink-200/30 text-white" : "bg-slate-50 border-pink-100 text-slate-800 focus:border-pink-300"
-              )}
-              placeholder="输入全局 CSS 样式..."
-            />
-          </div>
-
-          <div className="space-y-2">
-            <label className="text-sm font-bold">气泡自定义 CSS</label>
+            <label className="text-sm font-bold">气泡自定义 CSS (旧版兼容)</label>
             <textarea
               value={tempSettings.bubbleCustomCss || ''}
-              onChange={(e) => setTempSettings({ ...tempSettings, bubbleCustomCss: e.target.value })}
+              onChange={(e) => setTempSettings({ ...tempSettings, bubbleCustomCss: e.target.value, activeBubbleThemeId: '' })}
               className={cn(
                 "w-full h-24 p-3 font-mono text-xs rounded-xl outline-none border-2 transition-all",
-                tempSettings.isDarkThemeEnabled ? "bg-white/5 border-pink-200/30 text-white" : "bg-slate-50 border-pink-100 text-slate-800 focus:border-pink-300"
+                tempSettings.isDarkThemeEnabled ? "bg-white/5 border-pink-200/30 text-white" : "bg-slate-50 border-pink-100 text-slate-800 focus:border-pink-300 shadow-inner"
               )}
               placeholder="输入聊天气泡 CSS 样式..."
             />

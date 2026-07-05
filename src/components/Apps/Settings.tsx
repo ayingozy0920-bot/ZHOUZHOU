@@ -491,7 +491,7 @@ export default function SettingsApp({
                 onSetPassword={(pwd) => {
                   console.log('DEBUG: Setting password to:', pwd);
                   localStorage.setItem('lockScreenPassword', pwd);
-                  console.log('DEBUG: Password saved to localStorage:', localStorage.getItem('lockScreenPassword'));
+                  setForm({ ...form, lockScreenPin: pwd });
                   alert('密码已设置');
                 }}
                 themeId={form.themeId}
