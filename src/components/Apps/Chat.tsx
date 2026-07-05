@@ -645,6 +645,31 @@ export default function ChatApp({ settings, onBack, onStartCall, externalCallSta
   );
 }
 
+const HeartVoiceCard = ({ content, avatar }: { content: string; avatar: string }) => {
+  return (
+    <div className="my-2 bg-[#FFF0F3] border-2 border-[#FF4D6D]/20 rounded-2xl p-4 shadow-sm relative overflow-hidden group animate-in fade-in slide-in-from-bottom-2">
+      <div className="absolute top-0 right-0 px-2 py-0.5 bg-[#FF4D6D] text-white text-[8px] font-black uppercase tracking-widest rounded-bl-lg">
+        HEART VOICE
+      </div>
+      <div className="flex gap-3">
+        <div className="shrink-0">
+          <img src={avatar} className="w-10 h-10 rounded-xl border-2 border-white shadow-sm object-cover" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-[10px] font-black text-[#FF4D6D] uppercase tracking-widest mb-1 flex items-center gap-1">
+            <span>内心独白</span>
+            <div className="w-1.5 h-1.5 rounded-full bg-[#FF4D6D] animate-pulse" />
+          </div>
+          <p className="text-xs font-medium text-slate-600 leading-relaxed italic">
+            「 {content} 」
+          </p>
+        </div>
+      </div>
+      <div className="absolute -bottom-4 -left-4 w-12 h-12 bg-white/40 rounded-full blur-xl group-hover:scale-150 transition-transform duration-700" />
+    </div>
+  );
+};
+
 function NavButton({ active, icon: Icon, label, onClick, themeColor, isDark }: { active: boolean, icon: any, label: string, onClick: () => void, themeColor?: string, isDark?: boolean }) {
   const activeColor = themeColor || "#07c160"; // Default WeChat green if no theme color
   const inactiveColor = isDark ? '#444444' : '#64748b';
@@ -1909,13 +1934,23 @@ ${offlineConfig.writingStyle ? `回复文风：${offlineConfig.writingStyle}` : 
 - **严禁发送任何形式的照片、视频或语音指令。**
 - **你现在就在我面前，所有的互动通过文字描写（旁白+对话）完成，禁止使用视觉附件指令（如 [SEND_PHOTO_CARD]）。**`;
       } else {
-        systemPrompt += `\n\n【视觉附件设定：CCD文字摄影卡】
+        if (settings.imageGenEnabled) {
+          systemPrompt += `\n\n【视觉附件设定：实时生图】
+当你觉得语境合适时（如分享穿搭、展示风景、给你看照片等），你可以使用 '[SEND_PHOTO_CARD:生图提示词:地点:时段]' 指令。
+- **生图提示词**：极其详细、具体的画面描述（50-100字），用于交给 AI 进行绘画。
+- **地点**：${friend.address || '未知'}。
+- **时段**：如：清晨、深夜。
+示例：[SEND_PHOTO_CARD:一个穿着白色吊带裙的少女站在宿舍阳台上，落日的余晖洒在她清冷精致的侧脸，富士胶片质感。:宿舍阳台:傍晚]
+系统会实时生成真实的 AI 图片。如果生成失败，则显示精美的卡片文字。`;
+        } else {
+          systemPrompt += `\n\n【视觉附件设定：CCD文字摄影卡】
 当你想向用户发送照片、分享美境或展示你的工作/生活状态时，你必须发送一个 '[SEND_PHOTO_CARD:内容:地点:时段]' 格式的指令。
 - **内容**：极具画面感的内容描述（50-100字）。
-- **地点**：${friend.address || '未知'}（或根据剧情设定在该城市的具体场所）。
+- **地点**：${friend.address || '未知'}。
 - **时段**：如：清晨、正午、傍晚、深夜。
 示例：[SEND_PHOTO_CARD:这会儿刚洗完澡，发梢还挂着没干的水珠，侧脸线条在富士相纸下显得安静又清晰。:宿舍阳台:傍晚]
 系统会自动将其渲染为精美的CCD相纸卡片。禁止直接发送图片URL。`;
+        }
       }
       const activeEntries = worldBookEntries.filter(e => 
         e.isEnabled && (e.scope === 'global' || (e.scope === 'character' && (e.linkedCharacterIds || []).includes(friend.profileId || '')))
@@ -2091,10 +2126,11 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
    - 如果当前好感度还未突破 60%，严禁人为提前调至 60% 以上。
 2. mood_index：你当前的心情指数（0% - 100% 之间的整数）。
 3. inner_thoughts：你对用户的真实、未说出口的内心想法、吐槽或隐藏情感（100字以内）。
+   **注意：如果涉及亲密、暧昧或生理冲动的想法，必须使用极其隐晦、唯美、文学化的隐喻表达（如“想和你交换呼吸”、“心跳乱了频率”、“想把你藏进怀里”等），严禁使用任何露骨、直白或违规词汇，以免触发系统安全拦截。**
 4. current_status：你此时此刻的心情或正在做的事（15字以内）。
 
 示例（必须严格遵循此格式）：
-[HEARTFELT_UPDATE: affection_change=0.55 | mood_index=88 | inner_thoughts=他今天居然主动问我有没有吃饭，虽然只是随口一句，但我真的超级开心…… | current_status=有点开心]`;
+[HEARTFELT_UPDATE: affection_change=0.55 | mood_index=88 | inner_thoughts=刚才你靠近的时候，我的呼吸好像漏了一拍……这种感觉，真的好想一直持续下去。 | current_status=心跳有点快]`;
 
       const fullContent = await callAI(systemPrompt, slicedMsgs, settings, action);
 
@@ -2163,7 +2199,7 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
         if (textContent) sendVoiceMessage(textContent);
       }
       
-      // Photo Card extraction
+  // Photo Card extraction
       if (!isOfflineMode && fullContent.includes('[SEND_PHOTO_CARD:')) {
         const photoMatch = fullContent.match(/\[SEND_PHOTO_CARD:(.*?)(?::(.*?))?(?::(.*?))?\]/);
         if (photoMatch) {
@@ -2181,10 +2217,42 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
             timestamp: Date.now()
           };
           
-          if (isOfflineMode) {
-            setOfflineMessages(prev => [...prev, photoMsg]);
+          // Real image generation if enabled
+          if (settings.imageGenEnabled && settings.imageGenApiKey) {
+            fetch('/api/image-gen', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                prompt: cardContent,
+                settings: settings
+              })
+            }).then(async res => {
+              if (res.ok) {
+                const data = await res.json();
+                const mediaUrl = data.url || (data.b64 ? `data:image/png;base64,${data.b64}` : null);
+                if (mediaUrl) {
+                  onSendMessage({
+                    role: 'assistant',
+                    content: cardContent,
+                    type: 'image',
+                    mediaUrl: mediaUrl,
+                    timestamp: Date.now()
+                  });
+                } else {
+                  onSendMessage(photoMsg); // Fallback to card if no url
+                }
+              } else {
+                onSendMessage(photoMsg); // Fallback to card on error
+              }
+            }).catch(() => {
+              onSendMessage(photoMsg); // Fallback to card on fetch error
+            });
           } else {
-            onSendMessage(photoMsg);
+            if (isOfflineMode) {
+              setOfflineMessages(prev => [...prev, photoMsg]);
+            } else {
+              onSendMessage(photoMsg);
+            }
           }
         }
       }
@@ -3553,9 +3621,7 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
                     </div>
                   )}
                   {msg.innerThought && (
-                    <div className="mb-2 text-[10px] text-slate-400 italic border-b border-slate-100 pb-1">
-                      内心：{msg.innerThought}
-                    </div>
+                    <HeartVoiceCard content={msg.innerThought} avatar={friend.avatar} />
                   )}
                   {msg.type === 'offline-invitation' && msg.invitationData && (
                     <OfflineInvitationCard 

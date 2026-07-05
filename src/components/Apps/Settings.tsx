@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChevronLeft, Save, Globe, Key, Cpu, Brain, Palette, Sliders, Type, Image as ImageIcon, Trash2, Upload, Smartphone, Plus, Minus, Layout, Check, Database, Mic, ShieldAlert, Lock, Cloud, HelpCircle } from 'lucide-react';
+import { ChevronLeft, Save, Globe, Key, Cpu, Brain, Palette, Sliders, Type, Image as ImageIcon, Trash2, Upload, Smartphone, Plus, Minus, Layout, Check, Database, Mic, ShieldAlert, Lock, Cloud, HelpCircle, Maximize, X, RefreshCw } from 'lucide-react';
 import { AppSettings, AppInfo } from '../../types';
 import { cn } from '../../lib/utils';
 import { get, set } from 'idb-keyval';
@@ -25,7 +25,7 @@ export default function SettingsApp({
   useEffect(() => {
     setForm(settings);
   }, [settings]);
-  const [activeSection, setActiveSection] = useState<'main' | 'api' | 'memory' | 'style' | 'icons' | 'pages' | 'theme' | 'display' | 'ai' | 'data' | 'voice' | 'console' | 'help'>('main');
+  const [activeSection, setActiveSection] = useState<'main' | 'api' | 'memory' | 'style' | 'icons' | 'pages' | 'theme' | 'display' | 'ai' | 'data' | 'voice' | 'console' | 'help' | 'imageGen'>('main');
   const [showPasswordSetup, setShowPasswordSetup] = useState(false);
   const [themePresetName, setThemePresetName] = useState('');
   const [availableModels, setAvailableModels] = useState<string[]>([]);
@@ -47,6 +47,73 @@ export default function SettingsApp({
   const [apiLog, setApiLog] = useState('');
 
   const [isTestingTts, setIsTestingTts] = useState(false);
+  const [isTestingImage, setIsTestingImage] = useState(false);
+  const [testImageUrl, setTestImageUrl] = useState<string | null>(null);
+  const [isFetchingImageModels, setIsFetchingImageModels] = useState(false);
+  const [availableImageModels, setAvailableImageModels] = useState<string[]>([]);
+
+  const fetchImageModels = async () => {
+    if (!form.imageGenApiKey) return showToast('请输入 API Key', 'error');
+    setIsFetchingImageModels(true);
+    try {
+      const response = await fetch('/api/image-models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          baseUrl: form.imageGenBaseUrl,
+          apiKey: form.imageGenApiKey
+        })
+      });
+      if (!response.ok) throw new Error('拉取失败');
+      const data = await response.json();
+      if (data.data) {
+        const models = data.data
+          .filter((m: any) => m.id.toLowerCase().includes('dall') || m.id.toLowerCase().includes('flux') || m.id.toLowerCase().includes('stable') || m.id.toLowerCase().includes('image'))
+          .map((m: any) => m.id);
+        setAvailableImageModels(models.length > 0 ? models : data.data.map((m: any) => m.id));
+        showToast(`✅ 成功拉取 ${data.data.length} 个模型`);
+      }
+    } catch (e: any) {
+      showToast('❌ 模型拉取失败', 'error');
+    } finally {
+      setIsFetchingImageModels(false);
+    }
+  };
+
+  const handleTestImageGen = async (testPrompt: string = '一只可爱的小猫咪') => {
+    if (!form.imageGenApiKey) return showToast('请输入 API Key', 'error');
+    setIsTestingImage(true);
+    setTestImageUrl(null);
+    try {
+      const response = await fetch('/api/image-gen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: testPrompt,
+          settings: form
+        })
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || `HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (data.url) {
+        setTestImageUrl(data.url);
+        showToast('✅ 图片生成成功！');
+      } else if (data.b64) {
+        setTestImageUrl(`data:image/png;base64,${data.b64}`);
+        showToast('✅ 图片生成成功！');
+      }
+    } catch (e: any) {
+      console.error('Image Gen test error:', e);
+      showToast(`❌ 生成失败: ${e.message}`, 'error');
+    } finally {
+      setIsTestingImage(false);
+    }
+  };
 
   const handleTestTts = async () => {
     if (!form.minimaxApiKey) return showToast('请输入 API Key', 'error');
@@ -440,6 +507,7 @@ export default function SettingsApp({
     display: '显示设置',
     data: '数据管理',
     voice: '语音设置',
+    imageGen: '生图设置',
     help: '帮助与反馈',
   };
 
@@ -594,10 +662,17 @@ export default function SettingsApp({
                 </div>
                 <ChevronLeft size={20} className="text-slate-400 rotate-180" />
               </button>
-              <button onClick={() => setActiveSection('voice')} className="w-full px-4 py-4 flex items-center justify-between hover:bg-slate-50 border-b lg:border-b-0 transition-colors">
+              <button onClick={() => setActiveSection('voice')} className="w-full px-4 py-4 flex items-center justify-between border-b hover:bg-slate-50 transition-colors">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-full bg-rose-100 flex items-center justify-center text-rose-600"><Mic size={18} /></div>
                   <span className="font-medium text-slate-800">语音设置</span>
+                </div>
+                <ChevronLeft size={20} className="text-slate-400 rotate-180" />
+              </button>
+              <button onClick={() => setActiveSection('imageGen')} className="w-full px-4 py-4 flex items-center justify-between border-b hover:bg-slate-50 transition-colors">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-amber-600"><ImageIcon size={18} /></div>
+                  <span className="font-medium text-slate-800">生图设置</span>
                 </div>
                 <ChevronLeft size={20} className="text-slate-400 rotate-180" />
               </button>
@@ -1387,6 +1462,208 @@ export default function SettingsApp({
           </div>
         )}
 
+        {activeSection === 'imageGen' && (
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300 pb-10">
+            <div className={cn(
+              "rounded-2xl border shadow-sm overflow-hidden transition-all duration-500",
+              form.settingsBackgroundUrl ? "bg-transparent border-white/10" : "bg-white"
+            )} style={form.settingsBackgroundUrl ? { backgroundColor: `rgba(255, 255, 255, ${Math.max(0, (form.settingsBackgroundOpacity ?? 0.8) * 0.2)})` } : {}}>
+              <div className="px-5 py-6 space-y-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-amber-100 rounded-xl text-amber-600 shadow-sm"><ImageIcon size={20} /></div>
+                    <div className="flex flex-col">
+                      <span className="font-bold text-slate-800">启用 AI 生图</span>
+                      <span className="text-[10px] text-slate-400">开启后角色可以发送图片消息</span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setForm({ ...form, imageGenEnabled: !form.imageGenEnabled })}
+                    className={cn(
+                      "w-12 h-6 rounded-full transition-all relative",
+                      form.imageGenEnabled ? "bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.4)]" : "bg-slate-200"
+                    )}
+                  >
+                    <div className={cn(
+                      "absolute top-1 w-4 h-4 bg-white rounded-full transition-all shadow-sm",
+                      form.imageGenEnabled ? "right-1" : "left-1"
+                    )} />
+                  </button>
+                </div>
+
+                <div className="h-px bg-slate-100/50" />
+
+                <div className="space-y-5">
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                      <Key size={14} className="text-slate-300" /> API KEY
+                    </label>
+                    <input
+                      type="password"
+                      value={form.imageGenApiKey || ''}
+                      onChange={e => setForm({ ...form, imageGenApiKey: e.target.value })}
+                      placeholder="OpenAI / Proxy API Key"
+                      className="w-full px-4 py-3 bg-slate-50/50 border border-slate-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-300 transition-all"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                      <Globe size={14} className="text-slate-300" /> API 地址
+                    </label>
+                    <input
+                      type="text"
+                      value={form.imageGenBaseUrl || ''}
+                      onChange={e => setForm({ ...form, imageGenBaseUrl: e.target.value })}
+                      placeholder="https://api.openai.com/v1"
+                      className="w-full px-4 py-3 bg-slate-50/50 border border-slate-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-300 transition-all"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2"><Cpu size={14} className="text-slate-300" /> 生图模型</div>
+                        <button 
+                          onClick={fetchImageModels}
+                          disabled={isFetchingImageModels}
+                          className="p-1 hover:bg-slate-100 rounded-md transition-colors"
+                        >
+                          <RefreshCw size={12} className={cn("text-amber-500", isFetchingImageModels && "animate-spin")} />
+                        </button>
+                      </label>
+                      <div className="relative">
+                        <select
+                          value={form.imageGenModel || 'dall-e-3'}
+                          onChange={e => setForm({ ...form, imageGenModel: e.target.value })}
+                          className="w-full px-4 py-3 bg-slate-50/50 border border-slate-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-300 transition-all appearance-none"
+                        >
+                          {availableImageModels.length > 0 ? (
+                            availableImageModels.map(m => <option key={m} value={m}>{m}</option>)
+                          ) : (
+                            <>
+                              <option value="dall-e-3">dall-e-3</option>
+                              <option value="dall-e-2">dall-e-2</option>
+                              <option value="flux-schnell">flux-schnell</option>
+                              <option value="flux-dev">flux-dev</option>
+                            </>
+                          )}
+                        </select>
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
+                          <ChevronLeft size={14} className="-rotate-90" />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                        <Maximize size={14} className="text-slate-300" /> 图片质量
+                      </label>
+                      <select
+                        value={form.imageGenQuality || 'standard'}
+                        onChange={e => setForm({ ...form, imageGenQuality: e.target.value as any })}
+                        className="w-full px-4 py-3 bg-slate-50/50 border border-slate-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-300 transition-all appearance-none"
+                      >
+                        <option value="standard">标准 (Standard)</option>
+                        <option value="hd">高清 (HD)</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                      <Layout size={14} className="text-slate-300" /> 图片比例
+                    </label>
+                    <div className="grid grid-cols-3 gap-2">
+                      {[
+                        { label: '1:1', value: '1024x1024' },
+                        { label: '9:16', value: '1024x1792' },
+                        { label: '16:9', value: '1792x1024' },
+                        { label: '3:4', value: '768x1024' },
+                        { label: '4:3', value: '1024x768' }
+                      ].map(size => (
+                        <button
+                          key={size.value}
+                          onClick={() => setForm({ ...form, imageGenSize: size.value as any })}
+                          className={cn(
+                            "py-2 px-1 text-[10px] font-bold rounded-lg border transition-all",
+                            form.imageGenSize === size.value 
+                              ? "bg-amber-500 text-white border-amber-600" 
+                              : "bg-slate-50 text-slate-500 border-slate-100 hover:bg-slate-100"
+                          )}
+                        >
+                          {size.label} ({size.value})
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                      <Plus size={14} className="text-slate-300" /> 正面提示词
+                    </label>
+                    <textarea
+                      value={form.imageGenPositivePrompt || ''}
+                      onChange={e => setForm({ ...form, imageGenPositivePrompt: e.target.value })}
+                      placeholder="正面描述词..."
+                      className="w-full px-4 py-3 bg-slate-50/50 border border-slate-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-300 transition-all min-h-[80px] resize-none"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                      <Minus size={14} className="text-slate-300" /> 反面提示词
+                    </label>
+                    <textarea
+                      value={form.imageGenNegativePrompt || ''}
+                      onChange={e => setForm({ ...form, imageGenNegativePrompt: e.target.value })}
+                      placeholder="反面描述词..."
+                      className="w-full px-4 py-3 bg-slate-50/50 border border-slate-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-300 transition-all min-h-[80px] resize-none"
+                    />
+                  </div>
+
+                  <div className="pt-2">
+                    <button 
+                      onClick={() => handleTestImageGen()}
+                      disabled={isTestingImage}
+                      className={cn(
+                        "w-full py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all shadow-sm active:scale-[0.98]",
+                        isTestingImage ? "bg-slate-100 text-slate-400" : "bg-amber-50 text-amber-600 hover:bg-amber-100 border border-amber-200"
+                      )}
+                    >
+                      {isTestingImage ? (
+                        <div className="flex items-center gap-2">
+                          <div className="w-4 h-4 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+                          正在生成测试图片...
+                        </div>
+                      ) : (
+                        <>
+                          <ImageIcon size={18} /> 测试图片生成
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  {testImageUrl && (
+                    <motion.div 
+                      initial={{ opacity: 0, scale: 0.9 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      className="relative rounded-2xl overflow-hidden border-4 border-white shadow-xl mt-4"
+                    >
+                      <img src={testImageUrl} className="w-full h-auto" alt="Test Result" />
+                      <button 
+                        onClick={() => setTestImageUrl(null)}
+                        className="absolute top-2 right-2 p-1.5 bg-black/50 text-white rounded-full backdrop-blur-sm"
+                      >
+                        <X size={16} />
+                      </button>
+                    </motion.div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
         {activeSection === 'icons' && (
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
             <div className="grid grid-cols-3 gap-4">

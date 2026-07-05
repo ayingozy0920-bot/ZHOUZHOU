@@ -147,6 +147,26 @@ async function startServer() {
     }
   });
 
+  app.post("/api/image-models", async (req, res) => {
+    const { baseUrl, apiKey } = req.body;
+    try {
+      const url = baseUrl || 'https://api.openai.com/v1';
+      const cleanUrl = url.replace(/\/+$/, '');
+      const response = await fetch(`${cleanUrl}/models`, {
+        headers: { 'Authorization': `Bearer ${apiKey}` }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      
+      const data = await response.json();
+      res.json(data);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.post("/api/tts", async (req, res) => {
     const { text, voiceId, model, settings } = req.body;
     try {
@@ -193,6 +213,50 @@ async function startServer() {
       }
     } catch (error: any) {
       console.error("TTS error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.post("/api/image-gen", async (req, res) => {
+    const { prompt, settings } = req.body;
+    try {
+      const apiKey = settings.imageGenApiKey || process.env.OPENAI_API_KEY;
+      const baseUrl = settings.imageGenBaseUrl || 'https://api.openai.com/v1';
+      const cleanUrl = baseUrl.replace(/\/+$/, '');
+      
+      const fullPrompt = `${settings.imageGenPositivePrompt || ''}, ${prompt}`;
+      
+      const response = await fetch(`${cleanUrl}/images/generations`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          model: settings.imageGenModel || 'dall-e-3',
+          prompt: fullPrompt,
+          n: 1,
+          size: settings.imageGenSize || '1024x1024',
+          quality: settings.imageGenQuality || 'standard',
+          ...(settings.imageGenNegativePrompt ? { negative_prompt: settings.imageGenNegativePrompt } : {})
+        })
+      });
+
+      if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error?.message || err.message || `HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (data.data?.[0]?.url) {
+        res.json({ url: data.data[0].url });
+      } else if (data.data?.[0]?.b64_json) {
+        res.json({ b64: data.data[0].b64_json });
+      } else {
+        res.status(500).json({ error: "No image data returned from provider" });
+      }
+    } catch (error: any) {
+      console.error("Image Gen error:", error);
       res.status(500).json({ error: error.message });
     }
   });

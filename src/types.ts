@@ -151,6 +151,15 @@ export interface AppSettings {
   minimaxRegion?: 'china' | 'international';
   minimaxVoiceId?: string;
   minimaxEnabled?: boolean;
+  // Image Generation Settings
+  imageGenEnabled?: boolean;
+  imageGenApiKey?: string;
+  imageGenBaseUrl?: string;
+  imageGenModel?: string;
+  imageGenSize?: '1024x1024' | '1024x1792' | '1792x1024' | '768x1344' | '1344x768';
+  imageGenQuality?: 'standard' | 'hd';
+  imageGenPositivePrompt?: string;
+  imageGenNegativePrompt?: string;
   homeWallpaperUrl?: string;
   totalPages?: number;
   // New Theme System
