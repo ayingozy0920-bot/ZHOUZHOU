@@ -173,9 +173,9 @@ export default function App() {
     return () => {
       window.removeEventListener('zhouzhou_ji_receive_gift', handleReceiveGift);
     };
-  }, [addGift]);
+  }, []);
 
-  const summarizeContent = async (friend: Friend, messages: ChatMessage[], type: 'chat' | 'call' | 'group' | 'offline', customPrompt?: string) => {
+  const summarizeContent = async (friend: Friend, messages: ChatMessage[], type: 'chat' | 'call' | 'group' | 'offline', customPrompt?: string, range?: { start: number, end: number }) => {
     if (!messages || messages.length === 0) return null;
     try {
       const { getGeminiClient, getGeminiModel } = await import('./lib/gemini');
@@ -185,14 +185,21 @@ export default function App() {
       const startTime = new Date(messages[0]?.timestamp || Date.now()).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
       const endTime = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
 
-      const context = messages.slice(-50).map(m => `${m.role === 'user' ? '我' : (friend?.name || '角色')}: ${m.content}`).join('\n');
+      const context = messages.slice(-200).map(m => `${m.role === 'user' ? '我' : (friend?.name || '角色')}: ${m.content}`).join('\n');
       
-      const currentSummaryIndex = friend.onlineMemories?.length || 0;
-      const startRound = currentSummaryIndex * (settings.autoSummaryThreshold || 100) + 1;
-      const endRound = (currentSummaryIndex + 1) * (settings.autoSummaryThreshold || 100);
-      const roundTitle = type === 'chat' ? `【第 ${startRound}-${endRound} 轮对话总结】\n\n` : '';
+      let roundTitle = '';
+      if (range) {
+        roundTitle = `【第 ${range.start}-${range.end} 轮对话总结】\n\n`;
+      } else if (type === 'chat') {
+        const memories = getFriendMemory(friend.id)?.onlineMemories || [];
+        const currentSummaryIndex = memories.length;
+        const threshold = friend.memorySettings?.summaryThreshold || settings.autoSummaryThreshold || 100;
+        const startRound = currentSummaryIndex * threshold + 1;
+        const endRound = (currentSummaryIndex + 1) * threshold;
+        roundTitle = `【第 ${startRound}-${endRound} 轮对话总结】\n\n`;
+      }
 
-      const onlinePrompt = `##停止角色扮演，请根据从【${dateStr} ${startTime}】至当前时间点的全部对话内容，生成一份结构化的剧情总结报告。
+      const onlinePrompt = customPrompt || `##停止角色扮演，请根据从【${dateStr} ${startTime}】至当前时间点的全部对话内容，生成一份结构化的剧情总结报告。
 
 报告格式与内容要求：
 
@@ -1087,7 +1094,7 @@ ${recentMemories}
         {!settings.hideStatusBar && (
           <div className={cn(
             "w-full flex items-center justify-between px-4 pt-2 pb-1 z-[110] pointer-events-none transition-all duration-500",
-            settings.fullScreenMode ? "absolute top-0 left-0 right-0 bg-transparent safe-area-padding-top" : "relative bg-black/20 backdrop-blur-md"
+            (settings.fullScreenMode || activeApp === 'chat') ? "absolute top-0 left-0 right-0 bg-transparent safe-area-padding-top" : "relative bg-black/20 backdrop-blur-md"
           )}>
             {/* Left: Time */}
             <div className="flex items-center justify-start">

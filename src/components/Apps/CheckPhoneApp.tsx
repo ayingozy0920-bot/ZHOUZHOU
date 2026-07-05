@@ -204,7 +204,7 @@ ${chatHistory}
 角色设定：${selectedFriend.persona}
 
 要求：
-1. 为 Bilibili、知乎、微博、小红书 生成浏览历史和推荐内容。
+1. 为 bilibili、zhihu、weibo、xiaohongshu 生成浏览历史和推荐内容。
 2. 历史记录要极其真实，符合你的背景和爱好（例如：关注你的专业领域、符合人设的娱乐内容）。
 3. 返回JSON格式。`;
         schema = {
@@ -214,13 +214,69 @@ ${chatHistory}
               type: "array",
               items: { type: "string" }
             },
-            apps: {
+            platforms: {
               type: "object",
               properties: {
-                Bilibili: { type: "array", items: { type: "object", properties: { title: { type: "string" }, content: { type: "string" } } } },
-                知乎: { type: "array", items: { type: "object", properties: { title: { type: "string" }, content: { type: "string" } } } },
-                微博: { type: "array", items: { type: "object", properties: { title: { type: "string" }, content: { type: "string" } } } },
-                小红书: { type: "array", items: { type: "object", properties: { title: { type: "string" }, content: { type: "string" } } } }
+                bilibili: { 
+                  type: "object",
+                  properties: {
+                    browsing_history: { 
+                      type: "array", 
+                      items: { 
+                        type: "object", 
+                        properties: { 
+                          title: { type: "string" }, 
+                          up_user: { type: "string" } 
+                        } 
+                      } 
+                    }
+                  }
+                },
+                zhihu: { 
+                  type: "object",
+                  properties: {
+                    browsing_history: { 
+                      type: "array", 
+                      items: { 
+                        type: "object", 
+                        properties: { 
+                          title: { type: "string" }, 
+                          author: { type: "string" } 
+                        } 
+                      } 
+                    }
+                  }
+                },
+                weibo: { 
+                  type: "object",
+                  properties: {
+                    browsing_history: { 
+                      type: "array", 
+                      items: { 
+                        type: "object", 
+                        properties: { 
+                          content: { type: "string" }, 
+                          author: { type: "string" } 
+                        } 
+                      } 
+                    }
+                  }
+                },
+                xiaohongshu: { 
+                  type: "object",
+                  properties: {
+                    browsing_history: { 
+                      type: "array", 
+                      items: { 
+                        type: "object", 
+                        properties: { 
+                          title: { type: "string" }, 
+                          description: { type: "string" } 
+                        } 
+                      } 
+                    }
+                  }
+                }
               }
             }
           }
@@ -236,24 +292,22 @@ ${chatHistory}
         schema = {
           type: "object",
           properties: {
-            recentGames: {
+            games: {
               type: "array",
               items: {
                 type: "object",
                 properties: {
-                  name: { type: "string" },
-                  icon: { type: "string", description: "Game icon URL, e.g. from unsplash" }
+                  name: { type: "string" }
                 }
               }
             },
-            posts: {
+            game_updates: {
               type: "array",
               items: {
                 type: "object",
                 properties: {
-                  time: { type: "string" },
-                  content: { type: "string" },
-                  image: { type: "string", description: "Optional game screenshot URL" }
+                  timestamp: { type: "string" },
+                  content: { type: "string" }
                 }
               }
             }
@@ -368,8 +422,8 @@ ${chatHistory}
         if (Array.isArray(data)) {
           if (currentApp === 'memo') data = { memos: data };
           else if (currentApp === 'wechat') data = { contacts: data, chatHistory: {} };
-          else if (currentApp === 'browser') data = { history: data, apps: {} };
-          else if (currentApp === 'taptap') data = { recentGames: data, posts: [] };
+          else if (currentApp === 'browser') data = { history: [], platforms: { bilibili: { browsing_history: data } } };
+          else if (currentApp === 'taptap') data = { games: data, game_updates: [] };
           else if (currentApp === 'gifts') data = { gifts: data };
           else if (currentApp === 'wallet') data = { balance: "0.00", bills: data };
         }
@@ -379,8 +433,8 @@ ${chatHistory}
           data = JSON.parse(`[${finalJsonStr}]`);
           if (currentApp === 'memo') data = { memos: data };
           else if (currentApp === 'wechat') data = { contacts: data, chatHistory: {} };
-          else if (currentApp === 'browser') data = { history: data, apps: {} };
-          else if (currentApp === 'taptap') data = { recentGames: data, posts: [] };
+          else if (currentApp === 'browser') data = { history: [], platforms: { bilibili: { browsing_history: data } } };
+          else if (currentApp === 'taptap') data = { games: data, game_updates: [] };
           else if (currentApp === 'gifts') data = { gifts: data };
           else if (currentApp === 'wallet') data = { balance: "0.00", bills: data };
         } catch (e2) {
@@ -388,7 +442,20 @@ ${chatHistory}
           throw new Error("API 返回的 JSON 格式错误，请尝试刷新重试");
         }
       }
-      console.log("API Generated Data:", data);
+      console.log("API Generated Data for " + currentApp + ":", data);
+      
+      // Ensure data has the expected structure even if partial
+      if (currentApp === 'browser') {
+        if (!data.platforms) data.platforms = {};
+        if (!data.history) data.history = [];
+      } else if (currentApp === 'taptap') {
+        if (!data.games) data.games = [];
+        if (!data.game_updates) data.game_updates = [];
+      } else if (currentApp === 'wallet') {
+        if (!data.balance) data.balance = "0.00";
+        if (!data.bills) data.bills = [];
+      }
+
       
       if (currentApp === 'wechat') {
         console.log("Setting WeChat Data:", data);
@@ -927,7 +994,7 @@ ${chatHistory}
         <div className="p-4">
           <h3 className="font-bold text-slate-700 text-sm mb-4">最近常看</h3>
           <div className="grid grid-cols-4 gap-4 mb-8">
-            {['bilibili', 'zhihu', 'weibo', 'xiaohongshu'].map((site, i) => (
+            {Object.keys(browserData?.platforms || { 'bilibili': {}, 'zhihu': {}, 'weibo': {}, 'xiaohongshu': {} }).map((site, i) => (
               <button 
                 key={i} 
                 onClick={() => setViewingBrowserApp(site)}
@@ -936,7 +1003,7 @@ ${chatHistory}
                 <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center text-slate-400 shadow-sm border border-slate-50">
                   <Globe size={20} />
                 </div>
-                <span className="text-[10px] text-slate-500">{site === 'bilibili' ? 'Bilibili' : site === 'zhihu' ? '知乎' : site === 'weibo' ? '微博' : site === 'xiaohongshu' ? '小红书' : site}</span>
+                <span className="text-[10px] text-slate-500 capitalize">{site}</span>
               </button>
             ))}
           </div>
@@ -945,8 +1012,12 @@ ${chatHistory}
             {browserData?.history?.map((item: string, i: number) => (
               <div key={i} className="text-xs text-slate-600 bg-white/80 p-3 rounded-xl shadow-sm">{item}</div>
             ))}
-            {!browserData && (
-              <div className="text-center text-slate-400 text-xs py-4">点击右上角刷新获取数据</div>
+            {(!browserData || !browserData.history || browserData.history.length === 0) && (
+              <div className="text-center text-slate-400 text-[10px] py-10 bg-slate-50/50 rounded-2xl border border-dashed border-slate-200">
+                <Search size={24} className="mx-auto mb-2 opacity-20" />
+                <p>暂无浏览历史</p>
+                <p className="mt-1 opacity-60 italic">点击右上角刷新让角色生成内容</p>
+              </div>
             )}
           </div>
         </div>
@@ -998,8 +1069,12 @@ ${chatHistory}
             </div>
           </div>
         ))}
-        {!walletData && (
-          <div className="text-center text-slate-400 text-xs py-4">点击右上角刷新获取数据</div>
+        {(!walletData || !walletData.bills || walletData.bills.length === 0) && (
+          <div className="text-center text-slate-400 text-[10px] py-10 bg-white/50 rounded-2xl border border-dashed border-slate-200">
+            <Wallet size={24} className="mx-auto mb-2 opacity-20" />
+            <p>暂无交易记录</p>
+            <p className="mt-1 opacity-60 italic">点击右上角刷新获取数据</p>
+          </div>
         )}
       </div>
     </AppLayout>
@@ -1020,8 +1095,8 @@ ${chatHistory}
                   <span className="text-[10px] font-medium text-slate-600 truncate w-16 text-center">{game.name}</span>
                 </div>
               ))}
-              {!taptapData?.games && (
-                <div className="text-xs text-slate-400">点击右上角刷新获取数据</div>
+              {(!taptapData || !taptapData.games || taptapData.games.length === 0) && (
+                <div className="text-[10px] text-slate-400 py-4 italic">暂无游戏数据，点击刷新</div>
               )}
             </div>
           </div>
@@ -1042,8 +1117,12 @@ ${chatHistory}
                   </div>
                 </div>
               ))}
-              {!taptapData?.game_updates && (
-                <div className="text-center text-slate-400 text-xs py-4">点击右上角刷新获取数据</div>
+              {(!taptapData || !taptapData.game_updates || taptapData.game_updates.length === 0) && (
+                <div className="text-center text-slate-400 text-[10px] py-10 bg-white/50 rounded-2xl border border-dashed border-slate-200">
+                  <Gamepad2 size={24} className="mx-auto mb-2 opacity-20" />
+                  <p>暂无游戏动态</p>
+                  <p className="mt-1 opacity-60 italic">点击右上角刷新让角色生成内容</p>
+                </div>
               )}
             </div>
           </div>

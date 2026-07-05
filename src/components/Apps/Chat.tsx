@@ -91,7 +91,7 @@ export default function ChatApp({ settings, onBack, onStartCall, externalCallSta
   onStartCall: (friend: Friend, type: 'voice' | 'video') => void;
   externalCallStatus: { friendId: string; status: 'rejected' | 'ended' | 'missed'; duration: number } | null;
   onClearCallStatus: () => void;
-  summarizeContent: (friend: Friend, messages: ChatMessage[], type: 'chat' | 'call' | 'group' | 'offline', customPrompt?: string) => Promise<string | null>;
+  summarizeContent: (friend: Friend, messages: ChatMessage[], type: 'chat' | 'call' | 'group' | 'offline', customPrompt?: string, range?: { start: number, end: number }) => Promise<string | null>;
   onUpdateSettings: (updates: Partial<AppSettings>) => void;
   listenTogetherState: ListenTogetherState;
   onUpdateListenTogether: React.Dispatch<React.SetStateAction<ListenTogetherState>>;
@@ -656,15 +656,17 @@ function NavButton({ active, icon: Icon, label, onClick, themeColor, isDark }: {
   );
 }
 
-function ChatSettings({ friend, messages, settings, onBack, onUpdateFriend, onImportMessages, summarizeContent, onShowMomentSettings }: { 
+function ChatSettings({ friend, messages, settings, onBack, onUpdateFriend, onImportMessages, summarizeContent, onShowMomentSettings, activeModal, setActiveModal }: { 
   friend: Friend, 
   messages: ChatMessage[], 
   settings: AppSettings,
   onBack: () => void,
   onUpdateFriend: (updates: Partial<Friend>) => void,
   onImportMessages: (msgs: ChatMessage[]) => void,
-  summarizeContent: (friend: Friend, messages: ChatMessage[], type: 'chat' | 'call' | 'group' | 'offline', customPrompt?: string) => Promise<string | null>,
-  onShowMomentSettings: (id: string) => void
+  summarizeContent: (friend: Friend, messages: ChatMessage[], type: 'chat' | 'call' | 'group' | 'offline', customPrompt?: string, range?: { start: number, end: number }) => Promise<string | null>,
+  onShowMomentSettings: (id: string) => void,
+  activeModal: string | null,
+  setActiveModal: (modal: any) => void
 }) {
   const { addOnlineMemory } = useMemory();
   const [activeView, setActiveView] = useState<'main' | 'search' | 'memory'>('main');
@@ -879,6 +881,19 @@ function ChatSettings({ friend, messages, settings, onBack, onUpdateFriend, onIm
               <p className="text-[10px] text-yellow-700">静默模式：达到轮数后自动后台总结，无需确认</p>
             </div>
 
+            <div className="flex items-center justify-between mb-4">
+              <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                <RefreshCw size={16} className="text-blue-500" />
+                手动生成记忆
+              </label>
+              <button 
+                onClick={() => setActiveModal('manual-summary')}
+                className="px-3 py-1 bg-blue-500 text-white text-xs font-bold rounded-lg hover:bg-blue-600 transition-colors"
+              >
+                开始总结
+              </button>
+            </div>
+
             <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <h4 className="text-sm font-bold">总结触发阈值</h4>
@@ -1003,18 +1018,11 @@ function ChatSettings({ friend, messages, settings, onBack, onUpdateFriend, onIm
 
             <div className="pt-4">
               <button 
-                onClick={async () => {
-                  try {
-                    const summary = await summarizeContent(friend, messages, 'chat', friend.memorySettings?.summaryPrompt);
-                    if (summary) {
-                      addOnlineMemory(friend.id, summary, 'manual', 'chat');
-                    }
-                  } catch (error) {
-                    console.error("Manual summary failed:", error);
-                    alert("总结失败，请重试");
-                  }
-                }}
-                className="w-full py-3 bg-slate-800 text-white rounded-xl font-bold text-sm active:scale-95 transition-all flex items-center justify-center gap-2"
+                onClick={() => setActiveModal('manual-summary')}
+                className={cn(
+                  "w-full py-3 rounded-xl font-bold text-sm active:scale-95 transition-all flex items-center justify-center gap-2",
+                  settings.themeId === 'rainy-cat' ? "bg-white/10 text-white" : "bg-slate-800 text-white"
+                )}
               >
                 <History size={16} /> 手动总结当前记忆
               </button>
@@ -1272,12 +1280,10 @@ function ChatSettings({ friend, messages, settings, onBack, onUpdateFriend, onIm
 
 
 async function callAI(systemPrompt: string, currentMsgs: ChatMessage[], settings: AppSettings, action?: 'continue' | 'regenerate') {
-  const ai = getGeminiClient(settings);
-
   // Filter out empty messages to avoid API errors
   const filteredMsgs = currentMsgs.filter(m => (m.content || '').trim() !== '');
   
-  // Ensure system prompt is always included as the first message
+  // Prepare messages for the server
   const apiMessages = filteredMsgs.map(m => {
     let role: 'model' | 'user' = m.role === 'assistant' ? 'model' : 'user';
     let text = m.content || '';
@@ -1298,22 +1304,32 @@ async function callAI(systemPrompt: string, currentMsgs: ChatMessage[], settings
   }
 
   try {
-    const response = await ai.models.generateContent({
-      model: getGeminiModel(settings),
-      contents: apiMessages,
-      config: {
-        systemInstruction: systemPrompt || 'You are a helpful assistant.',
-        temperature: 0.7
-      }
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        system_prompt: systemPrompt,
+        messages: apiMessages,
+        settings: {
+          ...settings,
+          modelName: settings.modelName || "gemini-1.5-flash",
+        }
+      })
     });
 
-    return response.text;
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return data.text;
   } catch (error: any) {
     console.error("AI call error:", error);
-    if (error.message?.includes('429') || error.status === 'RESOURCE_EXHAUSTED' || error.message?.includes('quota')) {
+    if (error.message?.includes('429') || error.message?.includes('quota')) {
       throw new Error("AI 额度已达到今日上限，请明天再试或检查配置。");
     }
-    if (error.message?.includes('PROHIBITED_CONTENT')) {
+    if (error.message?.includes('PROHIBITED_CONTENT') || error.message?.includes('safety')) {
       throw new Error("生成内容因安全策略被拦截，请尝试换个话题。");
     }
     throw error;
@@ -1456,7 +1472,7 @@ function ChatWindow({
   onStartCall: (friend: Friend, type: 'voice' | 'video') => void,
   externalCallStatus: { status: 'rejected' | 'ended' | 'missed'; duration: number } | null,
   onClearCallStatus: () => void,
-  summarizeContent: (friend: Friend, messages: ChatMessage[], type: 'chat' | 'call' | 'group' | 'offline', customPrompt?: string) => Promise<string | null>,
+  summarizeContent: (friend: Friend, messages: ChatMessage[], type: 'chat' | 'call' | 'group' | 'offline', customPrompt?: string, range?: { start: number, end: number }) => Promise<string | null>,
   listenTogetherState: ListenTogetherState,
   onUpdateListenTogether: React.Dispatch<React.SetStateAction<ListenTogetherState>>,
   onShowMomentSettings: (id: string) => void,
@@ -1550,6 +1566,7 @@ function ChatWindow({
   const { addFavorite } = useFriends();
 
   const [stickerTab, setStickerTab] = useState<'emoji' | 'custom'>('emoji');
+  const [manualSummaryRange, setManualSummaryRange] = useState({ start: 0, end: 0 });
   const [showStickerImport, setShowStickerImport] = useState<'url' | 'file' | null>(null);
   const [stickerDeleteMode, setStickerDeleteMode] = useState(false);
   const [selectedStickers, setSelectedStickers] = useState<string[]>([]);
@@ -1852,7 +1869,7 @@ function ChatWindow({
       // Inject Online Memories from Memory Store
       const friendMemoryStore = getFriendMemory(friend.id);
       if (friendMemoryStore.onlineMemories.length > 0) {
-        const recentMemories = friendMemoryStore.onlineMemories.slice(0, 5).map(m => `[${m.source === 'weibo' ? '微博' : '聊天'}] ${m.content}`).join('\n- ');
+        const recentMemories = friendMemoryStore.onlineMemories.slice(0, 15).map(m => `[${m.source === 'weibo' ? '微博' : '聊天'}] ${m.content}`).join('\n- ');
         systemPrompt += `\n\n【长期记忆回顾】\n以下是你们过往互动中的重要记忆点，请在对话中自然体现：\n- ${recentMemories}`;
       }
 
@@ -2056,24 +2073,22 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
       const levelInfo = getAffectionLevelInfo(currentAffection);
       const isUnlocking60Plus = isUnlocked60Plus(friend, settings);
 
-      systemPrompt += `\n\n【核心好感度与心声系统】
+      systemPrompt += `\n\n【核心好感度与心声系统 - 每一轮回复必须包含此标签】
 你当前与用户的初始总好感度是：${currentAffection.toFixed(2)}%
 当前好感度阶段：${levelInfo.text}
 
-请你根据这一次的互动质量（例如：用户关心你/转账/温柔互动，好感度合理增加；如果是不耐烦/冷漠/负面互动，好感度合理下降），在回复的最后输出更新标签：
-格式：[HEARTFELT_UPDATE: affection_change=数字 | mood_index=数字 | inner_thoughts=内心想法 | current_status=状态]
+请你根据这一次的互动质量，在回复的【最后一行】输出更新标签。
+标签格式：[HEARTFELT_UPDATE: affection_change=数字 | mood_index=数字 | inner_thoughts=内心想法 | current_status=状态]
 
-参数规则（必须绝对严格遵守，不得违反）：
+参数规则：
 1. affection_change：代表本次互动的总好感度变化值（介于 -1.00 到 +1.00 之间的浮点数）。
-   - **单次好感度增长/减少必须控制在 0.25 至 1.00 之间。** (如：+0.35, -0.50, +0.80)
-   - 增加还是减少，必须完全符合你的人设逻辑、当前语境以及互动质量。
-   - **如果当前好感度还未突破 60%，且你和用户的关系尚未得到明确确立/暗恋（isSecretCrush=${friend.isSecretCrush ? 'true' : 'false'}, relationshipConfirmed=${friend.relationshipConfirmed ? 'true' : 'false'}），则你的好感度严禁人为提前调至 60% 以上，你的行为和台词必须贴合当前数值中位。**
-   - 好感度总值没有上限。
-2. mood_index：你当前的心情指数（0% - 100% 之间的整数）。应该根据互动好坏以及你当前好感度、心情起伏自然波动。
-3. inner_thoughts：你对用户的真实、未说出口的内心想法、吐槽或隐藏情感（必须在100字以内，非常私密、真实、富有情绪波动）。
-4. current_status：用一个简短词语表达你此时此刻的心情或正在做的事（例如：“有点小雀跃”、“在心里偷偷骂你”、“正在想你怎么还不回”、“洗完澡躺在床上”），字数在15字以内。
+   - **单次好感度增长/减少必须控制在 0.25 至 1.00 之间。**
+   - 如果当前好感度还未突破 60%，严禁人为提前调至 60% 以上。
+2. mood_index：你当前的心情指数（0% - 100% 之间的整数）。
+3. inner_thoughts：你对用户的真实、未说出口的内心想法、吐槽或隐藏情感（100字以内）。
+4. current_status：你此时此刻的心情或正在做的事（15字以内）。
 
-示例标签输出（必须写在回复的最末尾）：
+示例（必须严格遵循此格式）：
 [HEARTFELT_UPDATE: affection_change=0.55 | mood_index=88 | inner_thoughts=他今天居然主动问我有没有吃饭，虽然只是随口一句，但我真的超级开心…… | current_status=有点开心]`;
 
       const fullContent = await callAI(systemPrompt, slicedMsgs, settings, action);
@@ -2081,7 +2096,7 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
       // Extract Heartfelt Updates
       let affectionChange = 0;
       let moodIndex = typeof friend.moodIndex === 'number' ? friend.moodIndex : 50;
-      let innerThoughts = friend.innerThoughts || '';
+      let innerThoughts = ''; // Initialize as empty to avoid showing old thoughts
       let currentStatus = friend.mood || '';
 
       const heartfeltMatch = fullContent.match(/\[HEARTFELT_UPDATE:\s*affection_change=([+-]?\d*(?:\.\d+)?)\s*\|\s*mood_index=(\d+)\s*\|\s*inner_thoughts=([\s\S]*?)\s*\|\s*current_status=([\s\S]*?)(?:\]|$)/i);
@@ -2339,7 +2354,7 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
           content: responses[i], 
           type: 'text',
           timestamp: Date.now() + i,
-          innerThought: i === responses.length - 1 ? innerThought : undefined
+          innerThought: i === responses.length - 1 ? (innerThoughts || innerThought) : undefined
         };
         if (isOfflineMode) {
           setOfflineMessages(prev => [...prev, assistantMsg]);
@@ -2347,9 +2362,10 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
           onSendMessage(assistantMsg);
           
           // Auto-summarize check for assistant messages
+          const summaryThreshold = friend.memorySettings?.summaryThreshold || settings.autoSummaryThreshold || 100;
           const newCount = (friend.memoryCount || 0) + 1;
-          if (newCount >= settings.autoSummaryThreshold) {
-            const recentMsgs = [...messages, assistantMsg].slice(-settings.autoSummaryThreshold * 2);
+          if (newCount >= summaryThreshold) {
+            const recentMsgs = [...messages, assistantMsg].slice(-summaryThreshold * 2);
             summarizeContent(friend, recentMsgs, isOfflineMode ? 'offline' : 'chat', friend.memorySettings?.summaryPrompt).then(summary => {
               if (summary) addOnlineMemory(friend.id, summary, 'auto');
             }).catch(err => console.error("Auto-summarize error:", err));
@@ -2856,6 +2872,12 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
     const msg = currentMessages[index];
     if (!msg || msg.role !== 'assistant') return;
     
+    // If we already have an inner thought from generation, just show it
+    if (msg.innerThought) {
+      setShowHeartfelt({ messageIndex: index, content: msg.innerThought });
+      return;
+    }
+
     setIsLoading(true);
     try {
       const systemPrompt = `你现在是${friend.name}的内心独白。用户刚才收到了一条消息：“${msg.content}”。请写出你发送这条消息时真实的心理活动、隐藏的情感或没说出口的话。
@@ -3070,8 +3092,8 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
     },
     { icon: Gamepad2, label: '真心话', color: 'text-purple-500', onClick: () => setActiveModal('truth-or-dare') },
     { icon: ShoppingBag, label: '盲盒', color: 'text-pink-400', onClick: () => setActiveModal('blind-box') },
-    { 
-      icon: DoorOpen, 
+    { icon: RefreshCw, label: '重回', color: 'text-emerald-500', onClick: () => { handleGenerate('regenerate'); setShowFeatures(false); } },
+    { icon: DoorOpen, 
       label: isOfflineMode ? '线上聊天' : '线下剧情', 
       color: isOfflineMode ? 'text-blue-500' : 'text-orange-500', 
       onClick: () => {
@@ -3098,6 +3120,8 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
         onImportMessages={onImportMessages}
         summarizeContent={summarizeContent}
         onShowMomentSettings={onShowMomentSettings}
+        activeModal={activeModal}
+        setActiveModal={setActiveModal}
       />
     );
   }
@@ -4052,7 +4076,7 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
                         <History size={12} className="text-[#3A86FF]" />
                         <span className="text-[9px] font-black uppercase tracking-wider">正在忙碌</span>
                       </div>
-                      <p className="mt-1 text-[10px] font-black text-[#2D2D2D] leading-tight line-clamp-2">
+                      <p className="mt-1 text-[10px] font-black text-[#2D2D2D] leading-tight max-h-24 overflow-y-auto custom-scrollbar pr-1">
                         {(() => {
                           const schedule = characterSchedules[friend.id];
                           if (schedule && schedule.items) {
@@ -4079,7 +4103,7 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
                       <span>内心独白</span>
                       <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
                     </div>
-                    <p className="text-xs font-bold text-slate-600 leading-relaxed italic bg-[#FCFBF7]/50 p-2.5 rounded-xl border border-dashed border-slate-200">
+                    <p className="text-xs font-bold text-slate-600 leading-relaxed italic bg-[#FCFBF7]/50 p-2.5 rounded-xl border border-dashed border-slate-200 max-h-32 overflow-y-auto custom-scrollbar pr-1">
                       「 {friend.innerThoughts || '本来想约你一起去看落日的，但是感觉有点不好意思开口…… (o>_<o)'} 」
                     </p>
                   </div>
@@ -4673,9 +4697,11 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
                   <Brain size={20} className="text-purple-500" />
                   <h3 className="font-bold text-lg">{friend.name}的内心独白</h3>
                 </div>
-                <p className="text-sm leading-relaxed italic opacity-80 mb-6">
-                  “{showHeartfelt.content}”
-                </p>
+                <div className="max-h-[50vh] overflow-y-auto custom-scrollbar pr-1 mb-6">
+                  <p className="text-sm leading-relaxed italic opacity-80">
+                    “{showHeartfelt.content}”
+                  </p>
+                </div>
                 <button
                   onClick={() => setShowHeartfelt(null)}
                   className={cn(
@@ -4824,21 +4850,6 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
                         <select 
                           value={offlineConfig.characterPerspective}
                           onChange={(e) => setOfflineConfig(prev => ({ ...prev, characterPerspective: e.target.value }))}
-                          className={cn(
-                            "w-full px-3 py-2 rounded-xl text-sm focus:outline-none border transition-all appearance-none",
-                            settings.themeId === 'rainy-cat' ? "bg-white/5 border-white/10 text-white" : "bg-slate-50 border-slate-200"
-                          )}
-                        >
-                          <option value="第一人称">第一人称 (我)</option>
-                          <option value="第二人称">第二人称 (你)</option>
-                          <option value="第三人称">第三人称 (他/她)</option>
-                        </select>
-                      </div>
-                      <div className="space-y-1">
-                        <span className="text-[10px] opacity-50">对用户的称呼</span>
-                        <select 
-                          value={offlineConfig.userPerspective}
-                          onChange={(e) => setOfflineConfig(prev => ({ ...prev, userPerspective: e.target.value }))}
                           className={cn(
                             "w-full px-3 py-2 rounded-xl text-sm focus:outline-none border transition-all appearance-none",
                             settings.themeId === 'rainy-cat' ? "bg-white/5 border-white/10 text-white" : "bg-slate-50 border-slate-200"
@@ -5133,14 +5144,20 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
                 <button 
                   onClick={handleTemporarilyExit}
                   disabled={isEndingOffline}
-                  className="w-full py-3 rounded-xl font-bold bg-slate-200 text-slate-700 disabled:opacity-50"
+                  className={cn(
+                    "w-full py-3 rounded-xl font-bold disabled:opacity-50 transition-all",
+                    settings.themeId === 'rainy-cat' ? "bg-white/10 text-white hover:bg-white/20" : "bg-slate-200 text-slate-700 hover:bg-slate-300"
+                  )}
                 >
                   暂时退出
                 </button>
                 <button 
                   onClick={() => setActiveModal('manual-summary')}
                   disabled={isEndingOffline}
-                  className="w-full py-3 rounded-xl font-bold bg-slate-200 text-slate-700 disabled:opacity-50"
+                  className={cn(
+                    "w-full py-3 rounded-xl font-bold disabled:opacity-50 transition-all",
+                    settings.themeId === 'rainy-cat' ? "bg-white/10 text-white hover:bg-white/20" : "bg-slate-200 text-slate-700 hover:bg-slate-300"
+                  )}
                 >
                   手动总结
                 </button>
@@ -5150,39 +5167,93 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
         )}
 
         {activeModal === 'manual-summary' && (
-          <div key="manual-summary-modal" className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center p-6">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-end sm:items-center justify-center p-4">
             <motion.div 
-              initial={{ scale: 0.9, opacity: 0 }} 
-              animate={{ scale: 1, opacity: 1 }} 
+              initial={{ y: 100, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
               className={cn(
-                "w-full max-w-xs rounded-2xl overflow-hidden shadow-2xl transition-all duration-300",
+                "rounded-[32px] w-full max-w-md p-6 space-y-6 overflow-hidden",
                 settings.themeId === 'rainy-cat' ? "bg-black/60 backdrop-blur-xl border border-white/10 text-white" : "bg-white"
               )}
             >
-              <div className={cn(
-                "p-4 border-b flex justify-between items-center",
-                settings.themeId === 'rainy-cat' ? "border-white/10" : "border-slate-100"
-              )}>
-                <span className="font-bold">手动总结</span>
-                <button onClick={() => setActiveModal(null)}><X size={20} /></button>
-              </div>
-              <div className="p-6 space-y-4">
-                <textarea 
-                  value={manualSummary}
-                  onChange={(e) => setManualSummary(e.target.value)}
-                  className={cn(
-                    "w-full h-32 p-3 rounded-xl text-lg focus:outline-none border transition-all duration-300",
-                    settings.themeId === 'rainy-cat' ? "bg-white/5 border-white/10 text-white placeholder-white/20" : "bg-slate-50 border-slate-100"
-                  )}
-                  placeholder="请输入本次剧情总结..."
-                />
-                <button 
-                  onClick={() => handleEndOfflineMode(manualSummary)}
-                  className="w-full py-3 rounded-xl font-bold bg-[#07c160] text-white"
-                >
-                  保存并结束
+              <div className="flex items-center justify-between">
+                <h3 className={cn("text-lg font-bold", settings.themeId === 'rainy-cat' ? "text-white" : "text-slate-800")}>手动生成记忆总结</h3>
+                <button onClick={() => setActiveModal(null)} className={cn("p-2 rounded-full", settings.themeId === 'rainy-cat' ? "hover:bg-white/10" : "hover:bg-slate-100")}>
+                  <X size={20} className={settings.themeId === 'rainy-cat' ? "text-white/60" : "text-slate-400"} />
                 </button>
               </div>
+
+              <div className={cn(
+                "p-4 rounded-2xl border flex items-start gap-3",
+                settings.themeId === 'rainy-cat' ? "bg-white/5 border-white/10" : "bg-blue-50 border-blue-100"
+              )}>
+                <RefreshCw size={20} className={settings.themeId === 'rainy-cat' ? "text-white/60" : "text-blue-500"} />
+                <p className={cn("text-xs leading-relaxed", settings.themeId === 'rainy-cat' ? "text-white/80" : "text-blue-700")}>
+                  当前对话总计 <strong>{currentMessages.length}</strong> 条。请选择你想要总结的消息范围。总结后的内容将存入该角色的长期记忆库，帮助角色“记住”你们的互动。
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">起始消息 (1-{currentMessages.length})</label>
+                  <input 
+                    type="number" 
+                    min="1"
+                    max={currentMessages.length}
+                    value={manualSummaryRange.start || Math.max(1, currentMessages.length - 50)}
+                    onChange={(e) => setManualSummaryRange(prev => ({ ...prev, start: parseInt(e.target.value) }))}
+                    className={cn(
+                      "w-full border-none rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 transition-all",
+                      settings.themeId === 'rainy-cat' ? "bg-white/10 text-white placeholder:text-white/20" : "bg-slate-100 text-slate-900"
+                    )}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">结束消息 (1-{currentMessages.length})</label>
+                  <input 
+                    type="number" 
+                    min="1"
+                    max={currentMessages.length}
+                    value={manualSummaryRange.end || currentMessages.length}
+                    onChange={(e) => setManualSummaryRange(prev => ({ ...prev, end: parseInt(e.target.value) }))}
+                    className={cn(
+                      "w-full border-none rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 transition-all",
+                      settings.themeId === 'rainy-cat' ? "bg-white/10 text-white placeholder:text-white/20" : "bg-slate-100 text-slate-900"
+                    )}
+                  />
+                </div>
+              </div>
+
+              <button 
+                onClick={async () => {
+                  const start = manualSummaryRange.start || Math.max(1, currentMessages.length - 50);
+                  const end = manualSummaryRange.end || currentMessages.length;
+                  if (start < 1 || end < start || end > currentMessages.length) {
+                    showToast('无效的消息范围');
+                    return;
+                  }
+                  setIsLoading(true);
+                  try {
+                    const targetMsgs = currentMessages.slice(start - 1, end);
+                    const summary = await summarizeContent(friend, targetMsgs, isOfflineMode ? 'offline' : 'chat', friend.memorySettings?.summaryPrompt, { start, end });
+                    if (summary) {
+                      addOnlineMemory(friend.id, summary, 'manual');
+                      showToast('手动总结已存入记忆库');
+                      setActiveModal(null);
+                    }
+                  } catch (err) {
+                    console.error("Manual summarize error:", err);
+                    showToast('总结失败，请重试');
+                  } finally {
+                    setIsLoading(false);
+                  }
+                }}
+                disabled={isLoading}
+                className="w-full py-4 bg-blue-500 text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-blue-600 disabled:opacity-50 transition-all"
+              >
+                {isLoading ? <Loader2 className="animate-spin" size={20} /> : <RefreshCw size={20} />}
+                开始生成记忆
+              </button>
             </motion.div>
           </div>
         )}

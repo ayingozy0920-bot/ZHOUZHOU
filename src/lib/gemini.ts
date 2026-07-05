@@ -114,15 +114,22 @@ export const getGeminiClient = (settings?: AppSettings) => {
   });
 
   const injectSafetySettings = (req: any) => {
+    const safetySettings = [
+      { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" }
+    ];
+    
+    // Some versions of the SDK/proxies expect it at the top level
+    if (!req.safetySettings) req.safetySettings = safetySettings;
+    
+    // Others expect it inside config
     if (!req.config) req.config = {};
     if (!req.config.safetySettings) {
-      req.config.safetySettings = [
-        { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-        { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
-        { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-        { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" }
-      ];
+      req.config.safetySettings = safetySettings;
     }
+    
     return req;
   };
 
