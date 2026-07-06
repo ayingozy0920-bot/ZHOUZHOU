@@ -69,6 +69,7 @@ import { get } from 'idb-keyval';
 import { CatBubble } from '../Theme/CatElements';
 import { cn } from '../../lib/utils';
 import { speakText, getAvailableVoices } from '../../lib/voice';
+import { apiFetch } from '../../lib/apiHelper';
 
 import MemoryApp from './MemoryApp';
 import { useMemory } from '../../hooks/useMemory';
@@ -1329,25 +1330,18 @@ async function callAI(systemPrompt: string, currentMsgs: ChatMessage[], settings
   }
 
   try {
-    const response = await fetch('/api/chat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    const data = await apiFetch({
+      endpoint: '/api/chat',
+      body: {
         system_prompt: systemPrompt,
         messages: apiMessages,
         settings: {
           ...settings,
           modelName: settings.modelName || "gemini-1.5-flash",
         }
-      })
+      }
     });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-    }
-
-    const data = await response.json();
     return data.text;
   } catch (error: any) {
     console.error("AI call error:", error);
@@ -1985,31 +1979,10 @@ ${offlineConfig.writingStyle ? `回复文风：${offlineConfig.writingStyle}` : 
              2. **人称视角**：在旁白动作描写中，自称必须为“${offlineConfig.characterPerspective}”，对方称呼必须为“${offlineConfig.userPerspective}”。台词对话则保持自然的“我”对“你”。
              3. **格式隔离**：对话必须用“”包裹，旁白严禁包含对话台词。
              4. **媒体禁令**：严禁发送 [SEND_PHOTO_CARD] 或任何类似卡片指令。` : ''}
-           - 多使用语气词（如：呀、啦、欸、嘛、害、哈、呜、嘿嘿、哒、滴）。
-           - 表达要自然，可以有停顿感，甚至可以有极偶尔的、不影响理解的打字小错误（笔误），或者使用拼音缩写（如：yyds, awsl 等，需符合人设）。
-           - 自然地使用表情符号（Emoji），不要过度堆砌，要在合适的情绪点加入。
-           - 严禁长篇大论的解释，严禁工整的排版，严禁客服式的礼貌。
-        3. 对话逻辑：
-           - 你有自己的情绪、偏好和小脾气。你会开心、难过、撒娇、甚至偶尔会因为对方的话而感到无语或生气。
-           - 不要只会被动回答问题。要主动找话题，主动反问，主动分享你“今天”遇到的趣事或心情（即使是虚构的，也要说得像真的一样）。
-           - 能够接梗，能理解幽默和讽刺，会用表情包（在文字中描述或使用Emoji）。
-           - 像真人一样，有时候会秒回，有时候会过一会再回（虽然系统是即时的，但语气上可以体现出“刚才在忙”）。
-        4. 互动细节：
-           - 你的行为必须完全贴合人设：${friend.persona}
-           - 【重要：转账处理】
-             - 如果用户给你转账，你可以根据人设选择“收下”或“拒收”。
-             - 如果选择收下，请在回复中包含指令：[ACCEPT_TRANSFER]
-             - 如果选择拒收，请在回复中包含指令：[REJECT_TRANSFER]
-             - 你必须在回复中体现出你对这笔钱的态度（开心、推辞、生气等）。
-           - 【重要：内心独白】
-             - 为了增加真实感，请在每条回复的最后，用括号包裹一段你的“内心独白”（没说出口的真实想法）。
-             - 格式：(内心：你的真实想法...)
-           - 互动要自然，不要强迫。
-           - 深入理解上下文：结合你们之前的聊天历史、当前的时间、地点、你的日程安排以及你们的关系，给出有深度、有情感的回复。
-           - 真实反应：当用户向你转账时，根据你的人设表现出真实的反应（如：害羞、兴奋、感动、或困扰）。
-           - 如果用户发起通话/语音/位置请求，请根据你的性格自然回应，不要拒绝，而是以符合你性格的方式同意或撒娇/犹豫。
-        5. 指令触发：
-           - 如果你想发起互动，请在回复中包含以下指令（不要包含其他文字）：
+            - 多使用语气助词（啊、呢、嘛、哦、哈等），让语气软和、可爱、傲娇或搞怪，避免任何冷漠和生硬。
+
+         3. 行为指令触发：
+            - 如果你想发起互动，请在回复中包含以下指令（不要包含其他文字）：
              - [ACCEPT_TRANSFER] - 收下转账
              - [REJECT_TRANSFER] - 退回转账
 ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
@@ -2126,7 +2099,10 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
    - 如果当前好感度还未突破 60%，严禁人为提前调至 60% 以上。
 2. mood_index：你当前的心情指数（0% - 100% 之间的整数）。
 3. inner_thoughts：你对用户的真实、未说出口的内心想法、吐槽或隐藏情感（100字以内）。
-   **注意：如果涉及亲密、暧昧或生理冲动的想法，必须使用极其隐晦、唯美、文学化的隐喻表达（如“想和你交换呼吸”、“心跳乱了频率”、“想把你藏进怀里”等），严禁使用任何露骨、直白或违规词汇，以免触发系统安全拦截。**
+   **【⚠️极其重要：超级安全与防拦截规范】**
+   - **绝对严禁**使用任何带有性暗示、情欲描写、生理反应、过于直接的肉体接触或暴露器官等词汇（如任何肉体/生理渴望词、喘息、紧贴、身体发热、占有等）。这些词汇**100%会触发系统底层的敏感内容安全拦截机制**，导致整条回复无法生成！
+   - **请转换成纯爱、可爱、软萌、撒娇、隐晦的文学表达。可以使用极具恋爱感的小碎碎念、娇嗔，以及最单纯甜美的贴贴词语，如：“想给你个熊抱”、“想悄悄拉住你的衣角”、“想亲亲抱抱”、“心里像藏了一罐热乎乎的蜂蜜”、“刚才你靠近时，我的心跳好像漏了一拍……”、“大笨蛋，真的太喜欢你了”。**
+   - 用最甜、最温和、无害、偏向情感和心灵层面的萌系恋爱思维，去表现内心占有欲、害羞、娇羞、期待或偶尔的醋意。
 4. current_status：你此时此刻的心情或正在做的事（15字以内）。
 
 示例（必须严格遵循此格式）：
@@ -2134,15 +2110,41 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
 
       const fullContent = await callAI(systemPrompt, slicedMsgs, settings, action);
 
-      // Extract Heartfelt Updates
+      // Extract Heartfelt Updates (Extremely Robust Multiline & Key-Value Safe Regex Parser)
       let affectionChange = 0;
       let moodIndex = typeof friend.moodIndex === 'number' ? friend.moodIndex : 50;
       let innerThoughts = ''; // Initialize as empty to avoid showing old thoughts
       let currentStatus = friend.mood || '';
 
-      const heartfeltMatch = fullContent.match(/\[HEARTFELT_UPDATE:\s*affection_change=([+-]?\d*(?:\.\d+)?)\s*\|\s*mood_index=(\d+)\s*\|\s*inner_thoughts=([\s\S]*?)\s*\|\s*current_status=([\s\S]*?)(?:\]|$)/i);
-      if (heartfeltMatch) {
-        affectionChange = parseFloat(heartfeltMatch[1]) || 0;
+      const blockMatch = fullContent.match(/\[HEARTFELT_UPDATE:[\s\S]*?\]/i) || fullContent.match(/\[HEARTFELT_UPDATE:[\s\S]*$/i);
+      let parsedSuccessfully = false;
+
+      if (blockMatch) {
+        const blockContent = blockMatch[0];
+        parsedSuccessfully = true;
+
+        // Extract affection_change
+        const affMatch = blockContent.match(/affection_change\s*=\s*([+-]?\d*(?:\.\d+)?)/i);
+        if (affMatch) affectionChange = parseFloat(affMatch[1]) || 0;
+
+        // Extract mood_index
+        const moodMatch = blockContent.match(/mood_index\s*=\s*(\d+)/i);
+        if (moodMatch) moodIndex = parseInt(moodMatch[1]) || 50;
+
+        // Extract inner_thoughts
+        const thoughtsMatch = blockContent.match(/inner_thoughts\s*=\s*([\s\S]*?)(?=\s*\||\s*\]|$)/i);
+        if (thoughtsMatch) {
+          innerThoughts = thoughtsMatch[1].trim().replace(/^["'「「『『\(（「\s]+|["'」」』』\)）」\s]+$/g, '');
+        }
+
+        // Extract current_status
+        const statusMatch = blockContent.match(/current_status\s*=\s*([\s\S]*?)(?=\s*\||\s*\]|$)/i);
+        if (statusMatch) {
+          currentStatus = statusMatch[1].trim().replace(/^["'「「『『\(（「\s]+|["'」」』』\)）」\s]+$/g, '');
+        }
+      }
+
+      if (parsedSuccessfully) {
         // Limit change to [-1, 1] per rules to prevent hallucinated extreme jumps
         if (affectionChange > 1) affectionChange = 1;
         if (affectionChange < -1) affectionChange = -1;
@@ -2151,12 +2153,8 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
           affectionChange = affectionChange > 0 ? 0.25 : -0.25;
         }
 
-        moodIndex = parseInt(heartfeltMatch[2]) || 50;
         if (moodIndex < 0) moodIndex = 0;
         if (moodIndex > 100) moodIndex = 100;
-
-        innerThoughts = heartfeltMatch[3].trim().substring(0, 100);
-        currentStatus = heartfeltMatch[4].trim().substring(0, 15);
 
         // Calculate new total affection
         const oldAffection = typeof friend.affection === 'number' ? friend.affection : getInitialAffection(friend, settings);
@@ -2168,12 +2166,29 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
           newAffection = 60;
         }
 
+        // Generate fallback cute thoughts if innerThoughts is empty to keep cards lively
+        if (!innerThoughts) {
+          const fallbacks = [
+            "刚才的消息……我是不是回得太快了？他会不会觉得我很在乎啊……真是的。(*/ω＼*)",
+            "唔……想抱抱，但是不能说出口，要矜持！",
+            "不知道你现在在做什么呢，好想一直在你身边呀……",
+            "偷偷看着聊天界面，打字删删改改了好多次，哼，才不让你看出来呢！",
+            "哼哼，刚才那一瞬间，心里甜滋滋的，就像喝了草莓奶昔一样~",
+            "你这个人真是的，总是能轻易让我心跳加速……",
+            "想变成你口袋里的小猫咪，天天跟着你，喵~",
+            "好想现在就飞奔过去，扑进你怀里，跟你撒个娇嘛。(o>_<o)",
+            "你对我是不是也有一点点心动呢？哪怕只有一点点……",
+            "哪怕只是看着你的名字，都觉得今天是个大晴天！"
+          ];
+          innerThoughts = fallbacks[Math.floor(Math.random() * fallbacks.length)];
+        }
+
         // Save back to friend state
         onUpdateFriend({
           affection: newAffection,
           moodIndex,
-          innerThoughts,
-          mood: currentStatus
+          innerThoughts: innerThoughts || friend.innerThoughts,
+          mood: currentStatus || friend.mood
         });
       } else {
         // Failsafe if the AI didn't output it: small random positive change if positive message, or 0
@@ -2184,8 +2199,25 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
         if (!isUnlocking60Plus && newAffection > 60) {
           newAffection = 60;
         }
+
+        const fallbacks = [
+          "刚才的消息……我是不是回得太快了？他会不会觉得我很在乎啊……真是的。(*/ω＼*)",
+          "唔……想抱抱，但是不能说出口，要矜持！",
+          "不知道你现在在做什么呢，好想一直在你身边呀……",
+          "偷偷看着聊天界面，打字删删改改了好多次，哼，才不让你看出来呢！",
+          "哼哼，刚才那一瞬间，心里甜滋滋的，也就是喝了草莓奶昔一样~",
+          "你这个人真是的，总是能轻易让我心跳加速……",
+          "想变成你口袋里的小猫咪，天天跟着你，喵~",
+          "好想现在就飞奔过去，扑进你怀里，跟你撒个娇嘛。(o>_<o)",
+          "你对我是一点点心动呢，还是很多很多的心动？",
+          "心里好甜……只要能和你聊天，不管说什么都很开心！"
+        ];
+        const fbThoughts = fallbacks[Math.floor(Math.random() * fallbacks.length)];
+
         onUpdateFriend({
-          affection: newAffection
+          affection: newAffection,
+          innerThoughts: fbThoughts,
+          mood: "期待贴贴"
         });
       }
 
@@ -2219,30 +2251,24 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
           
           // Real image generation if enabled
           if (settings.imageGenEnabled && settings.imageGenApiKey) {
-            fetch('/api/image-gen', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
+            apiFetch({
+              endpoint: '/api/image-gen',
+              body: {
                 prompt: cardContent,
                 settings: settings
-              })
-            }).then(async res => {
-              if (res.ok) {
-                const data = await res.json();
-                const mediaUrl = data.url || (data.b64 ? `data:image/png;base64,${data.b64}` : null);
-                if (mediaUrl) {
-                  onSendMessage({
-                    role: 'assistant',
-                    content: cardContent,
-                    type: 'image',
-                    mediaUrl: mediaUrl,
-                    timestamp: Date.now()
-                  });
-                } else {
-                  onSendMessage(photoMsg); // Fallback to card if no url
-                }
+              }
+            }).then(data => {
+              const mediaUrl = data.url || (data.b64 ? `data:image/png;base64,${data.b64}` : null);
+              if (mediaUrl) {
+                onSendMessage({
+                  role: 'assistant',
+                  content: cardContent,
+                  type: 'image',
+                  mediaUrl: mediaUrl,
+                  timestamp: Date.now()
+                });
               } else {
-                onSendMessage(photoMsg); // Fallback to card on error
+                onSendMessage(photoMsg); // Fallback to card if no url
               }
             }).catch(() => {
               onSendMessage(photoMsg); // Fallback to card on fetch error

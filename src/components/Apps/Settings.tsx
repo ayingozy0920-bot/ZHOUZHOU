@@ -6,6 +6,7 @@ import { get, set } from 'idb-keyval';
 import { motion, AnimatePresence } from 'motion/react';
 import PasswordLockScreen from '../PasswordLockScreen';
 import ApiConsole from './ApiConsole';
+import { apiFetch } from '../../lib/apiHelper';
 
 export default function SettingsApp({ 
   settings, 
@@ -56,16 +57,13 @@ export default function SettingsApp({
     if (!form.imageGenApiKey) return showToast('请输入 API Key', 'error');
     setIsFetchingImageModels(true);
     try {
-      const response = await fetch('/api/image-models', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const data = await apiFetch({
+        endpoint: '/api/image-models',
+        body: {
           baseUrl: form.imageGenBaseUrl,
           apiKey: form.imageGenApiKey
-        })
+        }
       });
-      if (!response.ok) throw new Error('拉取失败');
-      const data = await response.json();
       if (data.data) {
         const models = data.data
           .filter((m: any) => m.id.toLowerCase().includes('dall') || m.id.toLowerCase().includes('flux') || m.id.toLowerCase().includes('stable') || m.id.toLowerCase().includes('image'))
@@ -85,21 +83,14 @@ export default function SettingsApp({
     setIsTestingImage(true);
     setTestImageUrl(null);
     try {
-      const response = await fetch('/api/image-gen', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const data = await apiFetch({
+        endpoint: '/api/image-gen',
+        body: {
           prompt: testPrompt,
           settings: form
-        })
+        }
       });
 
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || `HTTP ${response.status}`);
-      }
-
-      const data = await response.json();
       if (data.url) {
         setTestImageUrl(data.url);
         showToast('✅ 图片生成成功！');
@@ -119,21 +110,14 @@ export default function SettingsApp({
     if (!form.minimaxApiKey) return showToast('请输入 API Key', 'error');
     setIsTestingTts(true);
     try {
-      const response = await fetch('/api/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const data = await apiFetch({
+        endpoint: '/api/tts',
+        body: {
           text: '你好，这是一段测试语音。',
           settings: form
-        })
+        }
       });
 
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || `HTTP ${response.status}`);
-      }
-
-      const data = await response.json();
       if (data.audio) {
         const audio = new Audio(`data:audio/mp3;base64,${data.audio}`);
         audio.play();
@@ -149,7 +133,7 @@ export default function SettingsApp({
 
   const fetchModels = async () => {
     setIsTestingConnection(true);
-    setApiLog('开始连接 API 获取模型列表 (通过后端代理)...\n');
+    setApiLog('开始连接 API 获取模型列表 (通过后端代理/直接连接)...\n');
     try {
       const apiKey = form.apiKey || process.env.GEMINI_API_KEY;
       if (!apiKey) {
@@ -158,21 +142,14 @@ export default function SettingsApp({
         return;
       }
       
-      const response = await fetch('/api/models', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const data = await apiFetch({
+        endpoint: '/api/models',
+        body: {
           baseUrl: form.baseUrl,
           apiKey: apiKey
-        })
+        }
       });
 
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || `HTTP ${response.status}`);
-      }
-
-      const data = await response.json();
       setApiLog(prev => prev + `✅ 响应成功\n`);
       
       if (data.models || Array.isArray(data.data) || Array.isArray(data)) {
@@ -198,7 +175,7 @@ export default function SettingsApp({
   const testConnection = async () => {
     if (!form.modelName) return showToast('请先选择一个模型再进行测试', 'error');
     setIsTestingConnection(true);
-    setApiLog('开始测试模型对话能力 (通过后端代理)...\n');
+    setApiLog('开始测试模型对话能力 (通过后端代理/直接连接)...\n');
     try {
       const apiKey = form.apiKey || process.env.GEMINI_API_KEY;
       if (!apiKey) {
@@ -210,10 +187,9 @@ export default function SettingsApp({
       const model = form.modelName;
       setApiLog(prev => prev + `使用模型 ${model} 进行测试...\n`);
       
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const data = await apiFetch({
+        endpoint: '/api/chat',
+        body: {
           system_prompt: 'You are a helpful assistant.',
           messages: [
             { 
@@ -226,15 +202,9 @@ export default function SettingsApp({
             ...form,
             modelName: model
           }
-        })
+        }
       });
 
-      if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error || `HTTP ${response.status}`);
-      }
-
-      const data = await response.json();
       setApiLog(prev => prev + `收到回复：${data.text}\n✅ 测试通过！\n`);
       showToast('✅ 链接成功！该配置已通过测试。');
       

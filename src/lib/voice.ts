@@ -1,4 +1,5 @@
 import { AppSettings } from '../types';
+import { apiFetch } from './apiHelper';
 
 export const getAvailableVoices = (): SpeechSynthesisVoice[] => {
   if (typeof window === 'undefined' || !window.speechSynthesis) return [];
@@ -21,26 +22,19 @@ export const speakText = async (text: string, voiceId?: string, voiceType?: 'gem
   // Try MiniMax if enabled or voiceType is minimax
   if ((settings?.minimaxEnabled || voiceType === 'minimax') && settings?.minimaxApiKey) {
     try {
-      const response = await fetch('/api/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+      const data = await apiFetch({
+        endpoint: '/api/tts',
+        body: {
           text,
           voiceId: voiceId || settings.minimaxVoiceId,
           settings
-        })
+        }
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        if (data.audio) {
-          const audio = new Audio(`data:audio/mp3;base64,${data.audio}`);
-          audio.play().catch(err => console.error("Audio autoplay failed or blocked:", err));
-          return;
-        }
-      } else {
-        const err = await response.json();
-        console.error("MiniMax TTS proxy error:", err.error);
+      if (data.audio) {
+        const audio = new Audio(`data:audio/mp3;base64,${data.audio}`);
+        audio.play().catch(err => console.error("Audio autoplay failed or blocked:", err));
+        return;
       }
     } catch (err) {
       console.error("MiniMax TTS fetch error:", err);
