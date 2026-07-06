@@ -714,7 +714,7 @@ export default function ParallelUniverseApp({ settings, onBack }: {
   const [stickerList, setStickerList] = useState<StickerItem[]>([]);
   
   useEffect(() => {
-    get('custom-stickers-parallel').then(stored => {
+    get('custom-stickers-parallel').catch(err => console.error("IDB get error:", err)).then(stored => {
       if (stored) {
         const migrated = (stored as any[]).map(item => {
           if (typeof item === 'string') return { url: item, name: '表情' };
@@ -738,7 +738,7 @@ export default function ParallelUniverseApp({ settings, onBack }: {
   const [shareGroupMemory, setShareGroupMemory] = useState(false);
 
   useEffect(() => {
-    get('parallel-settings').then(stored => {
+    get('parallel-settings').catch(err => console.error("IDB get error:", err)).then(stored => {
       if (stored) {
         const s = stored as any;
         if (s.enableActions !== undefined) setEnableActions(s.enableActions);

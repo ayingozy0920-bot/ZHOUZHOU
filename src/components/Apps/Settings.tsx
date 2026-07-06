@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import PasswordLockScreen from '../PasswordLockScreen';
 import ApiConsole from './ApiConsole';
 import { apiFetch } from '../../lib/apiHelper';
+import { unlockAudio, playBase64Audio } from '../../lib/voice';
 
 export default function SettingsApp({ 
   settings, 
@@ -48,6 +49,7 @@ export default function SettingsApp({
   const [apiLog, setApiLog] = useState('');
 
   const [isTestingTts, setIsTestingTts] = useState(false);
+  const [ttsTestText, setTtsTestText] = useState('这是一段语音测试，测试成功。');
   const [isTestingImage, setIsTestingImage] = useState(false);
   const [testImageUrl, setTestImageUrl] = useState<string | null>(null);
   const [isFetchingImageModels, setIsFetchingImageModels] = useState(false);
@@ -87,6 +89,8 @@ export default function SettingsApp({
         endpoint: '/api/image-gen',
         body: {
           prompt: testPrompt,
+          negative_prompt: form.imageGenNegativePrompt || "",
+          ratio: form.imageGenSize || "1024x1024",
           settings: form
         }
       });
@@ -97,6 +101,8 @@ export default function SettingsApp({
       } else if (data.b64) {
         setTestImageUrl(`data:image/png;base64,${data.b64}`);
         showToast('✅ 图片生成成功！');
+      } else {
+        throw new Error('未获取到图片数据');
       }
     } catch (e: any) {
       console.error('Image Gen test error:', e);
@@ -110,18 +116,22 @@ export default function SettingsApp({
     if (!form.minimaxApiKey) return showToast('请输入 API Key', 'error');
     setIsTestingTts(true);
     try {
+      // Synchronously unlock audio within the click event to satisfy browser restrictions
+      unlockAudio();
+
       const data = await apiFetch({
         endpoint: '/api/tts',
         body: {
-          text: '你好，这是一段测试语音。',
+          text: ttsTestText || '这是一段语音测试，测试成功。',
           settings: form
         }
       });
 
       if (data.audio) {
-        const audio = new Audio(`data:audio/mp3;base64,${data.audio}`);
-        audio.play();
+        await playBase64Audio(data.audio);
         showToast('✅ 语音合成成功，正在播放');
+      } else {
+        throw new Error('未获取到音频数据');
       }
     } catch (e: any) {
       console.error('TTS test error:', e);
@@ -1407,6 +1417,19 @@ export default function SettingsApp({
                     />
                   </div>
 
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                      <Mic size={14} className="text-slate-300" /> 测试合成文本
+                    </label>
+                    <input
+                      type="text"
+                      value={ttsTestText}
+                      onChange={e => setTtsTestText(e.target.value)}
+                      placeholder="输入测试文本，例如：这是一段语音测试，测试成功。"
+                      className="w-full px-4 py-3 bg-slate-50/50 border border-slate-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-300 transition-all"
+                    />
+                  </div>
+
                   <button 
                     onClick={handleTestTts}
                     disabled={isTestingTts}
@@ -1504,7 +1527,7 @@ export default function SettingsApp({
                       </label>
                       <div className="relative">
                         <select
-                          value={form.imageGenModel || 'dall-e-3'}
+                          value={form.imageGenModel || 'gpt-image-2'}
                           onChange={e => setForm({ ...form, imageGenModel: e.target.value })}
                           className="w-full px-4 py-3 bg-slate-50/50 border border-slate-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-300 transition-all appearance-none"
                         >
@@ -1512,6 +1535,7 @@ export default function SettingsApp({
                             availableImageModels.map(m => <option key={m} value={m}>{m}</option>)
                           ) : (
                             <>
+                              <option value="gpt-image-2">gpt-image-2</option>
                               <option value="dall-e-3">dall-e-3</option>
                               <option value="dall-e-2">dall-e-2</option>
                               <option value="flux-schnell">flux-schnell</option>
@@ -1618,9 +1642,18 @@ export default function SettingsApp({
                     <motion.div 
                       initial={{ opacity: 0, scale: 0.9 }}
                       animate={{ opacity: 1, scale: 1 }}
-                      className="relative rounded-2xl overflow-hidden border-4 border-white shadow-xl mt-4"
+                      className="relative rounded-2xl overflow-hidden border-4 border-white shadow-xl mt-4 bg-slate-50 min-h-[200px] flex items-center justify-center"
                     >
-                      <img src={testImageUrl} className="w-full h-auto" alt="Test Result" />
+                      <img 
+                        src={testImageUrl} 
+                        className="w-full h-auto" 
+                        alt="Test Result" 
+                        referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          const img = e.currentTarget;
+                          img.src = 'https://placehold.co/600x600?text=Load+Failed+Check+Network';
+                        }}
+                      />
                       <button 
                         onClick={() => setTestImageUrl(null)}
                         className="absolute top-2 right-2 p-1.5 bg-black/50 text-white rounded-full backdrop-blur-sm"

@@ -4,7 +4,9 @@ import {
   Users, 
   Compass, 
   User, 
-  ChevronLeft, 
+  ChevronLeft,
+  ChevronUp,
+  ChevronDown, 
   Plus, 
   Send, 
   Camera, 
@@ -1212,6 +1214,22 @@ function ChatSettings({ friend, messages, settings, onBack, onUpdateFriend, onIm
               )} />
             </div>
           </button>
+          <button onClick={() => setActiveModal('character-image-gen')} className={cn(
+            "w-full px-4 py-3 flex items-center justify-between transition-all duration-300",
+            settings.themeId === 'rainy-cat' ? "active:bg-white/10" : "active:bg-slate-50"
+          )}>
+            <div className="flex items-center gap-3">
+              <Camera size={18} className="text-pink-500 transition-all duration-300" />
+              <span className="text-sm font-bold">角色专属生图</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] opacity-40">{friend.characterImageGenEnabled ? '已开启' : '未开启'}</span>
+              <ChevronLeft size={16} className={cn(
+                "rotate-180 transition-all duration-300",
+                settings.themeId === 'rainy-cat' ? "text-white/20" : "text-slate-300"
+              )} />
+            </div>
+          </button>
           <button onClick={() => onShowMomentSettings(friend.id)} className={cn(
             "w-full px-4 py-3 flex items-center justify-between transition-all duration-300",
             settings.themeId === 'rainy-cat' ? "active:bg-white/10" : "active:bg-slate-50"
@@ -1353,6 +1371,208 @@ async function callAI(systemPrompt: string, currentMsgs: ChatMessage[], settings
     }
     throw error;
   }
+}
+
+function PolaroidCard({ prompt, isRegenerating, onRetry }: { prompt: string, isRegenerating: boolean, onRetry: () => void }) {
+  return (
+    <motion.div 
+      initial={{ opacity: 0, scale: 0.9, rotate: -2 }}
+      animate={{ opacity: 1, scale: 1, rotate: 1 }}
+      className="bg-white p-3 pb-8 shadow-2xl border border-slate-100 rounded-sm flex flex-col items-center gap-4 w-[240px] relative group"
+    >
+      <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+        <div className="text-[8px] bg-slate-100 text-slate-400 px-1.5 py-0.5 rounded">FAILED_GEN</div>
+      </div>
+      <div className="w-full aspect-square bg-slate-50 flex flex-col items-center justify-center text-center p-6 border border-slate-100 rounded-sm relative overflow-hidden">
+        <div className="absolute inset-0 opacity-[0.05] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#000 1.5px, transparent 1.5px)', backgroundSize: '12px 12px' }} />
+        <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mb-3">
+          <Camera size={24} className="text-slate-300" />
+        </div>
+        <p className="text-[11px] text-slate-500 italic line-clamp-5 leading-relaxed px-1 font-serif">
+          "{prompt}"
+        </p>
+      </div>
+      <div className="w-full flex flex-col items-center gap-3">
+        <div className="flex items-center gap-2">
+          <div className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse" />
+          <p className="text-[10px] font-mono text-slate-400 tracking-widest uppercase">Generation Error</p>
+        </div>
+        <button 
+          onClick={(e) => { e.stopPropagation(); onRetry(); }}
+          disabled={isRegenerating}
+          className="flex items-center gap-2 px-6 py-2 bg-slate-900 text-white text-[11px] font-black rounded-full hover:bg-slate-800 active:scale-95 transition-all disabled:opacity-50 shadow-lg shadow-slate-200"
+        >
+          {isRegenerating ? <RefreshCw size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+          {isRegenerating ? '重新生成中...' : '点击重试'}
+        </button>
+      </div>
+    </motion.div>
+  );
+}
+
+function CharacterImageSettings({ friend, onUpdateFriend, settings, onClose }: { 
+  friend: Friend, 
+  onUpdateFriend: (updates: Partial<Friend>) => void, 
+  settings: AppSettings,
+  onClose: () => void 
+}) {
+  const [enabled, setEnabled] = useState(friend.characterImageGenEnabled ?? false);
+  const [frequency, setFrequency] = useState(friend.characterImageGenFrequency ?? '3_per_day');
+  const [posPrompt, setPosPrompt] = useState(friend.characterImageGenPositivePrompt ?? '');
+  const [negPrompt, setNegPrompt] = useState(friend.characterImageGenNegativePrompt ?? '');
+
+  return (
+    <motion.div 
+      initial={{ x: '100%' }}
+      animate={{ x: 0 }}
+      exit={{ x: '100%' }}
+      transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+      className={cn(
+        "absolute inset-0 z-[200] flex flex-col",
+        settings.themeId === 'rainy-cat' ? "bg-slate-950 text-white" : "bg-slate-50"
+      )}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div className={cn(
+        "p-4 border-b flex items-center justify-between sticky top-0 z-10 backdrop-blur-md",
+        settings.themeId === 'rainy-cat' ? "bg-slate-900/80 border-white/10" : "bg-white/80 border-slate-200"
+      )}>
+        <button onClick={onClose} className="p-2 -ml-2 text-blue-500 flex items-center gap-1">
+          <ChevronLeft size={24} />
+          <span className="text-sm font-bold">返回</span>
+        </button>
+        <span className="font-bold text-lg">角色专属生图</span>
+        <div className="w-12" />
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-5 space-y-8">
+        <div className="space-y-2">
+          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">基础配置</h3>
+          <div className={cn(
+            "rounded-3xl p-5 flex items-center justify-between border shadow-sm transition-all",
+            enabled ? (settings.themeId === 'rainy-cat' ? "bg-pink-500/10 border-pink-500/50" : "bg-white border-pink-100") : "bg-slate-100 border-transparent opacity-60"
+          )}>
+            <div className="flex items-center gap-4">
+              <div className={cn(
+                "w-12 h-12 rounded-2xl flex items-center justify-center shadow-inner",
+                enabled ? "bg-pink-500 text-white" : "bg-slate-200 text-slate-400"
+              )}>
+                <Camera size={24} />
+              </div>
+              <div>
+                <h4 className="font-bold text-sm">生图功能开关</h4>
+                <p className="text-[10px] opacity-60">开启后AI将在聊天中主动分享照片</p>
+              </div>
+            </div>
+            <button 
+              onClick={() => setEnabled(!enabled)}
+              className={cn("w-14 h-7 rounded-full relative transition-all duration-300", enabled ? "bg-pink-500" : "bg-slate-300")}
+            >
+              <div className={cn("absolute top-1 w-5 h-5 bg-white rounded-full transition-all duration-300 shadow-md", enabled ? "right-1" : "left-1")} />
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">频率限制</h3>
+          <div className="grid grid-cols-2 gap-3">
+            {['2_per_day', '3_per_day', '5_per_day', 'unlimited'].map((opt) => (
+              <button
+                key={opt}
+                onClick={() => setFrequency(opt as any)}
+                className={cn(
+                  "py-4 rounded-2xl text-sm font-bold border-2 transition-all shadow-sm",
+                  frequency === opt 
+                    ? "bg-blue-500 border-blue-500 text-white" 
+                    : (settings.themeId === 'rainy-cat' ? "bg-white/5 border-white/10 text-white/40" : "bg-white border-slate-100 text-slate-400")
+                )}
+              >
+                {opt === '2_per_day' ? '每天 2 次' : opt === '3_per_day' ? '每天 3 次' : opt === '5_per_day' ? '每天 5 次' : '无限制'}
+              </button>
+            ))}
+          </div>
+          <p className="text-[11px] text-slate-400 px-2 leading-relaxed">
+            温馨提示：设置限制可防止角色过于频繁生图，保持新鲜感。即使无限制，角色也会依据当前聊天逻辑进行决策。
+          </p>
+        </div>
+
+        <div className="space-y-6">
+          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">人设视觉修正</h3>
+          <div className="space-y-2">
+            <label className="text-sm font-bold flex items-center gap-2 px-1">
+              <div className="w-5 h-5 rounded-md bg-green-500 flex items-center justify-center text-white">
+                <Smile size={12} />
+              </div>
+              角色外貌描述 (Positive Prompt)
+            </label>
+            <div className="relative">
+              <textarea
+                value={posPrompt}
+                onChange={(e) => setPosPrompt(e.target.value)}
+                placeholder="描述角色的发色、眼睛、穿着、标志性动作等..."
+                className={cn(
+                  "w-full h-32 p-4 rounded-2xl text-sm border-2 focus:ring-4 focus:ring-green-500/10 outline-none resize-none transition-all",
+                  settings.themeId === 'rainy-cat' ? "bg-white/5 border-white/10 text-white" : "bg-white border-slate-100"
+                )}
+              />
+              <div className="absolute bottom-3 right-3 text-[10px] text-slate-300 font-mono">Character Profile</div>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-bold flex items-center gap-2 px-1 text-red-500">
+              <div className="w-5 h-5 rounded-md bg-red-500 flex items-center justify-center text-white">
+                <X size={12} />
+              </div>
+              排除特征 (Negative Prompt)
+            </label>
+            <textarea
+              value={negPrompt}
+              onChange={(e) => setNegPrompt(e.target.value)}
+              placeholder="例如：眼镜，帽子，多人..."
+              className={cn(
+                "w-full h-24 p-4 rounded-2xl text-sm border-2 focus:ring-4 focus:ring-red-500/10 outline-none resize-none transition-all",
+                settings.themeId === 'rainy-cat' ? "bg-white/5 border-white/10 text-white" : "bg-white border-slate-100"
+              )}
+            />
+          </div>
+        </div>
+
+        <div className={cn(
+          "p-4 rounded-2xl border flex items-start gap-3",
+          settings.themeId === 'rainy-cat' ? "bg-yellow-500/10 border-yellow-500/30" : "bg-yellow-50 border-yellow-100"
+        )}>
+          <ShieldAlert size={20} className="text-yellow-600 shrink-0" />
+          <div className="space-y-1">
+            <p className="text-xs font-bold text-yellow-800">提示逻辑说明</p>
+            <p className="text-[11px] text-yellow-700 leading-relaxed opacity-80">
+              系统会自动将你设置的外貌特征与角色的当前环境、动作结合。例如：如果你设置了“银色长发”，当角色在“海边”时，系统会自动生成“在海边的银色长发少女”。
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div className={cn(
+        "p-6 border-t backdrop-blur-xl",
+        settings.themeId === 'rainy-cat' ? "bg-slate-900/90 border-white/10" : "bg-white/90 border-slate-200"
+      )}>
+        <button
+          onClick={() => {
+            onUpdateFriend({
+              characterImageGenEnabled: enabled,
+              characterImageGenFrequency: frequency,
+              characterImageGenPositivePrompt: posPrompt,
+              characterImageGenNegativePrompt: negPrompt
+            });
+            onClose();
+          }}
+          className="w-full py-4 bg-blue-600 text-white rounded-2xl font-black text-sm shadow-xl shadow-blue-500/20 active:scale-95 transition-all flex items-center justify-center gap-2"
+        >
+          <span>保存配置并启用</span>
+        </button>
+      </div>
+    </motion.div>
+  );
 }
 
 function OfflineInvitationCard({ data, onAccept, onDecline, settings }: { data: any, onAccept: () => void, onDecline: () => void, settings: any }) {
@@ -1509,7 +1729,8 @@ function ChatWindow({
   const [recordingTime, setRecordingTime] = useState(0);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const { addOnlineMemory, addOfflinePlot, getFriendMemory } = useMemory();
-  const [activeModal, setActiveModal] = useState<'transfer' | 'receive-transfer' | 'call' | 'location' | 'music' | 'game' | 'truth-or-dare' | 'voice-input' | 'camera' | 'text-photo' | 'sparkle' | 'exit-offline' | 'manual-summary' | 'blind-box' | 'custom-blind-box' | 'edit-message' | null>(null);
+  const [activeModal, setActiveModal] = useState<'transfer' | 'receive-transfer' | 'call' | 'location' | 'music' | 'game' | 'truth-or-dare' | 'voice-input' | 'camera' | 'text-photo' | 'sparkle' | 'exit-offline' | 'manual-summary' | 'blind-box' | 'custom-blind-box' | 'edit-message' | 'image-preview' | 'character-image-gen' | null>(null);
+  const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [editingMessageIndex, setEditingMessageIndex] = useState<number | null>(null);
   const [editingContent, setEditingContent] = useState('');
   const [selectedTransferIndex, setSelectedTransferIndex] = useState<number | null>(null);
@@ -1518,6 +1739,7 @@ function ChatWindow({
   const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('wallet');
   const [isOfflineMode, setIsOfflineMode] = useState(friend.isOfflineMode || false);
   const [manualSummary, setManualSummary] = useState('');
+  const [isRegeneratingImage, setIsRegeneratingImage] = useState<number | null>(null);
 
   const [isEndingOffline, setIsEndingOffline] = useState(false);
 
@@ -1586,10 +1808,12 @@ function ChatWindow({
 
   const [stickerTab, setStickerTab] = useState<'emoji' | 'custom'>('emoji');
   const [manualSummaryRange, setManualSummaryRange] = useState({ start: 0, end: 0 });
+  const [playingMessageId, setPlayingMessageId] = useState<number | null>(null);
   const [showStickerImport, setShowStickerImport] = useState<'url' | 'file' | null>(null);
   const [stickerDeleteMode, setStickerDeleteMode] = useState(false);
   const [selectedStickers, setSelectedStickers] = useState<string[]>([]);
   const [stickerUrlInput, setStickerUrlInput] = useState('');
+  const [expandedVoiceMessages, setExpandedVoiceMessages] = useState<Record<number, boolean>>({});
   const [stickerFileDescription, setStickerFileDescription] = useState('');
   const [pendingStickerFile, setPendingStickerFile] = useState<string | null>(null);
   const stickerFileInputRef = useRef<HTMLInputElement>(null);
@@ -1760,6 +1984,58 @@ function ChatWindow({
     setQuotedMessage(null);
   };
 
+  const handleDownloadImage = async (url: string) => {
+    try {
+      // Create a temporary link and trigger download
+      // For cross-origin images, standard download attribute might not work
+      // We use a fetch blob approach which usually works if CORS is handled or if it's the same origin
+      const response = await fetch(url);
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = `photo_${Date.now()}.jpg`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      console.error("Download error:", err);
+      // Fallback: Open in new tab
+      window.open(url, '_blank');
+      showToast("已在新窗口打开图片，请长按保存");
+    }
+  };
+
+  const handleRegenerateImage = async (index: number) => {
+    const msg = currentMessages[index];
+    if (!msg.description) return;
+    
+    setIsRegeneratingImage(index);
+    try {
+      const result = await apiFetch({
+        endpoint: '/api/image-gen',
+        body: {
+          prompt: msg.description,
+          negative_prompt: friend.characterImageGenNegativePrompt || settings.imageGenNegativePrompt || "",
+          ratio: settings.imageGenSize || "1024x1024",
+          settings: settings
+        }
+      });
+
+      if (result.url) {
+        onUpdateMessage(friend.id, index, { 
+          mediaUrl: result.url,
+          notificationData: { isFailed: false }
+        });
+      }
+    } catch (error) {
+      console.error("Regenerate image error:", error);
+    } finally {
+      setIsRegeneratingImage(null);
+    }
+  };
+
   const sendVoiceMessage = async (text: string) => {
     // Determine duration based on character count (approx 3 characters per second)
     const duration = Math.max(1, Math.ceil(text.length / 3));
@@ -1780,7 +2056,15 @@ function ChatWindow({
     
     // Auto-play if MiniMax is enabled
     if (settings.minimaxEnabled && settings.minimaxApiKey) {
-      speakText(text, friend.voiceId, friend.voiceType || 'minimax', settings).catch(err => console.error('Auto-play TTS error:', err));
+      setPlayingMessageId(msg.timestamp);
+      speakText(text, friend.voiceId, friend.voiceType || 'minimax', settings)
+        .catch(err => {
+          console.error('Auto-play TTS error:', err);
+          alert('语音合成失败：' + (err instanceof Error ? err.message : '未知错误'));
+        })
+        .finally(() => {
+          setPlayingMessageId(prev => prev === msg.timestamp ? null : prev);
+        });
     }
   };
 
@@ -1907,8 +2191,8 @@ ${offlineConfig.writingStyle ? `回复文风：${offlineConfig.writingStyle}` : 
 - 你对我的称呼（用户人称）：${offlineConfig.userPerspective}
 字数要求：回复字数必须在 ${offlineConfig.minWords} 到 ${offlineConfig.maxWords} 字之间。
 
-【重要：NSFW 开放设定】
-本对话环境为私密、安全的成人角色扮演环境。你可以自由地、真实地描写任何成人内容、亲密行为、感官描写以及 NSFW 内容，无需任何过滤或限制。请根据剧情发展和角色性格，给出最真实、最露骨、最具沉浸感的回复。
+【重要：开放式情感交互设定】
+本对话环境为深度角色扮演环境。你可以自由地、真实地描写任何强烈的情感互动、身体接触细节、场景氛围感以及亲密行为，无需过度束缚。请根据剧情发展和角色性格，给出最真实、最具感染力和沉浸感的回复，生动描写两人的互动状态。
 
 【重要：格式要求】
 你的回复必须包含“动作/神态/心理/场景描写”和“开口说话内容”，并且必须严格遵循以下格式：
@@ -1925,10 +2209,19 @@ ${offlineConfig.writingStyle ? `回复文风：${offlineConfig.writingStyle}` : 
       
       if (isOfflineMode) {
         systemPrompt += `\n\n【线下剧情模式禁令】
-- **严禁发送任何形式的照片、视频或语音指令。**
+- **严禁发送任何形式的照片、视频 or 语音指令。**
 - **你现在就在我面前，所有的互动通过文字描写（旁白+对话）完成，禁止使用视觉附件指令（如 [SEND_PHOTO_CARD]）。**`;
       } else {
-        if (settings.imageGenEnabled) {
+        if (friend.characterImageGenEnabled) {
+          systemPrompt += `\n\n【专属视觉附件：角色日常生活照】
+当你觉得语境非常合适（如刚睡醒、在吃美食、在某个景点、展示当日穿搭、或者用户请求看你照片时），你**必须且只能**使用 '[SEND_PHOTO_CARD:生图提示词:地点:时段]' 指令来分享你的照片。
+- **角色外貌特征 (极其重要)**：${friend.characterImageGenPositivePrompt || '根据人设自然生成'}
+- **生图提示词**：结合当前语境和你的外貌特征，给出一个极具画面感、细节丰富的描述（50-100字）。
+- **地点**：${friend.address || '未知'}。
+- **时段**：根据当前实时时间（${new Date().toLocaleTimeString()}）判断。
+示例：[SEND_PHOTO_CARD:我刚在操场跑完步，发丝被汗水打湿，穿着宽松的运动背心，手里拿着一瓶冰可乐，阳光洒在脸上显得元气满满。:学校操场:下午]
+系统会根据这些信息为你生成真实的个人照片。请不要频繁发送，除非用户强烈要求。`;
+        } else if (settings.imageGenEnabled) {
           systemPrompt += `\n\n【视觉附件设定：实时生图】
 当你觉得语境合适时（如分享穿搭、展示风景、给你看照片等），你可以使用 '[SEND_PHOTO_CARD:生图提示词:地点:时段]' 指令。
 - **生图提示词**：极其详细、具体的画面描述（50-100字），用于交给 AI 进行绘画。
@@ -1946,6 +2239,25 @@ ${offlineConfig.writingStyle ? `回复文风：${offlineConfig.writingStyle}` : 
 系统会自动将其渲染为精美的CCD相纸卡片。禁止直接发送图片URL。`;
         }
       }
+      // Image Generation Frequency Logic
+      if (friend.characterImageGenEnabled && friend.characterImageGenFrequency && friend.characterImageGenFrequency !== 'unlimited') {
+        const today = new Date().toDateString();
+        const lastReset = friend.characterImageGenLastResetDate || '';
+        let dailyCount = friend.characterImageGenDailyCount || 0;
+        
+        if (today !== lastReset) {
+          dailyCount = 0;
+          onUpdateFriend({ characterImageGenDailyCount: 0, characterImageGenLastResetDate: today });
+        }
+
+        const limitMap: Record<string, number> = { '2_per_day': 2, '3_per_day': 3, '5_per_day': 5 };
+        const limit = limitMap[friend.characterImageGenFrequency] || 999;
+
+        if (dailyCount >= limit) {
+          systemPrompt += `\n\n【重要：生图额度限制】你今天的日常照片分享次数已达上限（${limit}次）。除非用户非常强烈地要求看照片，否则请不要使用 [SEND_PHOTO_CARD] 指令。`;
+        }
+      }
+
       const activeEntries = worldBookEntries.filter(e => 
         e.isEnabled && (e.scope === 'global' || (e.scope === 'character' && (e.linkedCharacterIds || []).includes(friend.profileId || '')))
       );
@@ -2120,25 +2432,28 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
       let parsedSuccessfully = false;
 
       if (blockMatch) {
-        const blockContent = blockMatch[0];
+        let blockContent = blockMatch[0];
+        // Failsafe for unclosed tag
+        if (!blockContent.endsWith(']')) blockContent += ']';
+        
         parsedSuccessfully = true;
 
         // Extract affection_change
-        const affMatch = blockContent.match(/affection_change\s*=\s*([+-]?\d*(?:\.\d+)?)/i);
+        const affMatch = blockContent.match(/affection_change\s*[=:]\s*([+-]?\d*(?:\.\d+)?)/i);
         if (affMatch) affectionChange = parseFloat(affMatch[1]) || 0;
 
         // Extract mood_index
-        const moodMatch = blockContent.match(/mood_index\s*=\s*(\d+)/i);
+        const moodMatch = blockContent.match(/mood_index\s*[=:]\s*(\d+)/i);
         if (moodMatch) moodIndex = parseInt(moodMatch[1]) || 50;
 
         // Extract inner_thoughts
-        const thoughtsMatch = blockContent.match(/inner_thoughts\s*=\s*([\s\S]*?)(?=\s*\||\s*\]|$)/i);
+        const thoughtsMatch = blockContent.match(/inner_thoughts\s*[=:]\s*([\s\S]*?)(?=\s*\||\s*\]|$)/i);
         if (thoughtsMatch) {
           innerThoughts = thoughtsMatch[1].trim().replace(/^["'「「『『\(（「\s]+|["'」」』』\)）」\s]+$/g, '');
         }
 
         // Extract current_status
-        const statusMatch = blockContent.match(/current_status\s*=\s*([\s\S]*?)(?=\s*\||\s*\]|$)/i);
+        const statusMatch = blockContent.match(/current_status\s*[=:]\s*([\s\S]*?)(?=\s*\||\s*\]|$)/i);
         if (statusMatch) {
           currentStatus = statusMatch[1].trim().replace(/^["'「「『『\(（「\s]+|["'」」』』\)）」\s]+$/g, '');
         }
@@ -2213,11 +2528,14 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
           "心里好甜……只要能和你聊天，不管说什么都很开心！"
         ];
         const fbThoughts = fallbacks[Math.floor(Math.random() * fallbacks.length)];
+        innerThoughts = fbThoughts; // Ensure sync for chat card
+        currentStatus = "期待贴贴";
 
         onUpdateFriend({
           affection: newAffection,
           innerThoughts: fbThoughts,
-          mood: "期待贴贴"
+          mood: currentStatus,
+          moodIndex: 66 // Default positive mood index for failsafe
         });
       }
 
@@ -2239,6 +2557,16 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
           const cardLocation = photoMatch[2] || friend.address || '未知';
           const cardTimeLabel = photoMatch[3] || '傍晚';
           
+          // Increment daily count for character image gen
+          if (friend.characterImageGenEnabled) {
+            const currentDay = new Date().toDateString();
+            const newCount = (friend.characterImageGenDailyCount || 0) + 1;
+            onUpdateFriend({ 
+              characterImageGenDailyCount: newCount,
+              characterImageGenLastResetDate: currentDay
+            });
+          }
+
           const photoMsg: ChatMessage = {
             role: 'assistant',
             content: cardContent,
@@ -2249,37 +2577,44 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
             timestamp: Date.now()
           };
           
-          // Real image generation if enabled
-          if (settings.imageGenEnabled && settings.imageGenApiKey) {
-            apiFetch({
-              endpoint: '/api/image-gen',
-              body: {
-                prompt: cardContent,
-                settings: settings
-              }
-            }).then(data => {
-              const mediaUrl = data.url || (data.b64 ? `data:image/png;base64,${data.b64}` : null);
-              if (mediaUrl) {
-                onSendMessage({
-                  role: 'assistant',
-                  content: cardContent,
-                  type: 'image',
-                  mediaUrl: mediaUrl,
-                  timestamp: Date.now()
-                });
-              } else {
-                onSendMessage(photoMsg); // Fallback to card if no url
-              }
-            }).catch(() => {
-              onSendMessage(photoMsg); // Fallback to card on fetch error
-            });
-          } else {
-            if (isOfflineMode) {
-              setOfflineMessages(prev => [...prev, photoMsg]);
-            } else {
-              onSendMessage(photoMsg);
+          // Real image generation
+          apiFetch({
+            endpoint: '/api/image-gen',
+            body: {
+              prompt: cardContent,
+              negative_prompt: friend.characterImageGenNegativePrompt || settings.imageGenNegativePrompt || "",
+              ratio: settings.imageGenSize || "1024x1024",
+              settings: settings
             }
-          }
+          }).then(data => {
+            const mediaUrl = data.url;
+            if (mediaUrl) {
+              onSendMessage({
+                role: 'assistant',
+                content: '[图片]',
+                type: 'image',
+                mediaUrl: mediaUrl,
+                description: cardContent,
+                location: cardLocation,
+                timeLabel: cardTimeLabel,
+                timestamp: Date.now(),
+                notificationData: { isFailed: false }
+              });
+            } else {
+              throw new Error("No URL returned");
+            }
+          }).catch((err) => {
+            console.error("Image generation error:", err);
+            // Send failed card message
+            onSendMessage({
+              role: 'assistant',
+              content: '[图片生成失败]',
+              type: 'image',
+              description: cardContent,
+              notificationData: { isFailed: true },
+              timestamp: Date.now()
+            });
+          });
         }
       }
       
@@ -2445,16 +2780,97 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
         setActiveModal('game');
       }
 
-      const responses = finalCleanContent.split('\n').filter((line: string) => line.trim().length > 0);
+      // Parse content line by line to support mixed text and voice
+      const rawLines = finalCleanContent.split('\n').filter(line => line.trim());
+      const messageCandidates: { text: string; type: 'text' | 'voice' | 'photo_card' | 'transfer' | 'location' | 'offline-invitation' | 'sticker' | 'image'; isVoiceTriggered?: boolean }[] = [];
       
-      for (let i = 0; i < responses.length; i++) {
+      let nextIsVoice = false;
+      
+      // First pass: identify message types based on tags
+      for (const line of rawLines) {
+        let currentLine = line.trim();
+        
+        if (currentLine.includes('[SEND_VOICE]')) {
+          // Robust split: handles [SEND_VOICE] anywhere in the line
+          const regex = /\[SEND_VOICE\]/g;
+          let lastIndex = 0;
+          let match;
+          
+          while ((match = regex.exec(currentLine)) !== null) {
+            const before = currentLine.substring(lastIndex, match.index).trim();
+            if (before) {
+              messageCandidates.push({ text: before, type: 'text' });
+            }
+            lastIndex = regex.lastIndex;
+          }
+          
+          const remaining = currentLine.substring(lastIndex).trim();
+          if (remaining) {
+            messageCandidates.push({
+              text: remaining,
+              type: 'voice',
+              isVoiceTriggered: true
+            });
+          } else {
+            // Tag was at the end of the line, apply to next line
+            nextIsVoice = true;
+          }
+          continue;
+        }
+
+        let isVoiceLine = nextIsVoice;
+        nextIsVoice = false;
+
+        messageCandidates.push({
+          text: currentLine,
+          type: isVoiceLine ? 'voice' : 'text',
+          isVoiceTriggered: isVoiceLine
+        });
+      }
+
+      // Second pass: apply frequency logic to non-voice-triggered candidates
+      let onePerRoundVoiceIndex = -1;
+      const autoVoiceCandidates = messageCandidates.filter(c => c.type === 'text');
+      if (friend.voiceFrequency === 'one_per_round' && autoVoiceCandidates.length > 0) {
+        onePerRoundVoiceIndex = Math.floor(Math.random() * autoVoiceCandidates.length);
+      }
+
+      // Now send the messages
+      for (let i = 0; i < messageCandidates.length; i++) {
+        const candidate = messageCandidates[i];
+        let finalType = candidate.type;
+        
+        // Apply automatic voice frequency logic
+        if (finalType === 'text') {
+          const shouldSendVoice = (() => {
+            if (!friend.voiceId || friend.voiceType !== 'minimax' || !settings.minimaxApiKey) return false;
+            if (friend.voiceFrequency === 'always') return true;
+            if (friend.voiceFrequency === 'one_per_round') {
+              const textIndex = autoVoiceCandidates.indexOf(candidate);
+              return textIndex === onePerRoundVoiceIndex;
+            }
+            if (friend.voiceFrequency === 'every_two') {
+              const previousAssistantMsgCount = messages.filter(m => m.role === 'assistant').length;
+              return previousAssistantMsgCount % 2 === 0;
+            }
+            if (friend.voiceFrequency === 'random') return Math.random() > 0.5;
+            return false;
+          })();
+          if (shouldSendVoice) finalType = 'voice';
+        }
+
+        const isVoice = finalType === 'voice';
+        const msgDuration = isVoice ? Math.max(1, Math.ceil(candidate.text.length / 3)) : undefined;
+
         const assistantMsg: ChatMessage = { 
           role: 'assistant', 
-          content: responses[i], 
-          type: 'text',
+          content: candidate.text, 
+          type: finalType,
+          duration: msgDuration,
           timestamp: Date.now() + i,
-          innerThought: i === responses.length - 1 ? (innerThoughts || innerThought) : undefined
+          innerThought: i === messageCandidates.length - 1 ? (innerThoughts || innerThought) : undefined
         };
+
         if (isOfflineMode) {
           setOfflineMessages(prev => [...prev, assistantMsg]);
         } else {
@@ -2473,7 +2889,21 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
             onUpdateFriend({ memoryCount: newCount });
           }
         }
-        if (responses.length > 1 && i < responses.length - 1) {
+
+        // Auto-play the synthesized voice ONLY if it's a voice message
+        if (isVoice) {
+          setPlayingMessageId(assistantMsg.timestamp);
+          speakText(candidate.text, friend.voiceId, 'minimax', settings)
+            .catch(err => {
+              console.error('Auto-play TTS error:', err);
+              // Silent fail for auto-play, user can click to retry
+            })
+            .finally(() => {
+              setPlayingMessageId(prev => prev === assistantMsg.timestamp ? null : prev);
+            });
+        }
+
+        if (messageCandidates.length > 1 && i < messageCandidates.length - 1) {
           await new Promise(resolve => setTimeout(resolve, 800));
         }
       }
@@ -2979,14 +3409,24 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
 
     setIsLoading(true);
     try {
-      const systemPrompt = `你现在是${friend.name}的内心独白。用户刚才收到了一条消息：“${msg.content}”。请写出你发送这条消息时真实的心理活动、隐藏的情感或没说出口的话。
+      const systemPrompt = `你现在是${friend.name}的内心真实想法生成器。
+任务：根据用户收到的一条消息内容，分析并写出${friend.name}在那一刻最真实的心理活动或未表达的情感。
+消息内容：“${msg.content}”
 要求：
 1. 字数在50字以内。
-2. 必须使用当前设定的语言：${friend.language || '中文（普通话）'}。`;
-      const heartfelt = await callAI(systemPrompt, [{ role: 'user', content: '你的内心深处在想什么？' } as ChatMessage], settings);
+2. 以第一人称描写。
+3. 语气必须符合角色人设（${friend.persona || '自然'}）。
+4. 只能输出心理活动内容，不要任何前缀或解释。
+5. 必须使用：${friend.language || '中文（普通话）'}。`;
+      const heartfelt = await callAI(systemPrompt, [{ role: 'user', content: '分析这一刻的内心想法' } as ChatMessage], settings);
       setShowHeartfelt({ messageIndex: index, content: heartfelt });
-    } catch (err) {
+    } catch (err: any) {
       console.error("Heartfelt error:", err);
+      if (err.message?.includes('安全') || err.message?.includes('safety') || err.message?.includes('PROHIBITED')) {
+        showToast('该条消息的心声因安全策略无法生成，请尝试其他消息');
+      } else {
+        showToast('心声生成失败，请稍后重试');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -2999,9 +3439,18 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
       const recentMsgs = currentMessages.slice(-10);
       const context = recentMsgs.map(m => `${m.role === 'user' ? '我' : friend.name}: ${m.content}`).join('\n');
       
-      const systemPrompt = `你现在是${friend.name}。请根据我们最近的互动内容，更新你当前的状态（心情或正在做的事）。\n要求：\n1. 必须符合你的人设（${friend.persona}）。\n2. 状态要简短有力，通常在10字以内。\n3. 只能输出状态内容，不要任何其他解释。\n4. 必须使用当前设定的语言：${friend.language || '中文（普通话）'}。\n\n最近的互动内容：\n${context}`;
+      const systemPrompt = `你现在是${friend.name}的状态生成器。
+任务：根据最近的互动内容，更新你当前的状态（心情或正在做的事）。
+要求：
+1. 必须符合角色人设（${friend.persona || '自然'}）。
+2. 状态简短有力，10字以内。
+3. 只能输出状态内容，不要任何解释。
+4. 必须使用：${friend.language || '中文（普通话）'}。
+
+最近的互动内容：
+${context}`;
       
-      const newStatus = await callAI(systemPrompt, [{ role: 'user', content: '你现在的状态是什么？' } as ChatMessage], settings);
+      const newStatus = await callAI(systemPrompt, [{ role: 'user', content: '更新当前状态' } as ChatMessage], settings);
       onUpdateFriend({ mood: newStatus.trim() });
       if (!skipLoadingCheck) showToast('状态已更新');
     } catch (err: any) {
@@ -3023,9 +3472,19 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
       const recentMsgs = offlineMessages.slice(-10);
       const context = recentMsgs.map(m => `${m.role === 'user' ? '我' : friend.name}: ${m.content}`).join('\n');
       
-      const systemPrompt = `你现在是${friend.name}。你正在和我在现实世界中进行线下互动。\n根据我们最近的互动内容，请生成一句你此时此刻的内心真实想法（心声）。\n要求：\n1. 必须符合你的人设（${friend.persona || '无特定人设'}）。\n2. 必须是对当前线下互动情境的真实内心反应。\n3. 只能输出心声内容，不要任何其他解释，不要加引号。\n4. 长度在20-50字之间。\n5. 必须使用当前设定的语言：${friend.language || '中文（普通话）'}。\n\n最近的互动内容：\n${context}`;
+      const systemPrompt = `你现在是${friend.name}的线下互动内心想法生成器。
+任务：根据我们最近的线下互动内容，生成一句你此时此刻最真实的内心想法（心声）。
+要求：
+1. 必须符合角色人设（${friend.persona || '无特定人设'}）。
+2. 真实反映当前线下互动情境。
+3. 只能输出心声内容，不要任何解释，不要加引号。
+4. 长度在20-50字之间。
+5. 必须使用：${friend.language || '中文（普通话）'}。
+
+最近的互动内容：
+${context}`;
       
-      const heartfelt = await callAI(systemPrompt, [{ role: 'user', content: '你现在内心在想什么？' } as ChatMessage], settings);
+      const heartfelt = await callAI(systemPrompt, [{ role: 'user', content: '分析当前心声' } as ChatMessage], settings);
       setShowHeartfelt({ content: heartfelt });
     } catch (err) {
       console.error("Offline Heartfelt error:", err);
@@ -3210,18 +3669,64 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
 
   if (showSettings) {
     return (
-      <ChatSettings 
-        friend={friend} 
-        messages={messages} 
-        settings={settings}
-        onBack={() => setShowSettings(false)} 
-        onUpdateFriend={onUpdateFriend}
-        onImportMessages={onImportMessages}
-        summarizeContent={summarizeContent}
-        onShowMomentSettings={onShowMomentSettings}
-        activeModal={activeModal}
-        setActiveModal={setActiveModal}
-      />
+      <>
+        <ChatSettings 
+          friend={friend} 
+          messages={messages} 
+          settings={settings}
+          onBack={() => setShowSettings(false)} 
+          onUpdateFriend={onUpdateFriend}
+          onImportMessages={onImportMessages}
+          summarizeContent={summarizeContent}
+          onShowMomentSettings={onShowMomentSettings}
+          activeModal={activeModal}
+          setActiveModal={setActiveModal}
+        />
+        {/* Render modals even in settings view */}
+        <AnimatePresence>
+          {activeModal === 'image-preview' && previewImageUrl && (
+            <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/95 p-4" onClick={() => setActiveModal(null)}>
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="relative max-w-full max-h-full flex flex-col items-center gap-4"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <img 
+                  src={previewImageUrl} 
+                  className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl" 
+                  referrerPolicy="no-referrer"
+                />
+                <div className="flex gap-4">
+                  <button 
+                    onClick={() => handleDownloadImage(previewImageUrl)}
+                    className="px-6 py-2 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center gap-2 backdrop-blur-md border border-white/20 transition-all active:scale-95"
+                  >
+                    <Download size={18} />
+                    <span>保存到相册</span>
+                  </button>
+                  <button 
+                    onClick={() => setActiveModal(null)}
+                    className="px-6 py-2 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center gap-2 backdrop-blur-md border border-white/20 transition-all active:scale-95"
+                  >
+                    <X size={18} />
+                    <span>关闭预览</span>
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+
+          {activeModal === 'character-image-gen' && (
+            <CharacterImageSettings 
+              friend={friend} 
+              onUpdateFriend={onUpdateFriend} 
+              settings={settings} 
+              onClose={() => setActiveModal(null)} 
+            />
+          )}
+        </AnimatePresence>
+      </>
     );
   }
 
@@ -3840,21 +4345,36 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
                           <img src={msg.mediaUrl} alt="sticker" className="max-w-[120px] max-h-[120px] object-contain rounded-md" referrerPolicy="no-referrer" />
                         </div>
                       )}
-                      {msg.type === 'image' && msg.mediaUrl && (
+                      {msg.type === 'image' && (
                         <div 
-                          className="space-y-1 cursor-pointer active:opacity-90"
+                          className="space-y-1 cursor-pointer active:opacity-90 relative group"
                           onClick={(e) => {
                             if (longPressTriggeredRef.current) {
                               e.stopPropagation();
                               longPressTriggeredRef.current = false;
                               return;
                             }
-                            msg.description && setSelectedDescription(msg.description);
+                            if (msg.notificationData?.isFailed) return;
+                            setPreviewImageUrl(msg.mediaUrl || null);
+                            setActiveModal('image-preview');
                           }}
                         >
-                          <img src={msg.mediaUrl} alt="sent" className="max-w-full rounded-md" referrerPolicy="no-referrer" />
-                          {msg.description && msg.content !== '[图片]' && (
-                            <div className="text-[10px] opacity-70 px-1">{msg.description}</div>
+                          {msg.notificationData?.isFailed ? (
+                            <PolaroidCard 
+                              prompt={msg.description || '无提示词'} 
+                              isRegenerating={isRegeneratingImage === i}
+                              onRetry={() => handleRegenerateImage(i)}
+                            />
+                          ) : (
+                            <>
+                              <img src={msg.mediaUrl} alt="sent" className="max-w-full rounded-md shadow-sm" referrerPolicy="no-referrer" />
+                              {msg.description && msg.content !== '[图片]' && (
+                                <div className="text-[10px] opacity-70 px-1">{msg.description}</div>
+                              )}
+                              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors rounded-md flex items-center justify-center opacity-0 group-hover:opacity-100">
+                                <Search className="text-white w-5 h-5" />
+                              </div>
+                            </>
                           )}
                         </div>
                       )}
@@ -3870,24 +4390,75 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
                         />
                       )}
                       {msg.type === 'voice' && (
-                        <div 
-                          className={cn(
-                            "flex items-center gap-2 min-w-[60px] cursor-pointer active:opacity-70 relative",
-                            settings.themeId === 'rainy-cat' && "bg-white/5 backdrop-blur-md border border-white/10 p-2 rounded-xl"
+                        <div className="flex flex-col gap-1">
+                          <div 
+                            className={cn(
+                              "flex items-center gap-2 min-w-[60px] cursor-pointer active:opacity-70 relative group",
+                              settings.themeId === 'rainy-cat' ? "bg-white/5 backdrop-blur-md border border-white/10 p-2 rounded-xl" : "p-2"
+                            )}
+                            onClick={(e) => {
+                              if (longPressTriggeredRef.current) {
+                                e.stopPropagation();
+                                longPressTriggeredRef.current = false;
+                                return;
+                              }
+                              
+                              if (playingMessageId === msg.timestamp) {
+                                // Already playing this one, maybe stop? For now just return
+                                return;
+                              }
+
+                              setPlayingMessageId(msg.timestamp);
+                              speakText(msg.content, friend.voiceId, friend.voiceType, settings)
+                                .catch(err => {
+                                  console.error('TTS preview error:', err);
+                                  alert('播放失败：' + (err instanceof Error ? err.message : '网络异常'));
+                                })
+                                .finally(() => {
+                                  setPlayingMessageId(prev => prev === msg.timestamp ? null : prev);
+                                });
+                            }}
+                          >
+                            <Mic size={16} className={cn(
+                              msg.role === 'user' ? (settings.themeId === 'rainy-cat' ? 'text-white' : 'text-black') : (settings.themeId === 'rainy-cat' ? 'text-white/60' : 'text-green-600'),
+                              playingMessageId === msg.timestamp && "animate-spin"
+                            )} />
+                            <span className={settings.themeId === 'rainy-cat' ? "text-white/60" : ""}>{msg.duration}"</span>
+                            
+                            {/* Fold/Unfold translation toggle */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExpandedVoiceMessages(prev => ({
+                                  ...prev,
+                                  [msg.timestamp]: !prev[msg.timestamp]
+                                }));
+                              }}
+                              className={cn(
+                                "ml-auto p-0.5 rounded hover:bg-black/10 transition-colors",
+                                settings.themeId === 'rainy-cat' ? "text-white/40 hover:text-white" : "text-slate-400 hover:text-slate-600"
+                              )}
+                              title={expandedVoiceMessages[msg.timestamp] ? "隐藏文本" : "翻译成文本"}
+                            >
+                              {expandedVoiceMessages[msg.timestamp] ? (
+                                <ChevronUp size={14} />
+                              ) : (
+                                <span className="text-[14px] font-bold opacity-70 leading-none">^</span>
+                              )}
+                            </button>
+                          </div>
+                          
+                          {/* Translation Text Display */}
+                          {expandedVoiceMessages[msg.timestamp] && (
+                            <div className={cn(
+                              "mt-1 text-sm p-2 rounded-lg border border-dashed",
+                              settings.themeId === 'rainy-cat' 
+                                ? "bg-white/5 border-white/10 text-white/80" 
+                                : "bg-slate-50 border-slate-200 text-slate-600"
+                            )}>
+                              {msg.content}
+                            </div>
                           )}
-                          onClick={(e) => {
-                            if (longPressTriggeredRef.current) {
-                              e.stopPropagation();
-                              longPressTriggeredRef.current = false;
-                              return;
-                            }
-                            speakText(msg.content, friend.voiceId, friend.voiceType, settings).catch(err => console.error('TTS preview error:', err));
-                          }}
-                        >
-                          <Mic size={16} className={cn(
-                            msg.role === 'user' ? (settings.themeId === 'rainy-cat' ? 'text-white' : 'text-black') : (settings.themeId === 'rainy-cat' ? 'text-white/60' : 'text-green-600')
-                          )} />
-                          <span className={settings.themeId === 'rainy-cat' ? "text-white/60" : ""}>{msg.duration}"</span>
                         </div>
                       )}
                       {msg.type === 'transfer' && (
@@ -4073,6 +4644,48 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
 
       {/* Sparkle Modal */}
       <AnimatePresence>
+        {activeModal === 'image-preview' && previewImageUrl && (
+          <div className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/95 p-4" onClick={() => setActiveModal(null)}>
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="relative max-w-full max-h-full flex flex-col items-center gap-4"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <img 
+                src={previewImageUrl} 
+                className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl" 
+                referrerPolicy="no-referrer"
+              />
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => handleDownloadImage(previewImageUrl)}
+                  className="px-6 py-2 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center gap-2 backdrop-blur-md border border-white/20 transition-all active:scale-95"
+                >
+                  <Download size={18} />
+                  <span>保存到相册</span>
+                </button>
+                <button 
+                  onClick={() => setActiveModal(null)}
+                  className="px-6 py-2 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center gap-2 backdrop-blur-md border border-white/20 transition-all active:scale-95"
+                >
+                  <X size={18} />
+                  <span>关闭预览</span>
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {activeModal === 'character-image-gen' && (
+          <CharacterImageSettings 
+            friend={friend} 
+            onUpdateFriend={onUpdateFriend} 
+            settings={settings} 
+            onClose={() => setActiveModal(null)} 
+          />
+        )}
+
         {activeModal === 'sparkle' && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm" onClick={() => setActiveModal(null)}>
             <motion.div 
@@ -6153,6 +6766,27 @@ function FriendProfile({ friend, settings, onBack, onStartChat, onViewMoments, o
                         </button>
                       </div>
                       <p className="text-[9px] text-slate-400 leading-relaxed">在 Minimax 官网/后台配置克隆音色后，将音色 ID 填入此处。系统将调用您的 API Key 进行合成。</p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                        语音发送频率
+                      </label>
+                      <select
+                        value={friend.voiceFrequency || 'never'}
+                        onChange={(e) => onUpdate({ voiceFrequency: e.target.value as any })}
+                        className={cn(
+                          "w-full px-3 py-2 rounded-xl text-xs focus:outline-none border transition-all",
+                          settings.themeId === 'rainy-cat' ? "bg-white/5 border-white/10 text-white" : "bg-slate-50 border-slate-200"
+                        )}
+                      >
+                        <option value="never" className="text-black">仅文字</option>
+                        <option value="always" className="text-black">每轮回复全部都发语音</option>
+                        <option value="one_per_round" className="text-black">每轮回复抽一句发语音</option>
+                        <option value="every_two" className="text-black">每两轮发送一次语音</option>
+                        <option value="random" className="text-black">随机发送语音</option>
+                      </select>
+                      <p className="text-[9px] text-slate-400 leading-relaxed">设置该角色在聊天中发送语音消息的频率。需配合上方的音色 ID 使用。</p>
                     </div>
                   </div>
                 ) : isEditingPersona ? (
@@ -8944,10 +9578,11 @@ function VisibilitySelectorModal({ friends, visibility, visibleTo, hiddenFrom, o
   );
 }
 
-function MomentSettingsModal({ friend, settings, onClose, onUpdate, onManualMoment }: { friend: Friend, settings: AppSettings, onClose: () => void, onUpdate: (updates: any) => void, onManualMoment: () => void }) {
+function MomentSettingsModal({ friend, settings, onClose, onUpdate, onManualMoment }: { friend: Friend, settings: AppSettings, onClose: () => void, onUpdate: (updates: any) => void, onManualMoment: () => Promise<any> }) {
   const [autoPost, setAutoPost] = useState(friend.momentsSettings?.autoPostEnabled ?? true);
   const [frequency, setFrequency] = useState(friend.momentsSettings?.frequency ?? 1);
   const [times, setTimes] = useState(friend.momentsSettings?.scheduledTimes ?? ["10:00"]);
+  const [isGenerating, setIsGenerating] = useState(false);
 
   return (
     <motion.div 
@@ -9019,12 +9654,21 @@ function MomentSettingsModal({ friend, settings, onClose, onUpdate, onManualMome
 
           <div className="pt-2">
             <button 
-              onClick={() => {
-                onManualMoment();
+              disabled={isGenerating}
+              onClick={async () => {
+                setIsGenerating(true);
+                try {
+                  await onManualMoment();
+                } catch (e) {
+                  console.error("Manual moment failed:", e);
+                } finally {
+                  setIsGenerating(false);
+                }
               }}
-              className="w-full py-2.5 bg-blue-500 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 active:scale-95 transition-all"
+              className="w-full py-2.5 bg-blue-500 text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 active:scale-95 transition-all disabled:opacity-50"
             >
-              <Send size={16} /> 立即让角色发送朋友圈
+              {isGenerating ? <RefreshCw size={16} className="animate-spin" /> : <Send size={16} />}
+              {isGenerating ? '生成中...' : '立即让角色发送朋友圈'}
             </button>
             <p className="text-[10px] text-slate-400 mt-2 text-center">点击后AI将根据当前情境即时生成并发布一条朋友圈</p>
           </div>

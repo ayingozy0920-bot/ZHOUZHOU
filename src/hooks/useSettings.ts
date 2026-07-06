@@ -51,7 +51,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   imageGenEnabled: false,
   imageGenApiKey: '',
   imageGenBaseUrl: '',
-  imageGenModel: 'dall-e-3',
+  imageGenModel: 'gpt-image-2',
   imageGenSize: '1024x1024',
   imageGenQuality: 'standard',
   imageGenPositivePrompt: 'high quality, detailed, photorealistic',

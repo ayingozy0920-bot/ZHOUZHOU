@@ -1,10 +1,46 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+interface Log {
+  type: string;
+  status: number | 'error';
+  url: string;
+  timestamp: string;
+  error?: string;
+  model?: string;
+}
+
+const apiLogs: Log[] = [];
+
+function logToFile(message: string) {
+  try {
+    const time = new Date().toISOString();
+    fs.appendFileSync(path.join(process.cwd(), "debug.log"), `[${time}] ${message}\n`);
+  } catch (e) {
+    console.error("Failed to write log to file:", e);
+  }
+}
+
+function addApiLog(type: string, status: number | 'error', url: string, error?: string, model?: string) {
+  apiLogs.unshift({
+    type,
+    status,
+    url,
+    timestamp: new Date().toISOString(),
+    error,
+    model
+  });
+  if (apiLogs.length > 50) {
+    apiLogs.pop();
+  }
+  logToFile(`API Log - Type: ${type}, Status: ${status}, URL: ${url}, Error: ${error || 'None'}`);
+}
 
 async function startServer() {
   const app = express();
@@ -64,36 +100,44 @@ async function startServer() {
         if (v1Match) baseUrl = v1Match[1];
       }
 
-      const client = new GoogleGenAI({ 
-        apiKey: apiKey || '',
-        ...(baseUrl ? { baseUrl } : {})
-      });
-
+      // Initialize with @google/generative-ai
+      const genAI = new GoogleGenerativeAI(apiKey || '');
+      
       const safetySettings = [
         { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
         { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
         { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-        { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" }
+        { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+        { category: "HARM_CATEGORY_CIVIC_INTEGRITY", threshold: "BLOCK_NONE" }
       ];
 
-      const response = await client.models.generateContent({
+      const genModel = genAI.getGenerativeModel({ 
         model: settings.modelName || "gemini-1.5-flash",
+        systemInstruction: system_prompt,
+        safetySettings: safetySettings as any,
+        generationConfig: {
+          temperature: settings.temperature || 0.7,
+          maxOutputTokens: settings.maxTokens || 2048,
+        }
+      });
+
+      const response = await genModel.generateContent({
         contents: messages.map((m: any) => ({
           role: m.role === 'assistant' ? 'model' : 'user',
-          parts: m.parts
-        })),
-        config: {
-          systemInstruction: system_prompt,
-          temperature: settings.temperature || 0.7,
-          maxOutputTokens: settings.maxTokens || 2000,
-          safetySettings
-        }
-      } as any);
+          parts: [{ text: m.parts?.[0]?.text || m.content || '' }]
+        }))
+      });
 
-      res.json({ text: response.text });
+      const result = await response.response;
+      const text = result.text();
+      res.json({ text });
 
     } catch (error: any) {
       console.error("Server AI error:", error);
+      // Log safety block details if available
+      if (error.response?.promptFeedback) {
+        logToFile(`Prompt blocked: ${JSON.stringify(error.response.promptFeedback)}`);
+      }
       res.status(500).json({ error: error.message });
     }
   });
@@ -103,6 +147,10 @@ async function startServer() {
       status: "ok", 
       time: new Date().toISOString()
     });
+  });
+
+  app.get("/api/logs", (req, res) => {
+    res.json(apiLogs);
   });
 
   app.post("/api/models", async (req, res) => {
@@ -167,20 +215,84 @@ async function startServer() {
     }
   });
 
+  function extractAudioFromResponseServer(textResponse: string): string {
+    try {
+      const data = JSON.parse(textResponse);
+      if (data.data?.audio) {
+        return data.data.audio;
+      }
+      if (data.audio) {
+        return data.audio;
+      }
+    } catch (e) {}
+
+    const base64Chunks: string[] = [];
+    const lines = textResponse.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed) continue;
+
+      let jsonStr = trimmed;
+      if (trimmed.startsWith('data:')) {
+        jsonStr = trimmed.substring(5).trim();
+      }
+
+      if (jsonStr === '[DONE]' || !jsonStr) continue;
+
+      try {
+        const parsed = JSON.parse(jsonStr);
+        const audioChunk = parsed.data?.audio || parsed.audio || parsed.data?.data?.audio;
+        if (audioChunk) {
+          base64Chunks.push(audioChunk);
+        }
+      } catch (e) {}
+    }
+
+    if (base64Chunks.length === 0) {
+      throw new Error("No audio data found in TTS response");
+    }
+
+    if (base64Chunks.length === 1) {
+      return base64Chunks[0];
+    }
+
+    // Concatenate multiple base64 chunks safely in Node.js
+    const buffers = base64Chunks.map(chunk => Buffer.from(chunk, 'base64'));
+    const finalBuffer = Buffer.concat(buffers);
+    return finalBuffer.toString('base64');
+  }
+
   app.post("/api/tts", async (req, res) => {
     const { text, voiceId, model, settings } = req.body;
+    console.log(`[TTS Backend] Received request. Text: "${text?.substring(0, 50)}...", VoiceId: ${voiceId}`);
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      console.error(`[TTS Backend] Request timed out after 90 seconds. Aborting fetch to MiniMax.`);
+      controller.abort();
+    }, 90000);
+
+    const region = settings.minimaxRegion || 'china';
+    const baseUrl = region === 'international' ? 'https://api.minimaxi.com/v1' : 'https://api.minimax.chat/v1';
+
     try {
       const apiKey = settings.minimaxApiKey;
       const groupId = settings.minimaxGroupId;
-      const region = settings.minimaxRegion || 'china';
-      const baseUrl = region === 'international' ? 'https://api.minimaxi.com/v1' : 'https://api.minimax.chat/v1';
       
-      const response = await fetch(`${baseUrl}/text_to_speech/v2`, {
+      let url = `${baseUrl}/t2a_v2`;
+      if (groupId) {
+        url += `?GroupId=${groupId}`;
+      }
+
+      console.log(`[TTS Backend] Sending fetch to MiniMax URL: ${url} (Region: ${region})`);
+
+      const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json'
         },
+        signal: controller.signal,
         body: JSON.stringify({
           model: model || settings.minimaxModel || 'speech-01-turbo',
           text: text,
@@ -200,32 +312,70 @@ async function startServer() {
         })
       });
 
+      clearTimeout(timeoutId);
+      console.log(`[TTS Backend] MiniMax response received. Status: ${response.status}`);
+
       if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error?.message || err.message || `HTTP ${response.status}`);
+        const errText = await response.text();
+        console.error(`[TTS Backend] MiniMax API returned error: ${response.status}. Body:`, errText);
+        let errMsg = `HTTP ${response.status}`;
+        try {
+          const err = JSON.parse(errText);
+          errMsg = err.error?.message || err.message || errMsg;
+        } catch (e) {}
+        throw new Error(errMsg);
       }
 
-      const data = await response.json();
-      if (data.data?.audio) {
-        res.json({ audio: data.data.audio });
-      } else {
-        res.status(500).json({ error: "No audio data returned" });
+      const textResponse = await response.text();
+      console.log(`[TTS Backend] Raw response length: ${textResponse.length}`);
+      console.log(`[TTS Backend] Raw response preview (first 500 chars):\n${textResponse.substring(0, 500)}`);
+      logToFile(`[TTS Response] length: ${textResponse.length}, preview: ${textResponse.substring(0, 500)}`);
+      
+      const audioBase64 = extractAudioFromResponseServer(textResponse);
+      console.log(`[TTS Backend] Audio extracted. Base64/Hex length: ${audioBase64?.length || 0}`);
+      
+      let finalAudioBase64 = audioBase64;
+      if (audioBase64 && /^[0-9a-fA-F]+$/.test(audioBase64) && audioBase64.length > 100) {
+        console.log(`[TTS Backend] Detected Hex encoding for audio, converting to Base64...`);
+        finalAudioBase64 = Buffer.from(audioBase64, 'hex').toString('base64');
       }
+
+      if (finalAudioBase64) {
+        console.log(`[TTS Backend] Extracted base64 preview (first 100 chars): ${finalAudioBase64.substring(0, 100)}`);
+        console.log(`[TTS Backend] Extracted base64 preview (last 100 chars): ${finalAudioBase64.substring(finalAudioBase64.length - 100)}`);
+        logToFile(`[TTS Extracted] length: ${finalAudioBase64.length}, head: ${finalAudioBase64.substring(0, 100)}`);
+      }
+      
+      addApiLog('models', 200, url, undefined, model || settings.minimaxModel || 'speech-01-turbo');
+      res.json({ audio: finalAudioBase64 });
     } catch (error: any) {
-      console.error("TTS error:", error);
-      res.status(500).json({ error: error.message });
+      clearTimeout(timeoutId);
+      console.error("[TTS Backend] Error occurred during TTS synthesis:", error);
+      const errorMsg = error.name === 'AbortError' ? '连接语音服务器超时，请检查服务区域或代理设置。' : error.message;
+      logToFile(`[TTS Error] name: ${error.name}, message: ${error.message}`);
+      addApiLog('models', 'error', `${baseUrl}/t2a_v2`, errorMsg, model || settings.minimaxModel || 'speech-01-turbo');
+      res.status(500).json({ error: errorMsg });
     }
   });
 
   app.post("/api/image-gen", async (req, res) => {
-    const { prompt, settings } = req.body;
+    const { prompt, negative_prompt, ratio, settings } = req.body;
     try {
       const apiKey = settings.imageGenApiKey || process.env.OPENAI_API_KEY;
       const baseUrl = settings.imageGenBaseUrl || 'https://api.openai.com/v1';
       const cleanUrl = baseUrl.replace(/\/+$/, '');
       
-      const fullPrompt = `${settings.imageGenPositivePrompt || ''}, ${prompt}`;
+      const posPrompt = settings.imageGenPositivePrompt || '';
+      const fullPrompt = posPrompt ? `${posPrompt}, ${prompt}` : prompt;
       
+      const targetModel = settings.imageGenModel || 'gpt-image-2';
+
+      // Map ratio to OpenAI sizes if needed
+      let size = ratio || settings.imageGenSize || '1024x1024';
+      if (size === '1:1') size = '1024x1024';
+      if (size === '9:16') size = '1024x1792';
+      if (size === '16:9') size = '1792x1024';
+
       const response = await fetch(`${cleanUrl}/images/generations`, {
         method: 'POST',
         headers: {
@@ -233,12 +383,12 @@ async function startServer() {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          model: settings.imageGenModel || 'dall-e-3',
+          model: targetModel,
           prompt: fullPrompt,
           n: 1,
-          size: settings.imageGenSize || '1024x1024',
+          size: size,
           quality: settings.imageGenQuality || 'standard',
-          ...(settings.imageGenNegativePrompt ? { negative_prompt: settings.imageGenNegativePrompt } : {})
+          ...(negative_prompt || settings.imageGenNegativePrompt ? { negative_prompt: negative_prompt || settings.imageGenNegativePrompt } : {})
         })
       });
 
@@ -248,8 +398,12 @@ async function startServer() {
       }
 
       const data = await response.json();
-      if (data.data?.[0]?.url) {
-        res.json({ url: data.data[0].url });
+      let imageUrl = data.data?.[0]?.url;
+      
+      if (imageUrl) {
+        // Return a proxied URL to avoid CORS and expiring URL issues
+        const proxiedUrl = `/api/proxy-image?url=${encodeURIComponent(imageUrl)}`;
+        res.json({ url: proxiedUrl, originalUrl: imageUrl });
       } else if (data.data?.[0]?.b64_json) {
         res.json({ b64: data.data[0].b64_json });
       } else {
@@ -258,6 +412,29 @@ async function startServer() {
     } catch (error: any) {
       console.error("Image Gen error:", error);
       res.status(500).json({ error: error.message });
+    }
+  });
+
+  app.get("/api/proxy-image", async (req, res) => {
+    const imageUrl = req.query.url as string;
+    if (!imageUrl) return res.status(400).send("No URL provided");
+
+    try {
+      const response = await fetch(imageUrl);
+      if (!response.ok) throw new Error(`Failed to fetch image: ${response.status}`);
+
+      const contentType = response.headers.get("content-type");
+      if (contentType) res.setHeader("Content-Type", contentType);
+      
+      // Set headers to allow downloading
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.setHeader("Cache-Control", "public, max-age=86400");
+
+      const arrayBuffer = await response.arrayBuffer();
+      res.send(Buffer.from(arrayBuffer));
+    } catch (error: any) {
+      console.error("Image proxy error:", error);
+      res.status(500).send("Error proxying image");
     }
   });
 

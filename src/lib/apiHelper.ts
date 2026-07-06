@@ -22,24 +22,93 @@ export async function apiFetch(req: ApiRequest): Promise<any> {
     // If response is not ok but is JSON, throw the error JSON so the caller handles it
     if (!response.ok && contentType.includes('application/json')) {
       const errJson = await response.json();
-      throw new Error(errJson.error || errJson.message || `HTTP ${response.status}`);
+      const errorText = typeof errJson.error === 'object' ? JSON.stringify(errJson.error) : (errJson.error || errJson.message || `HTTP ${response.status}`);
+      throw Object.assign(new Error(errorText), { isBackendError: true });
     }
-
     // If it's a 404 or non-JSON content, it means the server is not running (e.g. Cloudflare Pages static hosting)
     // We fall back to client-side direct request
     console.warn(`Local endpoint ${req.endpoint} returned non-JSON/404. Falling back to direct client-side fetch...`);
   } catch (error: any) {
     // If it's an error like "Failed to fetch" (network error) or custom JSON error, let's see.
     // If it was a custom error thrown from JSON above, don't fall back (since the backend actually replied with an error).
-    if (error.message && !error.message.startsWith('HTTP') && !error.message.includes('status:')) {
-      console.warn(`Local fetch to ${req.endpoint} failed. Falling back to direct client-side fetch...`, error);
-    } else {
+    if (error.isBackendError || (error.message && (error.message.startsWith('HTTP') || error.message.includes('status:')))) {
       throw error; // Rethrow real backend errors
     }
+    console.warn(`Local fetch to ${req.endpoint} failed. Falling back to direct client-side fetch...`, error);
   }
 
   // 2. Client-side direct fetch fallback
   return await handleDirectFetch(req.endpoint, req.body);
+}
+
+function extractAudioFromResponseClient(textResponse: string): string {
+  try {
+    const data = JSON.parse(textResponse);
+    if (data.data?.audio) {
+      return data.data.audio;
+    }
+    if (data.audio) {
+      return data.audio;
+    }
+  } catch (e) {}
+
+  const base64Chunks: string[] = [];
+  const lines = textResponse.split('\n');
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    let jsonStr = trimmed;
+    if (trimmed.startsWith('data:')) {
+      jsonStr = trimmed.substring(5).trim();
+    }
+
+    if (jsonStr === '[DONE]' || !jsonStr) continue;
+
+    try {
+      const parsed = JSON.parse(jsonStr);
+      const audioChunk = parsed.data?.audio || parsed.audio || parsed.data?.data?.audio;
+      if (audioChunk) {
+        base64Chunks.push(audioChunk);
+      }
+    } catch (e) {}
+  }
+
+  if (base64Chunks.length === 0) {
+    throw new Error("No audio data found in TTS response");
+  }
+
+  if (base64Chunks.length === 1) {
+    return base64Chunks[0];
+  }
+
+  // Decode each base64 string to a binary array
+  const binaryChunks = base64Chunks.map(chunk => {
+    const binaryStr = atob(chunk);
+    const len = binaryStr.length;
+    const bytes = new Uint8Array(len);
+    for (let i = 0; i < len; i++) {
+      bytes[i] = binaryStr.charCodeAt(i);
+    }
+    return bytes;
+  });
+
+  // Concatenate binary chunks
+  const totalLength = binaryChunks.reduce((acc, chunk) => acc + chunk.length, 0);
+  const finalBytes = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const chunk of binaryChunks) {
+    finalBytes.set(chunk, offset);
+    offset += chunk.length;
+  }
+
+  // Convert final binary to base64
+  let binaryStr = '';
+  const len = finalBytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binaryStr += String.fromCharCode(finalBytes[i]);
+  }
+  return btoa(binaryStr);
 }
 
 async function handleDirectFetch(endpoint: string, body: any): Promise<any> {
@@ -100,7 +169,8 @@ async function handleDirectFetch(endpoint: string, body: any): Promise<any> {
       { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
       { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
       { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-      { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" }
+      { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_CIVIC_INTEGRITY", threshold: "BLOCK_NONE" }
     ];
 
     const response = await fetch(url, {
@@ -220,10 +290,16 @@ async function handleDirectFetch(endpoint: string, body: any): Promise<any> {
   if (endpoint === '/api/tts') {
     const { text, voiceId, model, settings } = body;
     const apiKey = settings.minimaxApiKey;
+    const groupId = settings.minimaxGroupId;
     const region = settings.minimaxRegion || 'china';
     const baseUrl = region === 'international' ? 'https://api.minimaxi.com/v1' : 'https://api.minimax.chat/v1';
     
-    const response = await fetch(`${baseUrl}/text_to_speech/v2`, {
+    let url = `${baseUrl}/t2a_v2`;
+    if (groupId) {
+      url += `?GroupId=${groupId}`;
+    }
+
+    const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
@@ -249,16 +325,18 @@ async function handleDirectFetch(endpoint: string, body: any): Promise<any> {
     });
 
     if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error?.message || err.message || `HTTP ${response.status}`);
+      const errText = await response.text();
+      let errMsg = `HTTP ${response.status}`;
+      try {
+        const err = JSON.parse(errText);
+        errMsg = err.error?.message || err.message || errMsg;
+      } catch (e) {}
+      throw new Error(errMsg);
     }
 
-    const data = await response.json();
-    if (data.data?.audio) {
-      return { audio: data.data.audio };
-    } else {
-      throw new Error("No audio data returned");
-    }
+    const textResponse = await response.text();
+    const audioBase64 = extractAudioFromResponseClient(textResponse);
+    return { audio: audioBase64 };
   }
 
   throw new Error(`Unknown endpoint: ${endpoint}`);

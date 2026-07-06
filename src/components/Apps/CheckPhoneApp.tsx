@@ -497,7 +497,7 @@ ${chatHistory}
 
   useEffect(() => {
     if (selectedFriend) {
-      get(`phone_passcode_${selectedFriend.id}`).then(val => {
+      get(`phone_passcode_${selectedFriend.id}`).catch(err => console.error("IDB get error:", err)).then(val => {
         if (val) setCorrectPasscode(val);
         else setCorrectPasscode('1234');
       }).catch(err => console.error(err));

@@ -370,7 +370,7 @@ export default function App() {
 
   // Load Listen Together State
   useEffect(() => {
-    get('listenTogetherState').then(saved => {
+    get('listenTogetherState').catch(err => console.error("IDB get error:", err)).then(saved => {
       if (saved) {
         // Restore Object URLs for local files
         const restoredPlaylist = (saved.playlist || []).map((song: Song) => {
@@ -663,7 +663,7 @@ export default function App() {
               type: 'text'
             });
           }
-        }).catch(console.error);
+        });
       }
     }
 
@@ -1049,8 +1049,8 @@ ${recentMemories}
       >
         {/* Notch (刘海) */}
         {!settings.fullScreenMode && (
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-40 h-7 bg-black rounded-b-2xl z-[100] flex items-center justify-center">
-            <div className="w-12 h-1 bg-white/10 rounded-full" />
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-28 h-6 bg-black rounded-b-xl z-[150] flex items-center justify-center">
+            <div className="w-8 h-1 bg-white/10 rounded-full" />
           </div>
         )}
         {/* Dynamic Wallpaper */}
@@ -1284,7 +1284,7 @@ ${recentMemories}
                   apps={APPS}
                   iconMap={IconMap}
                   onOpenApp={setActiveApp}
-                  onUpdateLayout={(newLayout) => saveSettings({ ...settings, desktopLayout: newLayout }).catch(console.error)}
+                  onUpdateLayout={(newLayout) => saveSettings({ ...settings, desktopLayout: newLayout })}
                   currentTime={time}
                 />
 
@@ -1334,7 +1334,10 @@ ${recentMemories}
                 animate={{ y: 0 }}
                 exit={{ y: '100%' }}
                 transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                className="flex-1 flex flex-col z-50 bg-transparent w-full h-full"
+                className={cn(
+                  "flex-1 flex flex-col z-50 bg-transparent w-full h-full",
+                  !settings.fullScreenMode && "pt-6"
+                )}
               >
                 {renderActiveApp()}
                 {/* Home Indicator for Apps */}
@@ -1485,7 +1488,7 @@ ${recentMemories}
                           )}>通话设置</div>
                           <button 
                             onClick={() => {
-                              saveSettings({ ...settings, isCallBackgroundEnabled: !settings.isCallBackgroundEnabled }).catch(console.error);
+                              saveSettings({ ...settings, isCallBackgroundEnabled: !settings.isCallBackgroundEnabled });
                             }}
                             className={cn(
                               "w-full flex items-center justify-between px-3 py-2 rounded-xl transition-colors text-sm",
@@ -1679,7 +1682,7 @@ ${recentMemories}
                           if (e.key === 'Enter') {
                             const val = e.currentTarget.value;
                             if (val) {
-                              handleAiResponse(val).catch(console.error);
+                              handleAiResponse(val);
                               e.currentTarget.value = '';
                             }
                           }
@@ -1758,7 +1761,7 @@ ${recentMemories}
                               e.preventDefault();
                               const val = e.currentTarget.value;
                               if (val) {
-                                handleAiResponse(val, true).catch(console.error);
+                                handleAiResponse(val, true);
                                 setIsVoiceInputActive(false);
                               }
                             }
@@ -1768,7 +1771,7 @@ ${recentMemories}
                           onClick={(e) => {
                             const textarea = e.currentTarget.previousElementSibling as HTMLTextAreaElement;
                             if (textarea.value) {
-                              handleAiResponse(textarea.value, true).catch(console.error);
+                              handleAiResponse(textarea.value, true);
                               setIsVoiceInputActive(false);
                             }
                           }}
