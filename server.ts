@@ -476,19 +476,28 @@ async function startServer() {
       // while requiring the standard 'size' payload parameter to be '1024x1024'.
       // If we send DALL-E-3 sizes (like 1024x1792) to them, the API gateways (One-API/New-API) will crash with a 400/500 error.
       if (!isDalle) {
-        if (ratio === '9:16' || settings.imageGenSize === '9:16') {
+        const isSize916 = ratio === '9:16' || ratio === '1024x1792' || settings.imageGenSize === '9:16' || settings.imageGenSize === '1024x1792';
+        const isSize169 = ratio === '16:9' || ratio === '1792x1024' || settings.imageGenSize === '16:9' || settings.imageGenSize === '1792x1024';
+        const isSize34  = ratio === '3:4'  || ratio === '768x1024'  || settings.imageGenSize === '3:4'  || settings.imageGenSize === '768x1024';
+        const isSize43  = ratio === '4:3'  || ratio === '1024x768'  || settings.imageGenSize === '4:3'  || settings.imageGenSize === '1024x768';
+
+        if (isSize916) {
           if (!finalPrompt.includes('--ar')) finalPrompt += ' --ar 9:16';
           finalSize = '1024x1024';
-        } else if (ratio === '16:9' || settings.imageGenSize === '16:9') {
+        } else if (isSize169) {
           if (!finalPrompt.includes('--ar')) finalPrompt += ' --ar 16:9';
           finalSize = '1024x1024';
-        } else if (ratio === '3:4' || settings.imageGenSize === '3:4') {
+        } else if (isSize34) {
           if (!finalPrompt.includes('--ar')) finalPrompt += ' --ar 3:4';
           finalSize = '1024x1024';
-        } else if (ratio === '4:3' || settings.imageGenSize === '4:3') {
+        } else if (isSize43) {
           if (!finalPrompt.includes('--ar')) finalPrompt += ' --ar 4:3';
           finalSize = '1024x1024';
+        } else {
+          finalSize = '1024x1024';
         }
+      } else if (isDalle2) {
+        finalSize = '1024x1024';
       }
 
       let targetUrl = cleanUrl;
@@ -553,6 +562,20 @@ async function startServer() {
         console.error(`[Image Gen Error] Failed to parse JSON response:`, responseText);
         logToFile(`[Image Gen Error] Failed to parse JSON response: ${responseText}`);
         throw new Error(`Failed to parse provider response: ${responseText.substring(0, 200)}`);
+      }
+
+      // Check if provider returned an error structure inside a 200 OK response (common for some third-party API gateways)
+      if (data.error) {
+        const errMsg = typeof data.error === 'object' ? (data.error.message || JSON.stringify(data.error)) : data.error;
+        throw new Error(errMsg);
+      }
+      if (data.success === false || data.status === 'fail' || data.status === 'error') {
+        const errMsg = data.message || data.msg || data.error?.message || 'Gateway reported an error';
+        throw new Error(errMsg);
+      }
+      if (data.code !== undefined && data.code !== 0 && data.code !== 200 && data.code === 'fail') {
+        const errMsg = data.msg || data.message || `Gateway returned error code ${data.code}`;
+        throw new Error(errMsg);
       }
 
       let imageUrl = data.data?.[0]?.url;
