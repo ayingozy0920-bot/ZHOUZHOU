@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChevronLeft, Save, Globe, Key, Cpu, Brain, Palette, Sliders, Type, Image as ImageIcon, Trash2, Upload, Smartphone, Plus, Minus, Layout, Check, Database, Mic, ShieldAlert, Lock, Cloud, HelpCircle, Maximize, X, RefreshCw } from 'lucide-react';
+import { ChevronLeft, Save, Globe, Key, Cpu, Brain, Palette, Sliders, Type, Image as ImageIcon, Trash2, Upload, Smartphone, Plus, Minus, Layout, Check, Database, Mic, ShieldAlert, Lock, Cloud, HelpCircle, Maximize, X, RefreshCw, Link2 } from 'lucide-react';
 import { AppSettings, AppInfo } from '../../types';
 import { cn } from '../../lib/utils';
 import { get, set } from 'idb-keyval';
@@ -54,6 +54,53 @@ export default function SettingsApp({
   const [testImageUrl, setTestImageUrl] = useState<string | null>(null);
   const [isFetchingImageModels, setIsFetchingImageModels] = useState(false);
   const [availableImageModels, setAvailableImageModels] = useState<string[]>([]);
+  const [isTestingImageConnection, setIsTestingImageConnection] = useState(false);
+  const [imageConnectionStatus, setImageConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [imageConnectionError, setImageConnectionError] = useState<string | null>(null);
+
+  const testImageConnection = async () => {
+    if (!form.imageGenApiKey) {
+      showToast('请输入 API Key', 'error');
+      return;
+    }
+    setIsTestingImageConnection(true);
+    setImageConnectionStatus('idle');
+    setImageConnectionError(null);
+    try {
+      const data = await apiFetch({
+        endpoint: '/api/image-models',
+        body: {
+          baseUrl: form.imageGenBaseUrl,
+          apiKey: form.imageGenApiKey
+        }
+      });
+      if (data.data) {
+        setImageConnectionStatus('success');
+        showToast('✅ API 链接成功！');
+        
+        const models = data.data
+          .filter((m: any) => m.id.toLowerCase().includes('dall') || m.id.toLowerCase().includes('flux') || m.id.toLowerCase().includes('stable') || m.id.toLowerCase().includes('image'))
+          .map((m: any) => m.id);
+        const finalModels = models.length > 0 ? models : data.data.map((m: any) => m.id);
+        setAvailableImageModels(finalModels);
+        
+        if (finalModels.length > 0 && (!form.imageGenModel || !finalModels.includes(form.imageGenModel))) {
+          const updatedForm = { ...form, imageGenModel: finalModels[0] };
+          setForm(updatedForm);
+          onSave(updatedForm);
+        }
+      } else {
+        throw new Error('未返回有效的模型列表数据');
+      }
+    } catch (e: any) {
+      console.error('Test image connection error:', e);
+      setImageConnectionStatus('error');
+      setImageConnectionError(e.message || '未知错误');
+      showToast(`❌ 链接测试失败: ${e.message}`, 'error');
+    } finally {
+      setIsTestingImageConnection(false);
+    }
+  };
 
   const fetchImageModels = async () => {
     if (!form.imageGenApiKey) return showToast('请输入 API Key', 'error');
@@ -70,7 +117,14 @@ export default function SettingsApp({
         const models = data.data
           .filter((m: any) => m.id.toLowerCase().includes('dall') || m.id.toLowerCase().includes('flux') || m.id.toLowerCase().includes('stable') || m.id.toLowerCase().includes('image'))
           .map((m: any) => m.id);
-        setAvailableImageModels(models.length > 0 ? models : data.data.map((m: any) => m.id));
+        const finalModels = models.length > 0 ? models : data.data.map((m: any) => m.id);
+        setAvailableImageModels(finalModels);
+        
+        if (finalModels.length > 0 && (!form.imageGenModel || !finalModels.includes(form.imageGenModel))) {
+          const updatedForm = { ...form, imageGenModel: finalModels[0] };
+          setForm(updatedForm);
+          onSave(updatedForm);
+        }
         showToast(`✅ 成功拉取 ${data.data.length} 个模型`);
       }
     } catch (e: any) {
@@ -1615,26 +1669,70 @@ export default function SettingsApp({
                     />
                   </div>
 
-                  <div className="pt-2">
-                    <button 
-                      onClick={() => handleTestImageGen()}
-                      disabled={isTestingImage}
-                      className={cn(
-                        "w-full py-4 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all shadow-sm active:scale-[0.98]",
-                        isTestingImage ? "bg-slate-100 text-slate-400" : "bg-amber-50 text-amber-600 hover:bg-amber-100 border border-amber-200"
-                      )}
-                    >
-                      {isTestingImage ? (
-                        <div className="flex items-center gap-2">
-                          <div className="w-4 h-4 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
-                          正在生成测试图片...
-                        </div>
-                      ) : (
-                        <>
-                          <ImageIcon size={18} /> 测试图片生成
-                        </>
-                      )}
-                    </button>
+                  <div className="space-y-3 pt-2">
+                    <div className="grid grid-cols-2 gap-3">
+                      <button 
+                        onClick={() => testImageConnection()}
+                        disabled={isTestingImageConnection || isTestingImage}
+                        className={cn(
+                          "py-3.5 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all shadow-sm active:scale-[0.98] text-sm",
+                          isTestingImageConnection ? "bg-slate-100 text-slate-400" : "bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200"
+                        )}
+                      >
+                        {isTestingImageConnection ? (
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-4 h-4 border-2 border-slate-500 border-t-transparent rounded-full animate-spin" />
+                            正在测试...
+                          </div>
+                        ) : (
+                          <>
+                            <Link2 size={16} className="text-slate-500" /> 测试 API 链接
+                          </>
+                        )}
+                      </button>
+
+                      <button 
+                        onClick={() => handleTestImageGen()}
+                        disabled={isTestingImage || isTestingImageConnection}
+                        className={cn(
+                          "py-3.5 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all shadow-sm active:scale-[0.98] text-sm",
+                          isTestingImage ? "bg-slate-100 text-slate-400" : "bg-amber-50 text-amber-600 hover:bg-amber-100 border border-amber-200"
+                        )}
+                      >
+                        {isTestingImage ? (
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-4 h-4 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+                            正在生成...
+                          </div>
+                        ) : (
+                          <>
+                            <ImageIcon size={16} /> 测试图片生成
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {imageConnectionStatus === 'success' && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: -5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="text-xs text-emerald-600 font-medium flex items-center gap-1.5 px-3 py-2 bg-emerald-50/50 rounded-xl border border-emerald-100/50"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        API 链接正常！已拉取并刷新可用模型。
+                      </motion.div>
+                    )}
+
+                    {imageConnectionStatus === 'error' && imageConnectionError && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: -5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="text-xs text-rose-600 font-medium flex items-start gap-1.5 px-3 py-2 bg-rose-50/50 rounded-xl border border-rose-100/50"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500 mt-1.5 flex-shrink-0" />
+                        <span>链接失败: {imageConnectionError}</span>
+                      </motion.div>
+                    )}
                   </div>
 
                   {testImageUrl && (

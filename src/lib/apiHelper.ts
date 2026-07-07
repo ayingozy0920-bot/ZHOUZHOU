@@ -270,7 +270,7 @@ async function handleDirectFetch(endpoint: string, body: any): Promise<any> {
     const fullPrompt = `${settings.imageGenPositivePrompt || ''}, ${prompt}`;
     
     const requestBody = {
-      model: settings.imageGenModel || 'dall-e-3',
+      model: settings.imageGenModel || 'gpt-image-2',
       prompt: fullPrompt,
       n: 1,
       size: settings.imageGenSize || '1024x1024',
