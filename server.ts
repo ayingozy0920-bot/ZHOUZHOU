@@ -3,10 +3,7 @@ import cors from "cors";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import fs from "fs";
-import { fileURLToPath } from "url";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 interface Log {
   type: string;
@@ -45,7 +42,7 @@ function addApiLog(type: string, status: number | 'error', url: string, error?: 
 
 async function startServer() {
   const app = express();
-  const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
+  const PORT = process.env.DEFAULT_APP_PORT || process.env.PORT || 3000;
 
   // 允许所有跨域请求
   app.use(cors());
