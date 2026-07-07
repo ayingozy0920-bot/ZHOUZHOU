@@ -25,6 +25,7 @@ export async function apiFetch(req: ApiRequest): Promise<any> {
       const errorText = typeof errJson.error === 'object' ? JSON.stringify(errJson.error) : (errJson.error || errJson.message || `HTTP ${response.status}`);
       throw Object.assign(new Error(errorText), { isBackendError: true });
     }
+
     // If it's a 404 or non-JSON content, it means the server is not running (e.g. Cloudflare Pages static hosting)
     // We fall back to client-side direct request
     console.warn(`Local endpoint ${req.endpoint} returned non-JSON/404. Falling back to direct client-side fetch...`);
