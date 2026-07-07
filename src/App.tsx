@@ -532,12 +532,8 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = unlockProgress.on("change", (latest) => {
       if (latest >= 1) {
-        const savedPassword = localStorage.getItem('lockScreenPassword');
-        if (savedPassword && savedPassword.length > 0) {
-          setShowPassword(true);
-        } else {
-          setIsLocked(false);
-        }
+        // 只要是锁定状态，滑动解锁就进入密码界面（因为默认有 0920）
+        setShowPassword(true);
         x.set(0);
       }
     });
@@ -1049,8 +1045,8 @@ ${recentMemories}
       >
         {/* Notch (刘海) */}
         {!settings.fullScreenMode && (
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-28 h-6 bg-black rounded-b-xl z-[150] flex items-center justify-center">
-            <div className="w-8 h-1 bg-white/10 rounded-full" />
+          <div className="absolute top-1 left-1/2 -translate-x-1/2 w-24 h-5 bg-black rounded-full z-[150] flex items-center justify-center">
+            <div className="w-6 h-1 bg-white/10 rounded-full" />
           </div>
         )}
         {/* Dynamic Wallpaper */}
@@ -1336,7 +1332,7 @@ ${recentMemories}
                 transition={{ type: 'spring', damping: 25, stiffness: 200 }}
                 className={cn(
                   "flex-1 flex flex-col z-50 bg-transparent w-full h-full",
-                  !settings.fullScreenMode && "pt-6"
+                  !settings.fullScreenMode && "pt-8"
                 )}
               >
                 {renderActiveApp()}

@@ -60,10 +60,16 @@ async function startServer() {
       if (baseUrl) {
         baseUrl = baseUrl.replace(/\/+$/, '');
         // OpenAI compatibility check
-        const isOpenAI = baseUrl.endsWith('/v1');
+        const isOpenAI = baseUrl.endsWith('/v1') || baseUrl.includes('/v1/chat/completions') || settings.modelName?.includes('gpt') || settings.modelName?.includes('claude');
         
         if (isOpenAI) {
-          const url = `${baseUrl}/chat/completions`;
+          let url = `${baseUrl}/chat/completions`;
+          if (baseUrl.includes('/chat/completions')) {
+            url = baseUrl;
+          } else if (!baseUrl.endsWith('/v1') && !baseUrl.includes('/v1/')) {
+            // If it's just a base domain without /v1, and not already a full endpoint
+            url = `${baseUrl}/v1/chat/completions`;
+          }
           const openaiMessages = [
             { role: 'system', content: system_prompt },
             ...messages.map((m: any) => ({
@@ -111,13 +117,16 @@ async function startServer() {
         { category: "HARM_CATEGORY_CIVIC_INTEGRITY", threshold: "BLOCK_NONE" }
       ];
 
+      const modelName = settings.modelName || settings.model || "gemini-1.5-flash";
       const genModel = genAI.getGenerativeModel({ 
-        model: settings.modelName || "gemini-1.5-flash",
+        model: modelName,
         systemInstruction: system_prompt,
         safetySettings: safetySettings as any,
         generationConfig: {
-          temperature: settings.temperature || 0.7,
+          temperature: settings.temperature || 0.8,
           maxOutputTokens: settings.maxTokens || 2048,
+          topP: 0.95,
+          topK: 40
         }
       });
 
@@ -376,7 +385,12 @@ async function startServer() {
       if (size === '9:16') size = '1024x1792';
       if (size === '16:9') size = '1792x1024';
 
-      const response = await fetch(`${cleanUrl}/images/generations`, {
+      let targetUrl = `${cleanUrl}/images/generations`;
+      if (cleanUrl.includes('/images/generations')) {
+        targetUrl = cleanUrl;
+      }
+      
+      const response = await fetch(targetUrl, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${apiKey}`,

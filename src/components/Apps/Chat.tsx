@@ -3409,20 +3409,24 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
 
     setIsLoading(true);
     try {
-      const systemPrompt = `你现在是${friend.name}的内心真实想法生成器。
-任务：根据用户收到的一条消息内容，分析并写出${friend.name}在那一刻最真实的心理活动或未表达的情感。
+      const systemPrompt = `你现在是${friend.name}的内心想法分析师。
+任务：根据用户收到的一条消息，写出${friend.name}发送该消息时最真实的心理活动或未表达的情感。
 消息内容：“${msg.content}”
+
 要求：
-1. 字数在50字以内。
-2. 以第一人称描写。
-3. 语气必须符合角色人设（${friend.persona || '自然'}）。
-4. 只能输出心理活动内容，不要任何前缀或解释。
-5. 必须使用：${friend.language || '中文（普通话）'}。`;
-      const heartfelt = await callAI(systemPrompt, [{ role: 'user', content: '分析这一刻的内心想法' } as ChatMessage], settings);
+1. 以第一人称描写，简洁生动。
+2. 字数在50字以内。
+3. 语气符合角色人设（${friend.persona || '自然'}）。
+4. 只能输出内心活动内容，不要任何解释。
+5. 严禁包含违法、暴力、色情内容，保持健康的社交互动。
+6. 使用语言：${friend.language || '中文（普通话）'}。`;
+
+      const heartfelt = await callAI(systemPrompt, [{ role: 'user', content: '这一刻你在想什么？' } as ChatMessage], settings);
       setShowHeartfelt({ messageIndex: index, content: heartfelt });
     } catch (err: any) {
       console.error("Heartfelt error:", err);
-      if (err.message?.includes('安全') || err.message?.includes('safety') || err.message?.includes('PROHIBITED')) {
+      const errMsg = err.message || '';
+      if (errMsg.includes('SAFETY') || errMsg.includes('blocked') || errMsg.includes('PROHIBITED')) {
         showToast('该条消息的心声因安全策略无法生成，请尝试其他消息');
       } else {
         showToast('心声生成失败，请稍后重试');
@@ -3439,15 +3443,16 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
       const recentMsgs = currentMessages.slice(-10);
       const context = recentMsgs.map(m => `${m.role === 'user' ? '我' : friend.name}: ${m.content}`).join('\n');
       
-      const systemPrompt = `你现在是${friend.name}的状态生成器。
-任务：根据最近的互动内容，更新你当前的状态（心情或正在做的事）。
+      const systemPrompt = `你现在是${friend.name}的状态更新器。
+任务：根据最近的互动内容，生成一句你此时此刻的状态（心情或正在做的事）。
 要求：
-1. 必须符合角色人设（${friend.persona || '自然'}）。
-2. 状态简短有力，10字以内。
-3. 只能输出状态内容，不要任何解释。
-4. 必须使用：${friend.language || '中文（普通话）'}。
+1. 符合角色人设（${friend.persona || '自然'}）。
+2. 状态简短，通常在10字以内。
+3. 只能输出状态内容，不要解释。
+4. 严禁包含违禁内容。
+5. 使用语言：${friend.language || '中文（普通话）'}。
 
-最近的互动内容：
+互动内容：
 ${context}`;
       
       const newStatus = await callAI(systemPrompt, [{ role: 'user', content: '更新当前状态' } as ChatMessage], settings);
@@ -3472,16 +3477,17 @@ ${context}`;
       const recentMsgs = offlineMessages.slice(-10);
       const context = recentMsgs.map(m => `${m.role === 'user' ? '我' : friend.name}: ${m.content}`).join('\n');
       
-      const systemPrompt = `你现在是${friend.name}的线下互动内心想法生成器。
-任务：根据我们最近的线下互动内容，生成一句你此时此刻最真实的内心想法（心声）。
+      const systemPrompt = `你现在是${friend.name}的线下真实想法生成器。
+任务：根据线下互动内容，生成一句你此时此刻最真实的内心想法。
 要求：
-1. 必须符合角色人设（${friend.persona || '无特定人设'}）。
-2. 真实反映当前线下互动情境。
-3. 只能输出心声内容，不要任何解释，不要加引号。
-4. 长度在20-50字之间。
-5. 必须使用：${friend.language || '中文（普通话）'}。
+1. 符合角色人设（${friend.persona || '无特定人设'}）。
+2. 真实反映当前互动情境。
+3. 只能输出心声内容，不加引号。
+4. 长度20-50字。
+5. 严禁包含违禁内容。
+6. 使用语言：${friend.language || '中文（普通话）'}。
 
-最近的互动内容：
+互动内容：
 ${context}`;
       
       const heartfelt = await callAI(systemPrompt, [{ role: 'user', content: '分析当前心声' } as ChatMessage], settings);
