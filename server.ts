@@ -42,7 +42,7 @@ function addApiLog(type: string, status: number | 'error', url: string, error?: 
 
 async function startServer() {
   const app = express();
-  const PORT = process.env.DEFAULT_APP_PORT || process.env.PORT || 3000;
+  const PORT = Number(process.env.DEFAULT_APP_PORT || process.env.PORT || 3000);
 
   // 允许所有跨域请求
   app.use(cors());
@@ -58,10 +58,13 @@ async function startServer() {
       const targetUrl = RAILWAY_URL + req.originalUrl;
       console.log(`[Proxy] Forwarding to Railway: ${targetUrl}`);
       try {
-        const headersToForward = { ...req.headers } as any;
-        delete headersToForward['content-length']; // Length might change after JSON parsing
-        delete headersToForward['host'];
-        headersToForward['host'] = new URL(RAILWAY_URL).host;
+        const headersToForward: Record<string, string> = {
+          'content-type': (req.headers['content-type'] as string) || 'application/json',
+          'accept': (req.headers['accept'] as string) || 'application/json'
+        };
+        if (req.headers['authorization']) {
+          headersToForward['authorization'] = req.headers['authorization'] as string;
+        }
 
         const response = await fetch(targetUrl, {
           method: req.method,
