@@ -492,14 +492,23 @@ async function startServer() {
       console.log(`[Image Gen] Requesting ${targetUrl} with model: ${targetModel}, size: ${finalSize}, prompt length: ${finalPrompt.length}`);
       logToFile(`[Image Gen Request] URL: ${targetUrl}, body: ${JSON.stringify({ ...reqBody, prompt: finalPrompt.substring(0, 50) + '...' })}`);
 
-      const response = await fetch(targetUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(reqBody)
-      });
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 120000); // 120 seconds timeout (2 minutes) for image generation
+
+      let response;
+      try {
+        response = await fetch(targetUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(reqBody),
+          signal: controller.signal
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
       if (!response.ok) {
         const errText = await response.text();
@@ -562,8 +571,12 @@ async function startServer() {
     const imageUrl = req.query.url as string;
     if (!imageUrl) return res.status(400).send("No URL provided");
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 seconds timeout
+
     try {
-      const response = await fetch(imageUrl);
+      const response = await fetch(imageUrl, { signal: controller.signal });
+      clearTimeout(timeoutId);
       if (!response.ok) throw new Error(`Failed to fetch image: ${response.status}`);
 
       const contentType = response.headers.get("content-type");

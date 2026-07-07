@@ -16,25 +16,16 @@ export async function apiFetch(req: ApiRequest): Promise<any> {
 
     const contentType = response.headers.get('content-type') || '';
     if (response.ok && contentType.includes('application/json')) {
-      return await response.json();
+      const data = await response.json();
+      if (data && data.error) {
+        console.warn(`Local endpoint ${req.endpoint} returned JSON with error:`, data.error);
+      } else {
+        return data;
+      }
+    } else {
+      console.warn(`Local endpoint ${req.endpoint} returned non-ok status: ${response.status}`);
     }
-    
-    // If response is not ok but is JSON, throw the error JSON so the caller handles it
-    if (!response.ok && contentType.includes('application/json')) {
-      const errJson = await response.json();
-      const errorText = typeof errJson.error === 'object' ? JSON.stringify(errJson.error) : (errJson.error || errJson.message || `HTTP ${response.status}`);
-      throw Object.assign(new Error(errorText), { isBackendError: true });
-    }
-
-    // If it's a 404 or non-JSON content, it means the server is not running (e.g. Cloudflare Pages static hosting)
-    // We fall back to client-side direct request
-    console.warn(`Local endpoint ${req.endpoint} returned non-JSON/404. Falling back to direct client-side fetch...`);
   } catch (error: any) {
-    // If it's an error like "Failed to fetch" (network error) or custom JSON error, let's see.
-    // If it was a custom error thrown from JSON above, don't fall back (since the backend actually replied with an error).
-    if (error.isBackendError || (error.message && (error.message.startsWith('HTTP') || error.message.includes('status:')))) {
-      throw error; // Rethrow real backend errors
-    }
     console.warn(`Local fetch to ${req.endpoint} failed. Falling back to direct client-side fetch...`, error);
   }
 
