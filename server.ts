@@ -49,46 +49,6 @@ async function startServer() {
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-  // Railway 代理中间件：如果在 AI Studio 运行，则将请求转发到 Railway 后端，隐藏真实地址
-  const RAILWAY_URL = "https://zhouzhou-production.up.railway.app";
-  const isRailway = process.env.RAILWAY_ENVIRONMENT_ID || process.env.RAILWAY_PROJECT_ID;
-  
-  if (!isRailway) {
-    app.use("/api", async (req, res, next) => {
-      const targetUrl = RAILWAY_URL + req.originalUrl;
-      console.log(`[Proxy] Forwarding to Railway: ${targetUrl}`);
-      try {
-        const headersToForward: Record<string, string> = {
-          'content-type': (req.headers['content-type'] as string) || 'application/json',
-          'accept': (req.headers['accept'] as string) || 'application/json'
-        };
-        if (req.headers['authorization']) {
-          headersToForward['authorization'] = req.headers['authorization'] as string;
-        }
-
-        const response = await fetch(targetUrl, {
-          method: req.method,
-          headers: headersToForward,
-          body: ['GET', 'HEAD'].includes(req.method) ? undefined : JSON.stringify(req.body)
-        });
-        
-        response.headers.forEach((value, key) => {
-          if (!['transfer-encoding', 'content-encoding', 'connection'].includes(key.toLowerCase())) {
-            res.setHeader(key, value);
-          }
-        });
-        res.setHeader('x-proxied-by', 'ai-studio');
-        res.status(response.status);
-        
-        const arrayBuffer = await response.arrayBuffer();
-        res.send(Buffer.from(arrayBuffer));
-      } catch (e: any) {
-        console.error("[Proxy Error] Failed to reach Railway, falling back to local:", e.message);
-        next();
-      }
-    });
-  }
-
   // API 路由
   app.post("/api/chat", async (req, res) => {
     const { system_prompt, messages, settings } = req.body;
@@ -620,6 +580,46 @@ async function startServer() {
       res.status(500).send("Error proxying image");
     }
   });
+
+  // Railway 代理中间件：如果在 AI Studio 运行，则将请求转发到 Railway 后端，隐藏真实地址
+  const RAILWAY_URL = "https://zhouzhou-production.up.railway.app";
+  const isRailway = process.env.RAILWAY_ENVIRONMENT_ID || process.env.RAILWAY_PROJECT_ID;
+  
+  if (!isRailway) {
+    app.use("/api", async (req, res, next) => {
+      const targetUrl = RAILWAY_URL + req.originalUrl;
+      console.log(`[Proxy] Forwarding unmatched route to Railway: ${targetUrl}`);
+      try {
+        const headersToForward: Record<string, string> = {
+          'content-type': (req.headers['content-type'] as string) || 'application/json',
+          'accept': (req.headers['accept'] as string) || 'application/json'
+        };
+        if (req.headers['authorization']) {
+          headersToForward['authorization'] = req.headers['authorization'] as string;
+        }
+
+        const response = await fetch(targetUrl, {
+          method: req.method,
+          headers: headersToForward,
+          body: ['GET', 'HEAD'].includes(req.method) ? undefined : JSON.stringify(req.body)
+        });
+        
+        response.headers.forEach((value, key) => {
+          if (!['transfer-encoding', 'content-encoding', 'connection'].includes(key.toLowerCase())) {
+            res.setHeader(key, value);
+          }
+        });
+        res.setHeader('x-proxied-by', 'ai-studio');
+        res.status(response.status);
+        
+        const arrayBuffer = await response.arrayBuffer();
+        res.send(Buffer.from(arrayBuffer));
+      } catch (e: any) {
+        console.error("[Proxy Error] Failed to reach Railway, falling back to local:", e.message);
+        next();
+      }
+    });
+  }
 
   // Vite 中间件
   if (process.env.NODE_ENV !== "production") {
