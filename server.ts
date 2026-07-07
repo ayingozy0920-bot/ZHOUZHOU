@@ -1,4 +1,5 @@
 import express from "express";
+import cors from "cors";
 import { createServer as createViteServer } from "vite";
 import path from "path";
 import fs from "fs";
@@ -46,6 +47,8 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  // 允许所有跨域请求
+  app.use(cors());
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
@@ -54,21 +57,22 @@ async function startServer() {
     const { system_prompt, messages, settings } = req.body;
     
     try {
-      const apiKey = settings?.userApiKey || settings?.apiKey || process.env.GEMINI_API_KEY;
       let baseUrl = settings?.baseUrl;
+      const apiKey = (baseUrl ? (settings?.apiKey || settings?.userApiKey) : (settings?.userApiKey || settings?.apiKey)) || process.env.GEMINI_API_KEY;
       
       if (baseUrl) {
         baseUrl = baseUrl.replace(/\/+$/, '');
-        // OpenAI compatibility check
-        const isOpenAI = baseUrl.endsWith('/v1') || baseUrl.includes('/v1/chat/completions') || settings.modelName?.includes('gpt') || settings.modelName?.includes('claude');
+        // 只要提供了 baseUrl，就优先尝试 OpenAI 兼容路径
+        const isOpenAI = true;
         
         if (isOpenAI) {
-          let url = `${baseUrl}/chat/completions`;
-          if (baseUrl.includes('/chat/completions')) {
-            url = baseUrl;
-          } else if (!baseUrl.endsWith('/v1') && !baseUrl.includes('/v1/')) {
-            // If it's just a base domain without /v1, and not already a full endpoint
-            url = `${baseUrl}/v1/chat/completions`;
+          let url = baseUrl;
+          if (!url.includes('/chat/completions')) {
+            if (url.endsWith('/v1')) {
+              url = `${url}/chat/completions`;
+            } else {
+              url = `${url}/v1/chat/completions`;
+            }
           }
           const openaiMessages = [
             { role: 'system', content: system_prompt },
@@ -271,6 +275,33 @@ async function startServer() {
     return finalBuffer.toString('base64');
   }
 
+  app.post("/api/proxy", async (req, res) => {
+    const { url, headers, body, method = 'POST' } = req.body;
+    if (!url) return res.status(400).json({ error: "Missing target url" });
+    
+    try {
+      const response = await fetch(url, {
+        method,
+        headers: headers || {},
+        body: body ? (typeof body === 'string' ? body : JSON.stringify(body)) : undefined
+      });
+      
+      response.headers.forEach((value, key) => {
+        if (!['transfer-encoding', 'content-encoding'].includes(key.toLowerCase())) {
+          res.setHeader(key, value);
+        }
+      });
+      res.setHeader("Access-Control-Allow-Origin", "*");
+      res.status(response.status);
+      
+      const arrayBuffer = await response.arrayBuffer();
+      res.send(Buffer.from(arrayBuffer));
+    } catch (error: any) {
+      console.error("Proxy error:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   app.post("/api/tts", async (req, res) => {
     const { text, voiceId, model, settings } = req.body;
     console.log(`[TTS Backend] Received request. Text: "${text?.substring(0, 50)}...", VoiceId: ${voiceId}`);
@@ -282,7 +313,8 @@ async function startServer() {
     }, 90000);
 
     const region = settings.minimaxRegion || 'china';
-    const baseUrl = region === 'international' ? 'https://api.minimaxi.com/v1' : 'https://api.minimax.chat/v1';
+    let baseUrl = settings.minimaxApiUrl || (region === 'international' ? 'https://api.minimaxi.com/v1' : 'https://api.minimax.chat/v1');
+    baseUrl = baseUrl.replace(/\/+$/, '');
 
     try {
       const apiKey = settings.minimaxApiKey;
@@ -385,9 +417,13 @@ async function startServer() {
       if (size === '9:16') size = '1024x1792';
       if (size === '16:9') size = '1792x1024';
 
-      let targetUrl = `${cleanUrl}/images/generations`;
-      if (cleanUrl.includes('/images/generations')) {
-        targetUrl = cleanUrl;
+      let targetUrl = cleanUrl;
+      if (!targetUrl.includes('/images/generations')) {
+        if (targetUrl.endsWith('/v1')) {
+          targetUrl = `${targetUrl}/images/generations`;
+        } else {
+          targetUrl = targetUrl.replace(/\/+$/, '') + '/v1/images/generations';
+        }
       }
       
       const response = await fetch(targetUrl, {

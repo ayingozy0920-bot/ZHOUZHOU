@@ -166,6 +166,7 @@ export interface AppSettings {
   lockScreenDelay?: number;
   lockScreenPin?: string;
   lockScreenEnabled?: boolean;
+  lastLoginTime?: string;
   customBubbleCss?: string;
   customGlobalCss?: string;
   themePresets?: ThemePreset[];
@@ -317,6 +318,7 @@ export interface Friend {
   affection?: number;
   moodIndex?: number;
   innerThoughts?: string;
+  autoTranslateEnabled?: boolean;
   characterImageGenEnabled?: boolean;
   characterImageGenFrequency?: '2_per_day' | '3_per_day' | '5_per_day' | 'unlimited';
   characterImageGenPositivePrompt?: string;

@@ -42,15 +42,27 @@ export async function apiFetch(req: ApiRequest): Promise<any> {
 }
 
 function extractAudioFromResponseClient(textResponse: string): string {
+  let audioStr = "";
   try {
     const data = JSON.parse(textResponse);
     if (data.data?.audio) {
-      return data.data.audio;
-    }
-    if (data.audio) {
-      return data.audio;
+      audioStr = data.data.audio;
+    } else if (data.audio) {
+      audioStr = data.audio;
     }
   } catch (e) {}
+
+  if (audioStr) {
+    if (/^[0-9a-fA-F]+$/.test(audioStr) && audioStr.length > 100) {
+      // Hex to base64
+      let binary = '';
+      for (let i = 0; i < audioStr.length; i += 2) {
+        binary += String.fromCharCode(parseInt(audioStr.substr(i, 2), 16));
+      }
+      return btoa(binary);
+    }
+    return audioStr;
+  }
 
   const base64Chunks: string[] = [];
   const lines = textResponse.split('\n');
@@ -256,20 +268,23 @@ async function handleDirectFetch(endpoint: string, body: any): Promise<any> {
     
     const fullPrompt = `${settings.imageGenPositivePrompt || ''}, ${prompt}`;
     
+    const requestBody = {
+      model: settings.imageGenModel || 'dall-e-3',
+      prompt: fullPrompt,
+      n: 1,
+      size: settings.imageGenSize || '1024x1024',
+      quality: settings.imageGenQuality || 'standard',
+      response_format: 'b64_json',
+      ...(settings.imageGenNegativePrompt ? { negative_prompt: settings.imageGenNegativePrompt } : {})
+    };
+
     const response = await fetch(`${cleanUrl}/images/generations`, {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        model: settings.imageGenModel || 'dall-e-3',
-        prompt: fullPrompt,
-        n: 1,
-        size: settings.imageGenSize || '1024x1024',
-        quality: settings.imageGenQuality || 'standard',
-        ...(settings.imageGenNegativePrompt ? { negative_prompt: settings.imageGenNegativePrompt } : {})
-      })
+      body: JSON.stringify(requestBody)
     });
 
     if (!response.ok) {
@@ -292,12 +307,31 @@ async function handleDirectFetch(endpoint: string, body: any): Promise<any> {
     const apiKey = settings.minimaxApiKey;
     const groupId = settings.minimaxGroupId;
     const region = settings.minimaxRegion || 'china';
-    const baseUrl = region === 'international' ? 'https://api.minimaxi.com/v1' : 'https://api.minimax.chat/v1';
+    let baseUrl = settings.minimaxApiUrl || (region === 'international' ? 'https://api.minimaxi.com/v1' : 'https://api.minimax.chat/v1');
+    baseUrl = baseUrl.replace(/\/+$/, '');
     
     let url = `${baseUrl}/t2a_v2`;
     if (groupId) {
       url += `?GroupId=${groupId}`;
     }
+
+    const requestBody = {
+      model: model || settings.minimaxModel || 'speech-01-turbo',
+      text: text,
+      stream: false,
+      voice_setting: {
+        voice_id: voiceId || settings.minimaxVoiceId || 'male-qn-qingse',
+        speed: 1.0,
+        vol: 1.0,
+        pitch: 0
+      },
+      audio_setting: {
+        sample_rate: 32000,
+        bitrate: 128000,
+        format: 'mp3',
+        channel: 1
+      }
+    };
 
     const response = await fetch(url, {
       method: 'POST',
@@ -305,23 +339,7 @@ async function handleDirectFetch(endpoint: string, body: any): Promise<any> {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        model: model || settings.minimaxModel || 'speech-01-turbo',
-        text: text,
-        stream: false,
-        voice_setting: {
-          voice_id: voiceId || settings.minimaxVoiceId || 'male-qn-qingse',
-          speed: 1.0,
-          vol: 1.0,
-          pitch: 0
-        },
-        audio_setting: {
-          sample_rate: 32000,
-          bitrate: 128000,
-          format: 'mp3',
-          channel: 1
-        }
-      })
+      body: JSON.stringify(requestBody)
     });
 
     if (!response.ok) {

@@ -748,7 +748,6 @@ export default function SettingsApp({
                   placeholder="输入您的 Gemini API Key"
                 />
               </div>
-
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
                   <Cpu size={14} /> 模型

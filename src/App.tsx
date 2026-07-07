@@ -300,9 +300,15 @@ export default function App() {
   // Check if password exists
   useEffect(() => {
     const checkLockStatus = () => {
-      const savedPassword = localStorage.getItem('lockScreenPassword');
+      let savedPassword = localStorage.getItem('lockScreenPassword');
       const settingsPin = settings.lockScreenPin;
       
+      // Default password 0920
+      if (!savedPassword && !settingsPin) {
+        localStorage.setItem('lockScreenPassword', '0920');
+        savedPassword = '0920';
+      }
+
       // Sync setting to localStorage if it's in settings but not in localStorage
       if (settingsPin && !savedPassword) {
         localStorage.setItem('lockScreenPassword', settingsPin);
@@ -311,9 +317,7 @@ export default function App() {
       if (settings.lockScreenEnabled === false) {
         setIsLocked(false);
       } else {
-        // If lock screen is enabled, we start locked.
-        // If there's a password, we'll eventually need it.
-        // If no password, we stay locked until slide-to-unlock (which is handled by isLocked state and drag logic)
+        // 默认开启锁定，只要有密码就锁定
         setIsLocked(true);
       }
     };
@@ -1045,8 +1049,8 @@ ${recentMemories}
       >
         {/* Notch (刘海) */}
         {!settings.fullScreenMode && (
-          <div className="absolute top-1 left-1/2 -translate-x-1/2 w-24 h-5 bg-black rounded-full z-[150] flex items-center justify-center">
-            <div className="w-6 h-1 bg-white/10 rounded-full" />
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-14 h-4 bg-black rounded-b-xl z-[150] flex items-center justify-center">
+            <div className="w-4 h-1 bg-white/10 rounded-full" />
           </div>
         )}
         {/* Dynamic Wallpaper */}
@@ -1093,7 +1097,7 @@ ${recentMemories}
         {!settings.hideStatusBar && (
           <div className={cn(
             "w-full flex items-center justify-between px-4 pt-2 pb-1 z-[110] pointer-events-none transition-all duration-500",
-            (settings.fullScreenMode || activeApp === 'chat') ? "absolute top-0 left-0 right-0 bg-transparent safe-area-padding-top" : "relative bg-black/20 backdrop-blur-md"
+            (settings.fullScreenMode) ? "absolute top-0 left-0 right-0 bg-transparent safe-area-padding-top" : "relative bg-black/20 backdrop-blur-md"
           )}>
             {/* Left: Time */}
             <div className="flex items-center justify-start">
@@ -1237,7 +1241,15 @@ ${recentMemories}
                     dragConstraints={{ left: 0, right: 260 }}
                     dragElastic={0.1}
                     dragMomentum={false}
-                    onDragEnd={() => {
+                    onDragEnd={(e, info) => {
+                      if (info.offset.x > 150) {
+                        const savedPassword = localStorage.getItem('lockScreenPassword');
+                        if (savedPassword || settings.lockScreenPin) {
+                          setShowPassword(true);
+                        } else {
+                          handleUnlock();
+                        }
+                      }
                       x.set(0);
                     }}
                     style={{ x }}
@@ -1332,7 +1344,7 @@ ${recentMemories}
                 transition={{ type: 'spring', damping: 25, stiffness: 200 }}
                 className={cn(
                   "flex-1 flex flex-col z-50 bg-transparent w-full h-full",
-                  !settings.fullScreenMode && "pt-8"
+                  !settings.fullScreenMode && "pt-6"
                 )}
               >
                 {renderActiveApp()}

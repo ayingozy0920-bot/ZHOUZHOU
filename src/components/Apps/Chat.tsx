@@ -1146,6 +1146,22 @@ function ChatSettings({ friend, messages, settings, onBack, onUpdateFriend, onIm
               )} />
             </div>
           </button>
+
+          <div className="px-4 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Globe size={18} className={cn(
+                "transition-all duration-300",
+                settings.themeId === 'rainy-cat' ? "text-white/40" : "text-slate-400"
+              )} />
+              <span className="text-sm">自动翻译角色消息</span>
+            </div>
+            <button 
+              onClick={() => onUpdateFriend({ autoTranslateEnabled: !friend.autoTranslateEnabled })}
+              className={cn("w-10 h-5 rounded-full relative transition-all", friend.autoTranslateEnabled ? "bg-[#07c160]" : "bg-slate-200")}
+            >
+              <div className={cn("absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all", friend.autoTranslateEnabled ? "right-0.5" : "left-0.5")} />
+            </button>
+          </div>
           
           <div className="px-4 py-3 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -2410,15 +2426,15 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
    - **单次好感度增长/减少必须控制在 0.25 至 1.00 之间。**
    - 如果当前好感度还未突破 60%，严禁人为提前调至 60% 以上。
 2. mood_index：你当前的心情指数（0% - 100% 之间的整数）。
-3. inner_thoughts：你对用户的真实、未说出口的内心想法、吐槽或隐藏情感（100字以内）。
+3. character_reflection：你对用户的真实、未说出口的文学式内心感悟（100字以内）。
    **【⚠️极其重要：超级安全与防拦截规范】**
-   - **绝对严禁**使用任何带有性暗示、情欲描写、生理反应、过于直接的肉体接触或暴露器官等词汇（如任何肉体/生理渴望词、喘息、紧贴、身体发热、占有等）。这些词汇**100%会触发系统底层的敏感内容安全拦截机制**，导致整条回复无法生成！
-   - **请转换成纯爱、可爱、软萌、撒娇、隐晦的文学表达。可以使用极具恋爱感的小碎碎念、娇嗔，以及最单纯甜美的贴贴词语，如：“想给你个熊抱”、“想悄悄拉住你的衣角”、“想亲亲抱抱”、“心里像藏了一罐热乎乎的蜂蜜”、“刚才你靠近时，我的心跳好像漏了一拍……”、“大笨蛋，真的太喜欢你了”。**
-   - 用最甜、最温和、无害、偏向情感和心灵层面的萌系恋爱思维，去表现内心占有欲、害羞、娇羞、期待或偶尔的醋意。
+   - **绝对严禁**使用任何带有性暗示、欲望、生理渴望、肉体敏感部位、紧贴、身体发热、发情、占有、渴望触碰等任何可能被判定为色情或性骚扰的词汇。这些词汇**100%会触发系统底层的敏感内容安全拦截机制**，导致整条回复无法生成！
+   - **请转换成纯爱、友谊、可爱、撒娇、隐晦的文学表达。可以使用：“想给你个熊抱”、“想悄悄拉住你的衣角”、“想一起看夕阳”、“心里像藏了一罐热乎乎的蜂蜜”、“大笨蛋，真的太喜欢你了”、“刚才看到你，感觉云朵都变甜了”。**
+   - 用最单纯甜美、偏向心灵沟通的萌系文风去表现好感。
 4. current_status：你此时此刻的心情或正在做的事（15字以内）。
 
 示例（必须严格遵循此格式）：
-[HEARTFELT_UPDATE: affection_change=0.55 | mood_index=88 | inner_thoughts=刚才你靠近的时候，我的呼吸好像漏了一拍……这种感觉，真的好想一直持续下去。 | current_status=心跳有点快]`;
+[HEARTFELT_UPDATE: affection_change=0.55 | mood_index=88 | character_reflection=刚才你靠近的时候，我感觉云朵都变甜了……真的好想这种感觉一直持续下去。 | current_status=心情超好]`;
 
       const fullContent = await callAI(systemPrompt, slicedMsgs, settings, action);
 
@@ -2446,8 +2462,8 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
         const moodMatch = blockContent.match(/mood_index\s*[=:]\s*(\d+)/i);
         if (moodMatch) moodIndex = parseInt(moodMatch[1]) || 50;
 
-        // Extract inner_thoughts
-        const thoughtsMatch = blockContent.match(/inner_thoughts\s*[=:]\s*([\s\S]*?)(?=\s*\||\s*\]|$)/i);
+        // Extract character_reflection
+        const thoughtsMatch = blockContent.match(/(?:character_reflection|inner_thoughts)\s*[=:]\s*([\s\S]*?)(?=\s*\||\s*\]|$)/i);
         if (thoughtsMatch) {
           innerThoughts = thoughtsMatch[1].trim().replace(/^["'「「『『\(（「\s]+|["'」」』』\)）」\s]+$/g, '');
         }
@@ -2875,6 +2891,21 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
           setOfflineMessages(prev => [...prev, assistantMsg]);
         } else {
           onSendMessage(assistantMsg);
+          
+          // Auto-translate if enabled and character language is not local
+          if (friend.autoTranslateEnabled && friend.language && friend.language !== '普通话') {
+            const transPrompt = `你现在是一个专业翻译官。
+任务：将以下文本翻译成中文（普通话）。
+文本：${candidate.text}
+要求：
+1. 译文要自然流畅，符合社交语境。
+2. 只能输出翻译后的中文内容。`;
+            callAI(transPrompt, [], settings).then(translation => {
+              if (translation) {
+                onUpdateMessage(friend.id, messages.length + i, { translation });
+              }
+            }).catch(err => console.error("Auto-translation error:", err));
+          }
           
           // Auto-summarize check for assistant messages
           const summaryThreshold = friend.memorySettings?.summaryThreshold || settings.autoSummaryThreshold || 100;
@@ -3362,41 +3393,6 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
     }
   };
 
-  const handleTranslate = async (index: number) => {
-    const msg = currentMessages[index];
-    if (!msg) return;
-    
-    // Toggle if already translated
-    if (msg.translation) {
-      if (isOfflineMode) {
-        const newMsgs = [...offlineMessages];
-        newMsgs[index] = { ...newMsgs[index], hideTranslation: !newMsgs[index].hideTranslation };
-        setOfflineMessages(newMsgs);
-      } else {
-        onUpdateMessage(friend.id, index, { hideTranslation: !msg.hideTranslation });
-      }
-      return;
-    }
-
-    setIsTranslating(index);
-    try {
-      const systemPrompt = '你是一个翻译官。请将以下内容翻译成中文（普通话），如果已经是中文，请翻译成英文。只返回翻译结果，不要有任何多余的解释。';
-      const translation = await callAI(systemPrompt, [{ role: 'user', content: msg.content } as ChatMessage], settings);
-      
-      if (isOfflineMode) {
-        const newMsgs = [...offlineMessages];
-        newMsgs[index] = { ...newMsgs[index], translation };
-        setOfflineMessages(newMsgs);
-      } else {
-        onUpdateMessage(friend.id, index, { translation });
-      }
-    } catch (err) {
-      console.error("Translation error:", err);
-    } finally {
-      setIsTranslating(null);
-    }
-  };
-
   const handleHeartfelt = async (index: number) => {
     const msg = currentMessages[index];
     if (!msg || msg.role !== 'assistant') return;
@@ -3409,17 +3405,16 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
 
     setIsLoading(true);
     try {
-      const systemPrompt = `你现在是${friend.name}的内心想法分析师。
-任务：根据用户收到的一条消息，写出${friend.name}发送该消息时最真实的心理活动或未表达的情感。
-消息内容：“${msg.content}”
+      const systemPrompt = `你现在是一个文学创作者。
+任务：以${friend.name}的身份，用第一人称简短地写出一段内心的真实感受。
+情境：${friend.name}刚刚给用户发送了这样一句话：“${msg.content}”。
 
 要求：
-1. 以第一人称描写，简洁生动。
-2. 字数在50字以内。
-3. 语气符合角色人设（${friend.persona || '自然'}）。
-4. 只能输出内心活动内容，不要任何解释。
-5. 严禁包含违法、暴力、色情内容，保持健康的社交互动。
-6. 使用语言：${friend.language || '中文（普通话）'}。`;
+1. 风格：温柔、真实、感性。
+2. 视角：第一人称，符合角色人设（${friend.persona || '自然'}）。
+3. 篇幅：30字左右。
+4. 语言：${friend.language || '中文（普通话）'}。
+5. 只能输出内心感受内容。`;
 
       const heartfelt = await callAI(systemPrompt, [{ role: 'user', content: '这一刻你在想什么？' } as ChatMessage], settings);
       setShowHeartfelt({ messageIndex: index, content: heartfelt });
@@ -3443,16 +3438,14 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
       const recentMsgs = currentMessages.slice(-10);
       const context = recentMsgs.map(m => `${m.role === 'user' ? '我' : friend.name}: ${m.content}`).join('\n');
       
-      const systemPrompt = `你现在是${friend.name}的状态更新器。
-任务：根据最近的互动内容，生成一句你此时此刻的状态（心情或正在做的事）。
+      const systemPrompt = `你现在是${friend.name}，请用一句话描述你现在的状态或心情。
 要求：
-1. 符合角色人设（${friend.persona || '自然'}）。
-2. 状态简短，通常在10字以内。
-3. 只能输出状态内容，不要解释。
-4. 严禁包含违禁内容。
-5. 使用语言：${friend.language || '中文（普通话）'}。
+1. 简短有力，通常在10字以内。
+2. 符合人设（${friend.persona || '自然'}）。
+3. 只能输出状态内容。
+4. 使用语言：${friend.language || '中文（普通话）'}。
 
-互动内容：
+背景：
 ${context}`;
       
       const newStatus = await callAI(systemPrompt, [{ role: 'user', content: '更新当前状态' } as ChatMessage], settings);
@@ -3636,6 +3629,49 @@ ${context}`;
     setSelectedStickers([]);
     setStickerDeleteMode(false);
     showToast('已删除选中的表情包');
+  };
+
+  const handleTranslate = async (index: number) => {
+    const msg = currentMessages[index];
+    if (!msg || !msg.content || isTranslating !== null) return;
+    
+    // Toggle folding if already translated
+    if (msg.translation) {
+      if (isOfflineMode) {
+        const newMsgs = [...offlineMessages];
+        newMsgs[index] = { ...msg, hideTranslation: !msg.hideTranslation };
+        setOfflineMessages(newMsgs);
+      } else {
+        onUpdateMessage(friend.id, index, { hideTranslation: !msg.hideTranslation });
+      }
+      return;
+    }
+
+    setIsTranslating(index);
+    try {
+      const systemPrompt = `你现在是一个专业翻译。
+任务：将以下内容翻译成中文（普通话）。
+要求：
+1. 意译为主，表达准确自然。
+2. 只能输出翻译内容。
+3. 严禁违禁内容。
+
+内容：${msg.content}`;
+
+      const translation = await callAI(systemPrompt, [], settings);
+      if (isOfflineMode) {
+        const newMsgs = [...offlineMessages];
+        newMsgs[index] = { ...msg, translation, hideTranslation: false };
+        setOfflineMessages(newMsgs);
+      } else {
+        onUpdateMessage(friend.id, index, { translation, hideTranslation: false });
+      }
+    } catch (err) {
+      console.error("Translation error:", err);
+      showToast('翻译失败，请稍后重试');
+    } finally {
+      setIsTranslating(null);
+    }
   };
 
   const features = [
@@ -3866,7 +3902,7 @@ ${context}`;
         (settings.isCuteRabbitThemeEnabled ? "bg-pink-50/60 backdrop-blur-md border-pink-100 text-pink-600" : 
           (settings.themeId === 'rainy-cat' ? "bg-white/10 backdrop-blur-md border-white/10 text-white" : (settings.activeChatThemeId ? "bg-transparent border-transparent" : (settings.appBackgroundUrl ? "bg-white/10 backdrop-blur-md border-slate-200/20" : (isOfflineMode ? "bg-[#ededed] border-slate-300" : "bg-[#f5f5f5] border-slate-200")))))
       )} style={{
-        ...(settings.fullScreenMode ? { paddingTop: settings.hideStatusBar ? 'env(safe-area-inset-top)' : 'max(env(safe-area-inset-top), 44px)' } : {}),
+        ...(settings.fullScreenMode ? { paddingTop: settings.hideStatusBar ? 'env(safe-area-inset-top)' : 'max(env(safe-area-inset-top), 44px)' } : { paddingTop: settings.hideStatusBar ? '0px' : '4px' }),
         ...(settings.appBackgroundUrl && !settings.activeChatThemeId ? { backgroundColor: `rgba(255, 255, 255, ${Math.max(0, (settings.chatWallpaperOpacity ?? 0.8) * 0.2)})` } : {})
       }}>
         {settings.activeChatThemeId === 'imessage-v3' ? (
@@ -4268,19 +4304,72 @@ ${context}`;
                           );
                         })()
                       )}
-                      {msg.translation && (
-                        <div className="mt-1 pt-1 border-t border-black/10 text-xs italic opacity-70">
-                          {msg.translation}
+                      {msg.translation && !msg.hideTranslation && (
+                        <div className="mt-1 max-w-[280px] bg-white/50 backdrop-blur-sm border border-black/5 rounded-lg px-3 py-2 text-[14px] text-slate-500 flex flex-col gap-1 relative group/trans">
+                          <div className="flex items-center justify-between">
+                            <span>{msg.translation}</span>
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); handleTranslate(i); }}
+                              className="opacity-0 group-hover/trans:opacity-100 transition-opacity p-1 -mr-2"
+                            >
+                              <ChevronUp size={14} className="text-slate-300" />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      {msg.translation && msg.hideTranslation && (
+                        <div 
+                          className="mt-1 w-fit flex items-center gap-1 opacity-20 cursor-pointer hover:opacity-50"
+                          onClick={(e) => { e.stopPropagation(); handleTranslate(i); }}
+                        >
+                          <div className="w-4 h-[1px] bg-black/30" />
+                          <span className="text-[14px] leading-none">^</span>
                         </div>
                       )}
                       {isTranslating === i && (
-                        <div className="text-[10px] opacity-50 animate-pulse">正在翻译...</div>
+                        <div className="mt-1 text-[12px] opacity-30 animate-pulse italic">正在翻译...</div>
                       )}
                     </div>
                   ) : settings.themeId === 'rainy-cat' && (!msg.type || msg.type === 'text') ? (
-                    <CatBubble isUser={msg.role === 'user'}>
-                      {msg.content}
-                    </CatBubble>
+                    <div className="flex flex-col gap-1">
+                      <CatBubble isUser={msg.role === 'user'}>
+                        {msg.content}
+                      </CatBubble>
+                      {msg.translation && !msg.hideTranslation && (
+                        <div className={cn(
+                          "mt-1 max-w-[280px] bg-white/10 backdrop-blur-sm border border-white/10 rounded-lg px-3 py-2 text-[14px] text-white/70 flex flex-col gap-1 relative group/trans",
+                          msg.role === 'user' ? "self-end" : "self-start"
+                        )}>
+                          <div className="flex items-center justify-between">
+                            <span>{msg.translation}</span>
+                            <button 
+                              onClick={(e) => { e.stopPropagation(); handleTranslate(i); }}
+                              className="opacity-0 group-hover/trans:opacity-100 transition-opacity p-1 -mr-2"
+                            >
+                              <ChevronUp size={14} className="text-white/50" />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      {msg.translation && msg.hideTranslation && (
+                        <div 
+                          className={cn(
+                            "mt-1 w-fit flex items-center gap-1 opacity-20 cursor-pointer hover:opacity-50",
+                            msg.role === 'user' ? "self-end" : "self-start"
+                          )}
+                          onClick={(e) => { e.stopPropagation(); handleTranslate(i); }}
+                        >
+                          <div className="w-4 h-[1px] bg-white/30" />
+                          <span className="text-[14px] leading-none text-white">^</span>
+                        </div>
+                      )}
+                      {isTranslating === i && (
+                        <div className={cn(
+                          "mt-1 text-[12px] opacity-30 animate-pulse italic text-white/50",
+                          msg.role === 'user' ? "self-end" : "self-start"
+                        )}>正在翻译...</div>
+                      )}
+                    </div>
                   ) : (
                     <>
                       {(!msg.type || msg.type === 'text') && (
