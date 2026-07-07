@@ -193,8 +193,8 @@ export default function RoleMemoryPage({ friend, memory, onBack }: RoleMemoryPag
                         "absolute top-0 left-0 w-1 h-full",
                         activeOfflineSubTab === 'summary' ? "bg-pink-400" : "bg-blue-400"
                       )} />
-                      <div className="flex justify-between items-center mb-2">
-                        <h4 className="font-bold text-slate-700 truncate flex-1 mr-2">{plot.title || '未命名剧情'}</h4>
+                      <div className="flex justify-between items-start mb-2">
+                        <h4 className="font-bold text-slate-700 text-sm whitespace-normal break-all leading-snug flex-1 mr-2">{plot.title || '未命名剧情'}</h4>
                         <span className="text-[10px] text-slate-300 shrink-0">
                           {new Date(plot.timestamp).toLocaleDateString()}
                         </span>

@@ -1045,6 +1045,7 @@ ${recentMemories}
           )}
         style={{ 
           background: settings.themeId === 'pink-cat' ? '#fffafb' : '#000',
+          transform: 'translateZ(0)', // Force fixed elements to stay within this container
         }}
       >
         {/* Notch (刘海) */}
@@ -1096,7 +1097,7 @@ ${recentMemories}
         {/* Status Bar */}
         {!settings.hideStatusBar && (
           <div className={cn(
-            "w-full flex items-center justify-between px-4 pt-2 pb-1 z-[110] pointer-events-none transition-all duration-500",
+            "w-full flex items-center justify-between px-4 pt-2 pb-1 z-[10001] pointer-events-none transition-all duration-500",
             (settings.fullScreenMode) ? "absolute top-0 left-0 right-0 bg-transparent safe-area-padding-top" : "relative bg-black/20 backdrop-blur-md"
           )}>
             {/* Left: Time */}

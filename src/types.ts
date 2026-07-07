@@ -286,6 +286,21 @@ export interface OfflineMemory {
   rawHistory: ChatMessage[];
 }
 
+export interface OfflineConfig {
+  writingStyle: string;
+  characterPerspective: string;
+  userPerspective: string;
+  minWords: number;
+  maxWords: number;
+  onlineContextCount: number;
+  location: string;
+  openingLine?: string;
+  cardTheme?: 'classic' | 'student' | 'glass' | 'time';
+  writingStylePresets?: any[];
+  bgImage?: string;
+  customCss?: string;
+}
+
 export interface MomentsSettings {
   autoPostEnabled: boolean;
   frequency: number; // posts per day
@@ -329,8 +344,9 @@ export interface Friend {
   isSecretCrush?: boolean;
   offlineMemory?: OfflineMemory;
   currentOfflineMessages?: ChatMessage[];
+  carriedOfflineMessages?: ChatMessage[];
   isOfflineMode?: boolean;
-  offlineConfig?: any;
+  offlineConfig?: OfflineConfig;
   offlineChatBackground?: string;
   disableActionDescription?: boolean;
   weiboFans?: number;
@@ -424,6 +440,9 @@ export interface ChatMessage {
   locationName?: string;
   isForwarded?: boolean;
   forwardFrom?: string;
+  innerMonologue?: string;
+  status?: string;
+  outfit?: string;
 }
 
 export interface MovieReport {

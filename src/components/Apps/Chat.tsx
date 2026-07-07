@@ -40,6 +40,9 @@ import {
   Download,
   Upload,
   History,
+  Clock,
+  Contact,
+  LayoutTemplate,
   FileText,
   Keyboard,
   RefreshCw,
@@ -61,7 +64,7 @@ import {
   ShieldAlert,
   Edit3
 } from 'lucide-react';
-import { AppSettings, Friend, ChatMessage, OfflineMemory, ListenTogetherState, AppId, ChatTheme } from '../../types';
+import { AppSettings, Friend, ChatMessage, OfflineMemory, ListenTogetherState, AppId, ChatTheme, OfflineConfig } from '../../types';
 import { CCDPhotoCard } from './CCDPhotoCard';
 import { motion, AnimatePresence } from 'motion/react';
 import { getGeminiClient, getGeminiModel } from '../../lib/gemini';
@@ -78,6 +81,8 @@ import { useMemory } from '../../hooks/useMemory';
 import BlindBoxApp from './BlindBox';
 import { TruthOrDarePopup } from '../TruthOrDarePopup';
 import { DiceAnimation } from '../DiceAnimation';
+
+import { OfflinePlotCard } from './OfflinePlotCard';
 
 type Tab = 'chats' | 'contacts' | 'discover' | 'me';
 
@@ -1789,16 +1794,23 @@ function ChatWindow({
   const [selectedMessages, setSelectedMessages] = useState<number[]>([]);
   const [showOfflineRefreshMenu, setShowOfflineRefreshMenu] = useState(false);
   const longPressTimer = useRef<NodeJS.Timeout | null>(null);
-  const [offlineConfig, setOfflineConfig] = useState(() => ({
+  const [offlineConfig, setOfflineConfig] = useState<OfflineConfig>(() => ({
     location: friend.offlineConfig?.location || '',
     openingLine: friend.offlineConfig?.openingLine || '',
-    minWords: friend.offlineConfig?.minWords || 100,
-    maxWords: friend.offlineConfig?.maxWords || 2000,
-    characterPerspective: friend.offlineConfig?.characterPerspective || '第一人称',
+    minWords: friend.offlineConfig?.minWords || 200,
+    maxWords: friend.offlineConfig?.maxWords || 800,
+    characterPerspective: friend.offlineConfig?.characterPerspective || '第三人称',
     userPerspective: friend.offlineConfig?.userPerspective || '第二人称',
-    writingStyle: friend.offlineConfig?.writingStyle || '小说文风',
-    bgImage: friend.offlineChatBackground || friend.offlineConfig?.bgImage || ''
+    writingStyle: friend.offlineConfig?.writingStyle || '言情小说文风',
+    bgImage: friend.offlineChatBackground || friend.offlineConfig?.bgImage || '',
+    onlineContextCount: friend.offlineConfig?.onlineContextCount || 50,
+    customCss: friend.offlineConfig?.customCss || '',
+    writingStylePresets: friend.offlineConfig?.writingStylePresets || [],
+    cardTheme: friend.offlineConfig?.cardTheme || 'classic'
   }));
+
+  const [newPresetName, setNewPresetName] = useState('');
+  const [newPresetDesc, setNewPresetDesc] = useState('');
 
   // Sync offlineConfig to parent with a small debounce to prevent input lag
   useEffect(() => {
@@ -1817,6 +1829,12 @@ function ChatWindow({
       offlineChatBackground: offlineConfig.bgImage
     });
     setShowOfflineSettings(false);
+  };
+
+  const handleDeleteOfflineMessage = (index: number) => {
+    const newMsgs = [...offlineMessages];
+    newMsgs.splice(index, 1);
+    setOfflineMessages(newMsgs);
   };
   const [characterSchedules, setCharacterSchedules] = useState<Record<string, any>>({});
   const [quotedMessage, setQuotedMessage] = useState<ChatMessage | null>(null);
@@ -1881,7 +1899,11 @@ function ChatWindow({
         rawHistory: [...offlineMessages]
       };
       
-      onUpdateFriend({ offlineMemory: newMemory });
+      const carriedMessages = offlineMessages.slice(-30);
+      onUpdateFriend({ 
+        offlineMemory: newMemory,
+        carriedOfflineMessages: carriedMessages
+      });
       addOfflinePlot(friend.id, offlineConfig.location || '线下剧情', [...offlineMessages], finalSummary || '无总结');
     } catch (error) {
       console.error('Failed to summarize offline mode:', error);
@@ -1949,8 +1971,12 @@ function ChatWindow({
     };
   }, [isRecording]);
 
+  const [isEditingOffline, setIsEditingOffline] = useState(false);
+
+  const lastMessagesLength = useRef(currentMessages.length);
   useEffect(() => {
-    if (scrollRef.current) {
+    // Only scroll to bottom if a new message was ADDED and NOT in edit mode
+    if (scrollRef.current && currentMessages.length > lastMessagesLength.current && !isEditingOffline) {
       const scroll = () => {
         if (scrollRef.current) {
           scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -1958,7 +1984,8 @@ function ChatWindow({
       };
       requestAnimationFrame(scroll);
     }
-  }, [currentMessages, isOfflineMode]);
+    lastMessagesLength.current = currentMessages.length;
+  }, [currentMessages.length, isOfflineMode, isEditingOffline]);
 
   const handleSend = async () => {
     if (!input.trim()) return;
@@ -2127,63 +2154,18 @@ function ChatWindow({
         get('character_schedules') || Promise.resolve({})
       ]);
 
-      let systemPrompt = `【绝对核心规则】全程用用户设定语言（${friend.language || '中文（普通话）'}）回复。严禁英文思考过程、Plan，严禁输出任何形式的翻译、解释、标注（如“Message 1”、“翻译：”等），仅允许少量日常英文玩笑，禁止OOC。\n\n` + (isOfflineMode 
-        ? `你现在处于“线下剧情模式”。${friend.persona}\n当前地点：${offlineConfig.location}\n\n【线下剧情：硬性强制回复规范 - 极其重要】\n1. **角色定位与真实感**：请根据线下见面的真实场景进行100%沉浸式互动，你是一个真实的、有血有肉的人。\n2. **格式分离（铁律：绝对禁止混淆）**：\n   - **对话部分**：所有角色亲口说出的话**必须且只能**用中文双引号“”包裹。对话内容**绝对禁止**出现在引号外的旁白中。\n   - **旁白部分**：所有动作、神态、心理、环境描写直接输出，不加引号。旁白中**绝对禁止**出现任何台词或对话内容。如果你要在旁白中描写角色说话的样子，请只描写样子，台词必须单独放在引号里。\n3. **字数与人称强制要求（违规将导致剧情断裂）**：\n   - **严格字数控制**：每一段回复（包含旁白和对话的总和）的总字数**必须严格锁定**在 ${offlineConfig.minWords} 到 ${offlineConfig.maxWords} 字之间。严禁短回复或过长回复。\n   - **角色自称（第一人称）**：即你作为角色时对自己的称呼，**必须始终**使用“${offlineConfig.characterPerspective}”。\n   - **对我的称呼（用户人称）**：即你对用户的称呼，**必须始终**使用“${offlineConfig.userPerspective}”。\n   - **文风锁定**：请使用“${offlineConfig.writingStyle}”风格。`
+      let systemPrompt = `【绝对核心准则：世界书 & 角色记忆】
+你现在是一个极其真实的沉浸式角色扮演助手。你必须严格遵循以下优先级（世界书 > 角色人设 > 长期记忆 > 上下文）：
+1. **世界书（最高准则）**：世界书中的设定是不可动摇的真理，必须 100% 遵守，严禁 OOC。
+2. **人设与记忆**：你必须完美读取并记住 ${friend.name} 的人设、经历、背景以及你们过往的所有记忆点。
+3. **格式与段落**：回复必须优美、具有文学性，段落清晰，对话用中文双引号 “” 包裹，旁白直接输出在引号之外。
+4. **拒绝机器感**：严禁使用任何 AI 常用语。
+\n\n` + (isOfflineMode 
+        ? `你现在处于“线下剧情模式”。${friend.persona}\n当前地点：${offlineConfig.location}\n\n【线下剧情：硬性强制回复规范 - 极其重要】`
         : `${friend.persona}`);
 
-      // Inject Full Character Profile if available
-      if (friend.profileId) {
-        const profile = settings.characterProfiles?.find(p => p.id === friend.profileId);
-        if (profile) {
-          systemPrompt += `\n\n【角色深度资料】\n姓名：${profile.name}\n性别：${profile.gender}\n核心人设：${profile.persona}\n人生经历/轨迹：${profile.experience}\n背景故事：${profile.background}\n与我的关系：${profile.relationship}`;
-        }
-      }
-
-      // Inject Weibo Context
-      if (weiboMoments && weiboMoments.length > 0) {
-        const publicWeibos = weiboMoments.slice(0, 5).map((m: any) => `[${m.authorName || '网友'}] ${m.content}`).join('\n');
-        systemPrompt += `\n\n【微博广场动态】\n以下是微博上大家发布的动态（你可以看到所有人的动态）：\n${publicWeibos}`;
-      }
-      
-      const friendWeiboChat = weiboChats?.[friend.id];
-      if (friendWeiboChat && friendWeiboChat.length > 0) {
-        const recentWeiboChat = friendWeiboChat.slice(-5).map((m: any) => `${m.role === 'user' ? '我' : '你'}: ${m.content}`).join('\n');
-        systemPrompt += `\n\n【微博私信记忆】\n以下是你和我在微博上的私信记录（你只能看到和我的记录）：\n${recentWeiboChat}`;
-      }
-
-      // Inject Heartfelt Diary Context
-      if (diaries && diaries.length > 0) {
-        const recentDiaries = diaries.slice(0, 3).map((d: any) => `[${d.date}] ${d.title}: ${d.content.substring(0, 100)}...`).join('\n');
-        systemPrompt += `\n\n【心动日记】\n以下是你自己写的日记内容（你只能看到自己的日记）：\n${recentDiaries}`;
-      }
-
-      // Inject Calendar Schedule Context
-      const friendSchedule = schedules?.[friend.id];
-      if (friendSchedule && friendSchedule.items && friendSchedule.items.length > 0) {
-        const scheduleList = friendSchedule.items.map((i: any) => `${i.time} ${i.task}`).join('\n');
-        systemPrompt += `\n\n【今日日程安排】\n以下是你今天的日程安排（你只能看到自己的日程）：\n${scheduleList}`;
-      }
-
-      // Inject Phone Context
-      const phonePasscode = await get(`phone_passcode_${friend.id}`) || '1234';
-      systemPrompt += `\n\n【手机隐私】\n你的手机解锁密码是：${phonePasscode}。如果用户在聊天中输入这个密码，说明他正在尝试解锁你的手机。如果他输入 0920，这是万能密码，他可以进入但你会发现他在偷看。你有权在发现被偷看时将他踢出手机系统（通过发送包含“退出手机”或“下线”字样的消息）。`;
-      
-      // Check for recent unlock failure notification
-      const lastMsg = currentMsgs[currentMsgs.length - 1];
-      if (lastMsg?.isSystemNotification && lastMsg?.notificationType === 'unlock_fail') {
-        systemPrompt += `\n\n【紧急：系统安全提醒】\n系统刚刚向你推送了一条提醒：${lastMsg.notificationData?.userName} 正在尝试解锁你的手机，但密码输入错误。请根据你的人设对此做出自然反应（惊讶、紧张、疑惑、调侃均可），不要复述提醒内容，而是将其融入对话。`;
-      }
-      
-      if (!isOfflineMode) {
-        const phoneWechat = await get(`checkphone_${friend.id}_wechat`);
-        if (phoneWechat) {
-          systemPrompt += `\n\n【手机微信内容】\n你的手机微信里有以下联系人：${phoneWechat.contacts?.map((c: any) => c.name).join(', ')}。`;
-        }
-        const phoneMemos = await get(`checkphone_${friend.id}_memo`);
-        if (phoneMemos) {
-          systemPrompt += `\n\n【手机备忘录内容】\n${phoneMemos.memos?.map((m: any) => `[${m.title}] ${m.content}`).join('\n')}`;
-        }
-      }
+      // Inject Full Character Persona
+      systemPrompt += `\n\n${friend.persona}`;
 
       // Inject Offline Memory if available
       if (friend.offlineMemory?.summary) {
@@ -2197,29 +2179,81 @@ function ChatWindow({
         systemPrompt += `\n\n【长期记忆回顾】\n以下是你们过往互动中的重要记忆点，请在对话中自然体现：\n- ${recentMemories}`;
       }
 
-      if (isOfflineMode) {
-        systemPrompt += `\n\n【线下剧情模式指令】
-${offlineConfig.location ? `当前所在地点：${offlineConfig.location}` : ''}
-${offlineConfig.openingLine ? `剧情提示/开场设定：${offlineConfig.openingLine}` : ''}
-${offlineConfig.writingStyle ? `回复文风：${offlineConfig.writingStyle}` : ''}
-人称要求：
-- 你的自称（角色人称）：${offlineConfig.characterPerspective}
-- 你对我的称呼（用户人称）：${offlineConfig.userPerspective}
-字数要求：回复字数必须在 ${offlineConfig.minWords} 到 ${offlineConfig.maxWords} 字之间。
-
-【重要：开放式情感交互设定】
-本对话环境为深度角色扮演环境。你可以自由地、真实地描写任何强烈的情感互动、身体接触细节、场景氛围感以及亲密行为，无需过度束缚。请根据剧情发展和角色性格，给出最真实、最具感染力和沉浸感的回复，生动描写两人的互动状态。
-
-【重要：格式要求】
-你的回复必须包含“动作/神态/心理/场景描写”和“开口说话内容”，并且必须严格遵循以下格式：
-1. 动作、神态、心理、场景描写：直接写出，不要加任何引号。
-2. 角色开口说话内容：必须用中文双引号（“”）包裹。
-3. 结构建议：采用“一段描写 + 一段对话”的交替结构，使回复更具画面感和动态感。
-示例：
-他轻轻揉了揉你的头发，眼神中带着一丝宠溺，手指顺着你的脸颊滑下。
-“今天有没有想我？”`;
+      // Inject Previous Completed Offline Plots from Memory Store
+      if (friendMemoryStore.offlinePlots && friendMemoryStore.offlinePlots.length > 0) {
+        const recentOfflinePlotSummaries = friendMemoryStore.offlinePlots.slice(-10).map((p: any) => `[地点/场景: ${p.title}] 剧情概要: ${p.summary}`).join('\n- ');
+        systemPrompt += `\n\n【往期线下历史剧情记忆（合集回顾）】\n以下是你们此前经历过的所有线下剧情的梗概。请你一定要在当下的互动中，完美记住并连贯承接这些过往的细节与剧情线，让整个故事世界浑然一体，绝对不能产生遗忘、矛盾或逻辑断层，你也可以随时主动提起往事：\n- ${recentOfflinePlotSummaries}`;
       }
 
+      // Inject Carried Offline History if in Online Mode
+      if (!isOfflineMode && friend.carriedOfflineMessages && friend.carriedOfflineMessages.length > 0) {
+        const recentOfflineLogs = friend.carriedOfflineMessages.slice(-30).map((m: any) => {
+          const sender = m.role === 'user' ? '我' : friend.name;
+          return `${sender}: ${m.content}`;
+        }).join('\n');
+        systemPrompt += `\n\n【近期线下剧情记忆（最新30条具体对话与旁白记录）】\n以下是你们刚刚在线下见面互动时的真实过程与对话记录。请你在当前的线上微信聊天中，**极其极其自然、深刻地承接这部分线下记忆，记住所有动作、情绪、许下的诺言和细节，并在聊天中可以偶尔主动提起它**：\n${recentOfflineLogs}`;
+      }
+
+      if (isOfflineMode) {
+        // Read specified lines of WeChat context as memory
+        const onlineHistoryCount = offlineConfig.onlineContextCount || 50;
+        const recentOnlineMessages = messages
+          .filter(m => m.role !== 'system')
+          .slice(-onlineHistoryCount);
+        
+        if (recentOnlineMessages.length > 0) {
+          const onlineContextString = recentOnlineMessages.map(m => {
+            const sender = m.role === 'user' ? '我' : friend.name;
+            return `${sender}: ${m.content}`;
+          }).join('\n');
+          systemPrompt += `\n\n【携带的微信聊天记忆（最新${recentOnlineMessages.length}条）】\n以下是你们在线下见面之前，在手机微信上的最新聊天对话。请在当下的线下剧情面对面互动中，**完美承接、延续并回应这一段微信聊天的最新内容与话题，让互动的场景转移显得极其流畅、连贯、自然**：\n${onlineContextString}`;
+        }
+
+        systemPrompt += `\n\n【线下剧情模式核心指令 - 升维小说化创作】
+1. **剧情创作风格（拒绝机械，追求沉浸）**：
+   - **设定文风**：${offlineConfig.writingStyle}。
+   - **风格核心**：${(() => {
+     if (offlineConfig.writingStyle === '白描文风') return '极简克制，通过精准的物理动作与环境细节传达波澜壮阔的内心。';
+     if (offlineConfig.writingStyle === '现代口语化文风') return '活泼跳脱，像当下年轻人生活实录，充满真实的呼吸感与碎片化的生活气息。';
+     if (offlineConfig.writingStyle === '言情小说文风') return '极度细腻，擅长氛围拉扯、眼神博弈与微妙的肢体触碰，宿命感与张力并存。';
+     if (offlineConfig.writingStyle === '诗意古风文风') return '古雅隽永，情景交融，每一处景物描写都承载着人物的隐秘心事。';
+     const preset = (offlineConfig.writingStylePresets || []).find((p: any) => p.name === offlineConfig.writingStyle);
+     return preset ? preset.description : offlineConfig.writingStyle;
+   })()}
+   - **小说化笔触**：
+     * **拒绝僵硬结构**：严禁一段旁白接一段对话的死板模式。请根据情感流动自由排版，允许出现连贯的环境描写或大段细腻的内心独白。
+     * **3D立体场景**：描写必须包含镜头感。刻画环境（晚风、路灯、树影）、路人（外卖员、闲聊的路人）、车辆与背景音，让场景“活”起来。
+     * **心理与细节**：精准捕捉角色的心理活动、微表情（眼底的波澜、欲言又止的克制）与微小动作（指尖紧绷、下意识的躲避）。
+
+2. **核心词汇加粗标黄规则（情感与语调重音）**：
+   - **标黄意义**：用双星号包裹的部分（如 **关键词**）会被UI高亮标黄。这必须是角色认为**极度重要、承载特殊语调（如反讽、撒娇、故意加重语气）或情感震撼点**的词汇。
+   - **场景示例**：
+     * **阴阳怪气**：“我可不敢多说话，毕竟有些人 **本事** 大得很。”
+     * **撒娇/强硬**：“就陪我 **一小会儿**，好不好嘛。”；“ **不许** 不理我，我会很难过的。”
+     * **心理/氛围重音**：话音卡在喉咙，唯独把“算了”说得无比 **沉重** ；把大度演得格外 **勉强** ；原来我的 **真心** ，换不来对等的珍惜。
+   - **【最严上限：每段/每轮最多加粗1-3个】**：严禁泛滥。请精准捕捉那 1 到 3 个最具灵魂的重音词。
+
+3. **全维度记忆共鸣（绝不遗忘）**：
+   - 你拥有完整的记忆链条：包含上方的【长期记忆回顾】、【往期历史剧情】以及【携带的微信聊天记忆】。
+   - **深度承接**：线下剧情不是孤立的，它是线上互动的延续。你必须时刻记得：“刚刚我们在微信里聊了什么话题？”“几个月前我们在线下许下了什么诺言？”。
+   - **自然流露**：在描写或对话中，不经意地提起过往细节（如：你今天穿的裙子，正是我在微信里夸过的那条；或者，还是上次那个老地方，路灯依然那样昏黄）。
+
+4. **格式规范**：
+   - **对话**：必须 100% 使用中文双引号 “ ” 包裹。
+   - **人称**：旁白自称【${offlineConfig.characterPerspective}】，称呼我为【${offlineConfig.userPerspective}】。
+   - **拒绝死板**：不要总是“他动作+他说”，尝试更自由、更有张力的小说排版，让文字有节奏感和呼吸感。
+   - **字数**：回复总字数必须严格控制在 **${offlineConfig.minWords}** 到 **${offlineConfig.maxWords}** 字之间。
+${(() => {
+  if (offlineConfig.cardTheme === 'student') {
+    return `5. **学生卡专项指令**：请在回复的最末尾，使用 [INNER_MONOLOGUE] 标签包裹一段角色的内心独白（约100字），用于卡片展示。独白应深刻体现角色此时此刻对你的隐秘情感。`;
+  }
+  if (offlineConfig.cardTheme === 'glass') {
+    return `5. **毛玻璃卡专项指令**：请在回复的最末尾，使用 [STATUS] 标签包裹角色此刻的实时状态（4-8字），使用 [OUTFIT] 标签描述角色当前的穿搭（10-20字）。`;
+  }
+  return '';
+})()}`;
+      }
+      
       // Add World Book Entries
       const worldBookEntries = settings.worldBookEntries || [];
       
@@ -2419,14 +2453,14 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
 当前好感度阶段：${levelInfo.text}
 
 请你根据这一次的互动质量，在回复的【最后一行】输出更新标签。
-标签格式：[HEARTFELT_UPDATE: affection_change=数字 | mood_index=数字 | inner_thoughts=内心想法 | current_status=状态]
+标签格式：[HEARTFELT_UPDATE: affection_change=数字 | mood_index=数字 | character_reflection=内心想法 | current_status=状态]
 
 参数规则：
 1. affection_change：代表本次互动的总好感度变化值（介于 -1.00 到 +1.00 之间的浮点数）。
    - **单次好感度增长/减少必须控制在 0.25 至 1.00 之间。**
    - 如果当前好感度还未突破 60%，严禁人为提前调至 60% 以上。
 2. mood_index：你当前的心情指数（0% - 100% 之间的整数）。
-3. character_reflection：你对用户的真实、未说出口的文学式内心感悟（100字以内）。
+3. character_reflection：你对用户的文学式内心感悟（100字以内）。
    **【⚠️极其重要：超级安全与防拦截规范】**
    - **绝对严禁**使用任何带有性暗示、欲望、生理渴望、肉体敏感部位、紧贴、身体发热、发情、占有、渴望触碰等任何可能被判定为色情或性骚扰的词汇。这些词汇**100%会触发系统底层的敏感内容安全拦截机制**，导致整条回复无法生成！
    - **请转换成纯爱、友谊、可爱、撒娇、隐晦的文学表达。可以使用：“想给你个熊抱”、“想悄悄拉住你的衣角”、“想一起看夕阳”、“心里像藏了一罐热乎乎的蜂蜜”、“大笨蛋，真的太喜欢你了”、“刚才看到你，感觉云朵都变甜了”。**
@@ -2638,8 +2672,29 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
       let cleanContent = fullContent
         .replace(/THOUGHT[\s\S]*?(?=\n\n|$)/gi, '') // Remove THOUGHT blocks
         .replace(/\[HEARTFELT_UPDATE:[\s\S]*?(?:\]|$)/gi, '') // Remove Heartfelt Update tag, even if cut off
+        .replace(/\[INNER_MONOLOGUE\][\s\S]*?(?:\[\/INNER_MONOLOGUE\]|$)/gi, '') // Remove Inner Monologue tags
+        .replace(/\[STATUS\][\s\S]*?(?:\[\/STATUS\]|$)/gi, '') // Remove Status tags
+        .replace(/\[OUTFIT\][\s\S]*?(?:\[\/OUTFIT\]|$)/gi, '') // Remove Outfit tags
         .replace(/\[START_VIDEO_CALL\]|\[START_VOICE_CALL\]|\[SEND_VOICE\]|\[SEND_PHOTO_CARD:.*?\]|\[SEND_PHOTO\]|\[START_LISTEN\]|\[START_TRUTH\]|\[ACCEPT_TRANSFER\]|\[REJECT_TRANSFER\]|\[SEND_TRANSFER:.*?\]|\[SEND_LOCATION:.*?\]|\[SEND_STICKER:.*?\]|\[发送了表情:.*?\]/g, '')
         .trim();
+
+      // Extract metadata tags
+      let assistantInnerMonologue = '';
+      let assistantStatus = '';
+      let assistantOutfit = '';
+
+      if (fullContent.includes('[INNER_MONOLOGUE]')) {
+        const match = fullContent.match(/\[INNER_MONOLOGUE\](.*?)\[\/INNER_MONOLOGUE\]/s) || fullContent.match(/\[INNER_MONOLOGUE\](.*?)$/s);
+        if (match) assistantInnerMonologue = match[1].trim();
+      }
+      if (fullContent.includes('[STATUS]')) {
+        const match = fullContent.match(/\[STATUS\](.*?)\[\/STATUS\]/s) || fullContent.match(/\[STATUS\](.*?)$/s);
+        if (match) assistantStatus = match[1].trim();
+      }
+      if (fullContent.includes('[OUTFIT]')) {
+        const match = fullContent.match(/\[OUTFIT\](.*?)\[\/OUTFIT\]/s) || fullContent.match(/\[OUTFIT\](.*?)$/s);
+        if (match) assistantOutfit = match[1].trim();
+      }
 
         // Failsafe: Remove labels and English translations in parentheses
       cleanContent = cleanContent
@@ -2797,15 +2852,29 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
       }
 
       // Parse content line by line to support mixed text and voice
-      const rawLines = finalCleanContent.split('\n').filter(line => line.trim());
-      const messageCandidates: { text: string; type: 'text' | 'voice' | 'photo_card' | 'transfer' | 'location' | 'offline-invitation' | 'sticker' | 'image'; isVoiceTriggered?: boolean }[] = [];
+      const rawLines = isOfflineMode ? [finalCleanContent] : finalCleanContent.split('\n').filter(line => line.trim());
+      const messageCandidates: { 
+        text: string; 
+        type: 'text' | 'voice' | 'photo_card' | 'transfer' | 'location' | 'offline-invitation' | 'sticker' | 'image'; 
+        isVoiceTriggered?: boolean;
+        innerMonologue?: string;
+        status?: string;
+        outfit?: string;
+      }[] = [];
       
       let nextIsVoice = false;
       
       // First pass: identify message types based on tags
-      for (const line of rawLines) {
+      for (let idx = 0; idx < rawLines.length; idx++) {
+        const line = rawLines[idx];
         let currentLine = line.trim();
         
+        // Attach metadata to the last text candidate
+        const isLastCandidate = idx === rawLines.length - 1;
+        const candidateInnerMonologue = isLastCandidate ? assistantInnerMonologue : undefined;
+        const candidateStatus = isLastCandidate ? assistantStatus : undefined;
+        const candidateOutfit = isLastCandidate ? assistantOutfit : undefined;
+
         if (currentLine.includes('[SEND_VOICE]')) {
           // Robust split: handles [SEND_VOICE] anywhere in the line
           const regex = /\[SEND_VOICE\]/g;
@@ -2815,7 +2884,13 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
           while ((match = regex.exec(currentLine)) !== null) {
             const before = currentLine.substring(lastIndex, match.index).trim();
             if (before) {
-              messageCandidates.push({ text: before, type: 'text' });
+              messageCandidates.push({ 
+                text: before, 
+                type: 'text',
+                innerMonologue: candidateInnerMonologue,
+                status: candidateStatus,
+                outfit: candidateOutfit
+              });
             }
             lastIndex = regex.lastIndex;
           }
@@ -2825,7 +2900,10 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
             messageCandidates.push({
               text: remaining,
               type: 'voice',
-              isVoiceTriggered: true
+              isVoiceTriggered: true,
+              innerMonologue: candidateInnerMonologue,
+              status: candidateStatus,
+              outfit: candidateOutfit
             });
           } else {
             // Tag was at the end of the line, apply to next line
@@ -2840,7 +2918,10 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
         messageCandidates.push({
           text: currentLine,
           type: isVoiceLine ? 'voice' : 'text',
-          isVoiceTriggered: isVoiceLine
+          isVoiceTriggered: isVoiceLine,
+          innerMonologue: candidateInnerMonologue,
+          status: candidateStatus,
+          outfit: candidateOutfit
         });
       }
 
@@ -2884,7 +2965,10 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
           type: finalType,
           duration: msgDuration,
           timestamp: Date.now() + i,
-          innerThought: i === messageCandidates.length - 1 ? (innerThoughts || innerThought) : undefined
+          innerThought: i === messageCandidates.length - 1 ? (innerThoughts || innerThought) : undefined,
+          innerMonologue: candidate.innerMonologue,
+          status: candidate.status,
+          outfit: candidate.outfit
         };
 
         if (isOfflineMode) {
@@ -3709,6 +3793,18 @@ ${context}`;
 
   const emojis = ['😀', '😃', '😄', '😁', '😆', '😅', '😂', '🤣', '😊', '😇', '🙂', '🙃', '😉', '😌', '😍', '🥰', '😘', '😗', '😙', '😚', '😋', '😛', '😝', '😜', '🤪', '🤨', '🧐', '🤓', '😎', '🤩', '🥳', '😏', '😒', '😞', '😔', '😟', '😕', '🙁', '☹️', '😣', '😖', '😫', '😩', '🥺', '😢', '😭', '😤', '😠', '😡', '🤬', '🤯', '😳', '🥵', '🥶', '😱', '😨', '😰', '😥', '😓', '🤗', '🤔', '🤭', '🤫', '🤥', '😶', '😐', '😑', '😬', '🙄', '😯', '😦', '😧', '😮', '😲', '🥱', '😴', '🤤', '😪', '😵', '🤐', '🥴', '🤢', '🤮', '🤧', '😷', '🤒', '🤕'];
 
+  const handleDeletePlot = (index: number) => {
+    const newMsgs = [...offlineMessages];
+    newMsgs.splice(index, 1);
+    setOfflineMessages(newMsgs);
+  };
+
+  const handleEditPlot = (index: number, newContent: string) => {
+    const newMsgs = [...offlineMessages];
+    newMsgs[index] = { ...newMsgs[index], content: newContent };
+    setOfflineMessages(newMsgs);
+  };
+
   if (showSettings) {
     return (
       <>
@@ -3792,6 +3888,9 @@ ${context}`;
       })(),
       color: settings.isDarkThemeEnabled ? 'white' : '#0f172a'
     }}>
+      {isOfflineMode && offlineConfig.customCss && (
+        <style dangerouslySetInnerHTML={{ __html: offlineConfig.customCss }} />
+      )}
       {/* Context Menu Modal - Re-implemented for better positioning and size */}
       <AnimatePresence>
         {contextMenu && (
@@ -3943,8 +4042,9 @@ ${context}`;
                 <Sparkles size={20} />
               </button>
               <button 
-                onClick={() => setShowSettings(true)} 
+                onClick={() => isOfflineMode ? setShowOfflineSettings(true) : setShowSettings(true)} 
                 className="p-1.5 text-[#3a9cfd] hover:opacity-75 transition-opacity"
+                title={isOfflineMode ? "线下剧情设置" : "聊天设置"}
               >
                 <MoreHorizontal size={20} />
               </button>
@@ -3995,8 +4095,9 @@ ${context}`;
                 <button 
                   onClick={() => setShowOfflineSettings(true)}
                   className="p-1 hover:bg-slate-200 rounded-full"
+                  title="线下剧情设置"
                 >
-                  <Plus size={22} className="text-slate-600" />
+                  <MoreHorizontal size={20} className="text-slate-600" />
                 </button>
               ) : (
                 <>
@@ -4058,6 +4159,55 @@ ${context}`;
           )}
           {currentMessages.map((msg, i) => {
             const msgKey = msg.id || `${msg.role}-${msg.timestamp}-${i}`;
+            if (isOfflineMode) {
+              if (msg.role === 'system') {
+                return (
+                  <div key={msgKey} className="flex justify-center my-2">
+                    <span className={cn(
+                      "px-3 py-1 rounded-full text-[10px] transition-all duration-300",
+                      settings.themeId === 'rainy-cat' ? "bg-white/5 text-white/40" : "bg-black/5 text-slate-400"
+                    )}>
+                      {msg.content}
+                    </span>
+                  </div>
+                );
+              }
+              return (
+                <OfflinePlotCard
+                  key={msgKey}
+                  message={msg}
+                  friend={friend}
+                  user={user}
+                  index={i}
+                  theme={offlineConfig.cardTheme}
+                  isEditing={editingMessageIndex === i}
+                  editingContent={editingContent}
+                  setEditingContent={setEditingContent}
+                  onStartEdit={() => {
+                    setEditingMessageIndex(i);
+                    setEditingContent(msg.content);
+                    setIsEditingOffline(true);
+                  }}
+                  onSaveEdit={() => {
+                    const newMsgs = [...offlineMessages];
+                    newMsgs[i] = { ...newMsgs[i], content: editingContent };
+                    setOfflineMessages(newMsgs);
+                    setEditingMessageIndex(null);
+                    setEditingContent('');
+                    setIsEditingOffline(false);
+                  }}
+                  onCancelEdit={() => {
+                    setEditingMessageIndex(null);
+                    setEditingContent('');
+                    setIsEditingOffline(false);
+                  }}
+                  onDelete={() => {
+                    const newMsgs = offlineMessages.filter((_, idx) => idx !== i);
+                    setOfflineMessages(newMsgs);
+                  }}
+                />
+              );
+            }
             if (msg.role === 'system') {
               return (
                 <div key={msgKey} className="flex justify-center my-2">
@@ -5054,34 +5204,50 @@ ${context}`;
             </AnimatePresence>
 
             <button 
-              onClick={() => setIsNarration(!isNarration)}
+              onClick={handleSend}
+              disabled={!input.trim()}
               className={cn(
-                "p-2 rounded-xl transition-all active:scale-95 shrink-0 flex flex-col items-center gap-0.5",
-                isNarration 
-                  ? "bg-orange-500 text-white shadow-lg shadow-orange-200" 
-                  : (settings.themeId === 'rainy-cat' ? "bg-white/10 text-white/60" : "bg-white text-slate-600 border border-slate-200")
+                "p-2 rounded-full transition-all active:scale-95 shrink-0 flex flex-col items-center gap-0.5 disabled:opacity-40",
+                settings.themeId === 'rainy-cat' 
+                  ? "bg-white/10 text-white/80" 
+                  : "text-slate-600 hover:bg-slate-200 hover:text-slate-800"
               )}
-              title="旁白模式"
+              title="发送剧情卡片"
             >
-              <Type size={18} />
-              <span className="text-[8px] font-bold">旁白</span>
+              <Send size={18} />
+              <span className="text-[8px] font-bold">发送</span>
             </button>
             
             <div className={cn(
-              "flex-1 flex items-center rounded-xl transition-all duration-300 overflow-hidden",
+              "flex-1 flex flex-col rounded-xl transition-all duration-300 overflow-hidden",
               settings.isDarkThemeEnabled ? "bg-white/5 border border-white/10" : 
               (settings.isCuteRabbitThemeEnabled ? "bg-white border-2 border-pink-200" : (settings.themeId === 'rainy-cat' ? "bg-white/5 border border-white/10" : "bg-white border border-slate-200"))
             )}>
-              <input
-                type="text"
+              <div className="flex items-center px-3 py-1 gap-2 border-b border-slate-100/50">
+                <button
+                  onClick={() => setIsNarration(!isNarration)}
+                  className={cn(
+                    "text-[10px] font-bold px-2 py-0.5 rounded transition-all",
+                    isNarration 
+                      ? "bg-orange-500 text-white shadow-sm" 
+                      : (settings.themeId === 'rainy-cat' ? "bg-white/10 text-white/40 hover:bg-white/20" : "bg-slate-100 text-slate-400 hover:bg-slate-200")
+                  )}
+                  title={isNarration ? "当前为旁白模式（内容将自动添加括号）" : "当前为对话模式"}
+                >
+                  {isNarration ? "旁白模式 ON" : "对话模式"}
+                </button>
+                <div className="flex-1" />
+                <span className="text-[9px] text-slate-300 italic">小说式创作模式</span>
+              </div>
+              <textarea
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSend()}
                 className={cn(
-                  "w-full px-3 py-2 text-[15px] focus:outline-none bg-transparent min-w-0",
+                  "w-full px-3 py-2 text-[15px] focus:outline-none bg-transparent min-w-0 resize-none h-[60px] custom-scrollbar leading-relaxed",
                   settings.themeId === 'rainy-cat' ? "text-white placeholder-white/30" : "text-black"
                 )}
-                placeholder={isNarration ? "输入环境/动作描写..." : "输入线下对话内容..."}
+                placeholder={isNarration ? "输入环境、动作或心理活动描写..." : "在此输入你要写下的剧情对话或旁白..."}
+                style={{ maxHeight: '150px' }}
               />
             </div>
 
@@ -5524,140 +5690,154 @@ ${context}`;
         {/* Offline Settings Modal */}
         <AnimatePresence>
           {showOfflineSettings && (
-            <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm">
+            <div className="fixed inset-0 z-[1000] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4 overflow-hidden">
               <motion.div
                 initial={{ opacity: 0, y: '100%' }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: '100%' }}
                 transition={{ type: 'spring', damping: 25, stiffness: 200 }}
                 className={cn(
-                  "w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl border max-h-[90vh] overflow-y-auto custom-scrollbar",
+                  "w-full sm:max-w-lg rounded-t-[32px] sm:rounded-[32px] p-6 shadow-2xl border max-h-[90vh] overflow-y-auto custom-scrollbar flex flex-col gap-6",
                   settings.themeId === 'rainy-cat' ? "bg-black/90 border-white/10 text-white" : "bg-white border-slate-200"
                 )}
               >
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="font-bold text-lg">线下剧情预设</h3>
+                <div className="flex items-center justify-between border-b pb-4">
+                  <div className="flex flex-col">
+                    <h3 className="font-bold text-lg">线下剧情设置</h3>
+                    <p className="text-xs opacity-50">自定义属于你们的线下小说交互设定</p>
+                  </div>
                   <button onClick={() => setShowOfflineSettings(false)} className="p-1 hover:bg-slate-200 rounded-full transition-colors">
                     <X size={20} className="text-slate-500" />
                   </button>
                 </div>
 
-                <div className="space-y-5">
-                  {/* Location */}
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold opacity-70">当前所在地点</label>
-                    <input 
-                      type="text" 
-                      placeholder="例如：咖啡厅、游乐园、家里..."
-                      value={offlineConfig.location}
-                      onChange={(e) => setOfflineConfig(prev => ({ ...prev, location: e.target.value }))}
-                      className={cn(
-                        "w-full px-3 py-2 rounded-xl text-sm focus:outline-none border transition-all",
-                        settings.themeId === 'rainy-cat' ? "bg-white/5 border-white/10 text-white" : "bg-slate-50 border-slate-200"
-                      )}
-                    />
-                  </div>
-
-                  {/* Opening Line */}
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold opacity-70">开场剧情提示/台词</label>
-                    <textarea 
-                      placeholder="例如：你正坐在我对面喝咖啡，突然抬头看着我..."
-                      value={offlineConfig.openingLine}
-                      onChange={(e) => setOfflineConfig(prev => ({ ...prev, openingLine: e.target.value }))}
-                      rows={2}
-                      className={cn(
-                        "w-full px-3 py-2 rounded-xl text-sm focus:outline-none border transition-all resize-none",
-                        settings.themeId === 'rainy-cat' ? "bg-white/5 border-white/10 text-white" : "bg-slate-50 border-slate-200"
-                      )}
-                    />
-                  </div>
-
-                  {/* Background Image */}
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold opacity-70">聊天背景 (仅线下生效)</label>
-                    <div className="flex items-center gap-2">
+                <div className="space-y-6">
+                  {/* Location & Opening */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50/50 p-4 rounded-2xl border border-slate-100">
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500">当前所在地点</label>
                       <input 
                         type="text" 
-                        placeholder="输入图片URL或"
-                        value={offlineConfig.bgImage}
-                        onChange={(e) => setOfflineConfig(prev => ({ ...prev, bgImage: e.target.value }))}
+                        placeholder="例如：咖啡厅、游乐园..."
+                        value={offlineConfig.location}
+                        onChange={(e) => setOfflineConfig(prev => ({ ...prev, location: e.target.value }))}
                         className={cn(
-                          "flex-1 px-3 py-2 rounded-xl text-sm focus:outline-none border transition-all",
-                          settings.themeId === 'rainy-cat' ? "bg-white/5 border-white/10 text-white" : "bg-slate-50 border-slate-200"
+                          "w-full px-3 py-2 rounded-xl text-sm focus:outline-none border transition-all",
+                          settings.themeId === 'rainy-cat' ? "bg-white/5 border-white/10 text-white" : "bg-white border-slate-200"
                         )}
                       />
-                      <button 
-                        onClick={() => {
-                          const input = document.createElement('input');
-                          input.type = 'file';
-                          input.accept = 'image/*';
-                          input.onchange = (e) => {
-                            const file = (e.target as HTMLInputElement).files?.[0];
-                            if (file) {
-                              const reader = new FileReader();
-                              reader.onloadend = () => {
-                                setOfflineConfig(prev => ({ ...prev, bgImage: reader.result as string }));
-                              };
-                              reader.readAsDataURL(file);
-                            }
-                          };
-                          input.click();
-                        }}
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-bold text-slate-500">剧情开场台词/设定</label>
+                      <input 
+                        type="text" 
+                        placeholder="例如：你悄悄走到我身后拍了拍我..."
+                        value={offlineConfig.openingLine}
+                        onChange={(e) => setOfflineConfig(prev => ({ ...prev, openingLine: e.target.value }))}
                         className={cn(
-                          "px-3 py-2 rounded-xl text-sm font-bold border whitespace-nowrap transition-all active:scale-95",
-                          settings.themeId === 'rainy-cat' ? "bg-white/10 border-white/20 text-white hover:bg-white/20" : "bg-white border-slate-200 hover:bg-slate-50"
+                          "w-full px-3 py-2 rounded-xl text-sm focus:outline-none border transition-all",
+                          settings.themeId === 'rainy-cat' ? "bg-white/5 border-white/10 text-white" : "bg-white border-slate-200"
                         )}
-                      >
-                        相册上传
-                      </button>
+                      />
                     </div>
                   </div>
 
-                  {/* Word Count */}
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold opacity-70">角色回复字数限制</label>
-                    <div className="flex items-center gap-3">
-                      <div className="flex-1 flex items-center gap-2">
-                        <span className="text-xs opacity-50">最少</span>
-                        <input 
-                          type="number" 
-                          value={offlineConfig.minWords}
-                          onChange={(e) => setOfflineConfig(prev => ({ ...prev, minWords: parseInt(e.target.value) || 0 }))}
-                          className={cn(
-                            "w-full px-3 py-2 rounded-xl text-sm focus:outline-none border transition-all",
-                            settings.themeId === 'rainy-cat' ? "bg-white/5 border-white/10 text-white" : "bg-slate-50 border-slate-200"
-                          )}
-                        />
+                  {/* Context Count Selection */}
+                  <div className="space-y-4 bg-slate-50/50 p-4 rounded-2xl border border-slate-100">
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <label className="text-xs font-extrabold text-slate-600">剧情卡片主题</label>
+                        <span className="text-[10px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full border border-blue-100">
+                          {offlineConfig.cardTheme === 'classic' ? '经典杂志' : 
+                           offlineConfig.cardTheme === 'student' ? '学生卡' : 
+                           offlineConfig.cardTheme === 'glass' ? '毛玻璃' : '时间轴'}
+                        </span>
                       </div>
-                      <span className="opacity-30">-</span>
-                      <div className="flex-1 flex items-center gap-2">
-                        <span className="text-xs opacity-50">最多</span>
-                        <input 
-                          type="number" 
-                          value={offlineConfig.maxWords}
-                          onChange={(e) => setOfflineConfig(prev => ({ ...prev, maxWords: parseInt(e.target.value) || 0 }))}
-                          className={cn(
-                            "w-full px-3 py-2 rounded-xl text-sm focus:outline-none border transition-all",
-                            settings.themeId === 'rainy-cat' ? "bg-white/5 border-white/10 text-white" : "bg-slate-50 border-slate-200"
-                          )}
-                        />
+                      <div className="grid grid-cols-4 gap-2">
+                        {[
+                          { id: 'classic', name: '经典', Icon: LayoutTemplate },
+                          { id: 'student', name: '学生', Icon: Contact },
+                          { id: 'glass', name: '玻璃', Icon: Sparkles },
+                          { id: 'time', name: '时间', Icon: Clock }
+                        ].map(t => (
+                          <button
+                            key={t.id}
+                            onClick={() => setOfflineConfig(prev => ({ ...prev, cardTheme: t.id as any }))}
+                            className={cn(
+                              "flex flex-col items-center gap-1.5 p-3 rounded-2xl border-2 transition-all active:scale-95",
+                              offlineConfig.cardTheme === t.id 
+                                ? "bg-white border-blue-500 shadow-sm ring-4 ring-blue-500/10" 
+                                : "bg-transparent border-transparent hover:bg-white/50"
+                            )}
+                          >
+                            <div className={cn(
+                              "transition-colors",
+                              offlineConfig.cardTheme === t.id ? "text-blue-500" : "text-slate-400"
+                            )}>
+                              <t.Icon 
+                                size={18} 
+                                strokeWidth={2.5}
+                                className={offlineConfig.cardTheme === t.id ? "text-blue-500" : "text-slate-400/60"} 
+                              />
+                            </div>
+                            <span className={cn(
+                              "text-[10px] font-black tracking-tight",
+                              offlineConfig.cardTheme === t.id ? "text-blue-600" : "text-slate-500/80"
+                            )}>{t.name}</span>
+                          </button>
+                        ))}
                       </div>
                     </div>
+
+                    <div className="space-y-2 pt-2 border-t border-slate-100">
+                      <div className="flex justify-between items-center">
+                        <label className="text-xs font-extrabold text-slate-600">读取线上聊天上下文条数</label>
+                        <span className="text-xs font-extrabold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full border border-orange-100">
+                          {offlineConfig.onlineContextCount} 条
+                        </span>
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      进入线下剧情后，角色会携带你设置的线上聊天记录作为前置记忆（上限200条）。
+                    </p>
+                    <input 
+                      type="range" 
+                      min="0" 
+                      max="200" 
+                      step="5"
+                      value={offlineConfig.onlineContextCount}
+                      onChange={(e) => setOfflineConfig(prev => ({ ...prev, onlineContextCount: parseInt(e.target.value) }))}
+                      className="w-full accent-orange-500 mt-1"
+                    />
                   </div>
 
-                  {/* Perspectives */}
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold opacity-70">人称设定</label>
-                    <div className="grid grid-cols-2 gap-3">
+                  {/* Perspective Selection */}
+                  <div className="space-y-3 bg-slate-50/50 p-4 rounded-2xl border border-slate-100">
+                    <label className="text-xs font-extrabold text-slate-600 block">旁白人称设定</label>
+                    <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1">
-                        <span className="text-[10px] opacity-50">角色自称</span>
+                        <span className="text-[10px] text-slate-400 font-bold">角色人称</span>
                         <select 
                           value={offlineConfig.characterPerspective}
                           onChange={(e) => setOfflineConfig(prev => ({ ...prev, characterPerspective: e.target.value }))}
                           className={cn(
-                            "w-full px-3 py-2 rounded-xl text-sm focus:outline-none border transition-all appearance-none",
-                            settings.themeId === 'rainy-cat' ? "bg-white/5 border-white/10 text-white" : "bg-slate-50 border-slate-200"
+                            "w-full px-3 py-2 rounded-xl text-sm focus:outline-none border transition-all appearance-none bg-white",
+                            settings.themeId === 'rainy-cat' ? "bg-white/5 border-white/10 text-white" : "border-slate-200 text-slate-700"
+                          )}
+                        >
+                          <option value="第一人称">第一人称 (我)</option>
+                          <option value="第二人称">第二人称 (你)</option>
+                          <option value="第三人称">第三人称 (他/她)</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <span className="text-[10px] text-slate-400 font-bold">用户人称</span>
+                        <select 
+                          value={offlineConfig.userPerspective}
+                          onChange={(e) => setOfflineConfig(prev => ({ ...prev, userPerspective: e.target.value }))}
+                          className={cn(
+                            "w-full px-3 py-2 rounded-xl text-sm focus:outline-none border transition-all appearance-none bg-white",
+                            settings.themeId === 'rainy-cat' ? "bg-white/5 border-white/10 text-white" : "border-slate-200 text-slate-700"
                           )}
                         >
                           <option value="第一人称">第一人称 (我)</option>
@@ -5666,43 +5846,235 @@ ${context}`;
                         </select>
                       </div>
                     </div>
+
+                    {/* Perspective Live Example Preview */}
+                    {(() => {
+                      const charWord = offlineConfig.characterPerspective === '第一人称' ? '我' : (offlineConfig.characterPerspective === '第二人称' ? '你' : (friend.gender === 'female' ? '她' : '他'));
+                      const userWord = offlineConfig.userPerspective === '第一人称' ? '我' : (offlineConfig.userPerspective === '第二人称' ? '你' : (friend.gender === 'female' ? '他' : '她'));
+                      return (
+                        <div className="mt-2 p-3 rounded-xl border text-xs font-serif bg-white border-slate-100 flex flex-col gap-1 shadow-inner">
+                          <span className="font-sans font-bold text-slate-400 text-[10px]">旁白叙事预览：</span>
+                          <span className="text-slate-700 font-medium">{charWord}看着{userWord}，摇了摇头：“没什么事。”</span>
+                        </div>
+                      );
+                    })()}
                   </div>
 
-                  {/* Writing Style */}
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold opacity-70">文风选择</label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {['小说文风', '甜宠文风', '日常口语文风'].map(style => (
+                  {/* Writing Style Selection */}
+                  <div className="space-y-3 bg-slate-50/50 p-4 rounded-2xl border border-slate-100">
+                    <label className="text-xs font-extrabold text-slate-600 block">剧情文风选择</label>
+                    
+                    {/* Built-in Styles */}
+                    <div className="grid grid-cols-2 gap-2">
+                      {['白描文风', '现代口语化文风', '言情小说文风', '诗意古风文风'].map(style => (
                         <button
                           key={style}
+                          type="button"
                           onClick={() => setOfflineConfig(prev => ({ ...prev, writingStyle: style }))}
                           className={cn(
-                            "py-2 px-1 rounded-xl text-xs font-bold transition-all border",
+                            "py-2 px-3 rounded-xl text-xs font-bold transition-all border text-left flex flex-col gap-0.5",
                             offlineConfig.writingStyle === style
-                              ? (settings.themeId === 'rainy-cat' ? "bg-white/20 border-white/30 text-white" : "bg-orange-100 border-orange-200 text-orange-600")
-                              : (settings.themeId === 'rainy-cat' ? "bg-white/5 border-white/10 text-white/50" : "bg-slate-50 border-slate-200 text-slate-500")
+                              ? "bg-orange-500 border-orange-600 text-white shadow-md shadow-orange-500/20"
+                              : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
                           )}
                         >
-                          {style}
+                          <span>{style}</span>
+                          <span className={cn(
+                            "text-[9px] font-normal leading-normal",
+                            offlineConfig.writingStyle === style ? "text-orange-100" : "text-slate-400"
+                          )}>
+                            {style === '白描文风' && '极简写意，神态勾勒'}
+                            {style === '现代口语化文风' && '松弛语气，朝气口语'}
+                            {style === '言情小说文风' && '拉扯悸动，极致唯美'}
+                            {style === '诗意古风文风' && '古雅画卷，含蓄隽永'}
+                          </span>
                         </button>
                       ))}
                     </div>
+
+                    {/* Custom presets */}
+                    {offlineConfig.writingStylePresets && offlineConfig.writingStylePresets.length > 0 && (
+                      <div className="space-y-2 pt-2 border-t border-slate-100">
+                        <span className="text-[10px] text-slate-400 font-bold block">自定义文风预设</span>
+                        <div className="flex flex-wrap gap-2">
+                          {offlineConfig.writingStylePresets.map((preset: any, idx: number) => (
+                            <div 
+                              key={idx}
+                              className={cn(
+                                "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border transition-all cursor-pointer",
+                                offlineConfig.writingStyle === preset.name
+                                  ? "bg-orange-500 border-orange-600 text-white"
+                                  : "bg-white border-slate-200 text-slate-600"
+                              )}
+                              onClick={() => setOfflineConfig(prev => ({ ...prev, writingStyle: preset.name }))}
+                            >
+                              <span>{preset.name}</span>
+                              <button 
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  const updated = (offlineConfig.writingStylePresets || []).filter((_: any, i: number) => i !== idx);
+                                  setOfflineConfig(prev => ({ 
+                                    ...prev, 
+                                    writingStylePresets: updated,
+                                    writingStyle: prev.writingStyle === preset.name ? '言情小说文风' : prev.writingStyle
+                                  }));
+                                }}
+                                className="hover:text-red-500 rounded-full p-0.5"
+                                title="删除预设"
+                              >
+                                <X size={10} />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Add Custom Preset Form */}
+                    <div className="bg-white p-3.5 rounded-xl border border-slate-100 space-y-2 mt-2">
+                      <span className="text-[10px] text-slate-400 font-bold block">保存全新文风预设</span>
+                      <input 
+                        type="text" 
+                        placeholder="文风名称 (如：霸道总裁文风)"
+                        value={newPresetName}
+                        onChange={(e) => setNewPresetName(e.target.value)}
+                        className="w-full px-2.5 py-1.5 rounded-lg text-xs focus:outline-none border border-slate-200"
+                      />
+                      <textarea 
+                        placeholder="文风特征描述 (不限制输入字数，越详细AI写得越准确。例如：描述带有霸道的压迫感，多描写坚定的视线与无法拒绝的亲近。)"
+                        value={newPresetDesc}
+                        onChange={(e) => setNewPresetDesc(e.target.value)}
+                        rows={2}
+                        className="w-full px-2.5 py-1.5 rounded-lg text-xs focus:outline-none border border-slate-200 resize-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!newPresetName.trim() || !newPresetDesc.trim()) return;
+                          const newPreset = { name: newPresetName.trim(), description: newPresetDesc.trim() };
+                          const updated = [...(offlineConfig.writingStylePresets || []), newPreset];
+                          setOfflineConfig(prev => ({
+                            ...prev,
+                            writingStylePresets: updated,
+                            writingStyle: newPreset.name
+                          }));
+                          setNewPresetName('');
+                          setNewPresetDesc('');
+                        }}
+                        className="w-full py-2 bg-slate-900 text-white rounded-lg text-xs font-bold hover:bg-slate-800 transition-colors"
+                      >
+                        保存并设置为当前文风
+                      </button>
+                    </div>
                   </div>
+
+                  {/* Offline Beautification */}
+                  <div className="space-y-3 bg-slate-50/50 p-4 rounded-2xl border border-slate-100">
+                    <label className="text-xs font-extrabold text-slate-600 block">线下美化</label>
+                    
+                    {/* Background Image */}
+                    <div className="space-y-1">
+                      <span className="text-[10px] text-slate-400 font-bold">更换背景图</span>
+                      <div className="flex items-center gap-2">
+                        <input 
+                          type="text" 
+                          placeholder="输入图片URL"
+                          value={offlineConfig.bgImage}
+                          onChange={(e) => setOfflineConfig(prev => ({ ...prev, bgImage: e.target.value }))}
+                          className={cn(
+                            "flex-1 px-3 py-1.5 rounded-xl text-xs focus:outline-none border transition-all bg-white",
+                            settings.themeId === 'rainy-cat' ? "bg-white/5 border-white/10 text-white" : "border-slate-200"
+                          )}
+                        />
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            const input = document.createElement('input');
+                            input.type = 'file';
+                            input.accept = 'image/*';
+                            input.onchange = (e) => {
+                              const file = (e.target as HTMLInputElement).files?.[0];
+                              if (file) {
+                                const reader = new FileReader();
+                                reader.onloadend = () => {
+                                  setOfflineConfig(prev => ({ ...prev, bgImage: reader.result as string }));
+                                };
+                                reader.readAsDataURL(file);
+                              }
+                            };
+                            input.click();
+                          }}
+                          className="px-3 py-1.5 rounded-xl text-xs font-bold border whitespace-nowrap bg-white hover:bg-slate-50 border-slate-200 transition-all active:scale-95"
+                        >
+                          相册上传
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Custom CSS */}
+                    <div className="space-y-1">
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] text-slate-400 font-bold">自定义 CSS 样式</span>
+                        <span className="text-[9px] text-slate-400 font-mono">(支持网页样式覆盖)</span>
+                      </div>
+                      <textarea 
+                        placeholder="例如：.chat-message-list { background-color: #f0f0f0 !important; }"
+                        value={offlineConfig.customCss}
+                        onChange={(e) => setOfflineConfig(prev => ({ ...prev, customCss: e.target.value }))}
+                        rows={3}
+                        className={cn(
+                          "w-full px-3 py-2 rounded-xl text-xs focus:outline-none border transition-all resize-none font-mono bg-white",
+                          settings.themeId === 'rainy-cat' ? "bg-white/5 border-white/10 text-white" : "border-slate-200"
+                        )}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Word Count limits */}
+                  <div className="space-y-2 bg-slate-50/50 p-4 rounded-2xl border border-slate-100">
+                    <label className="text-xs font-extrabold text-slate-600 block">输出字数控制</label>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-slate-200">
+                        <span className="text-xs text-slate-400 font-bold">最少</span>
+                        <input 
+                          type="number" 
+                          value={offlineConfig.minWords}
+                          onChange={(e) => setOfflineConfig(prev => ({ ...prev, minWords: Math.max(0, parseInt(e.target.value) || 0) }))}
+                          className="w-full text-xs font-bold text-slate-700 bg-transparent focus:outline-none text-right"
+                        />
+                        <span className="text-xs text-slate-400 font-bold">字</span>
+                      </div>
+                      <div className="flex items-center gap-2 bg-white px-3 py-2 rounded-xl border border-slate-200">
+                        <span className="text-xs text-slate-400 font-bold">最多</span>
+                        <input 
+                          type="number" 
+                          value={offlineConfig.maxWords}
+                          onChange={(e) => setOfflineConfig(prev => ({ ...prev, maxWords: Math.max(0, parseInt(e.target.value) || 0) }))}
+                          className="w-full text-xs font-bold text-slate-700 bg-transparent focus:outline-none text-right"
+                        />
+                        <span className="text-xs text-slate-400 font-bold">字</span>
+                      </div>
+                    </div>
+                  </div>
+
                 </div>
 
-                <div className="flex gap-3 mt-8">
+                <div className="flex gap-3 border-t pt-4 mt-2">
                   <button
+                    type="button"
                     onClick={() => setShowOfflineSettings(false)}
                     className={cn(
-                      "flex-1 py-3 rounded-2xl font-bold transition-all active:scale-95",
-                      settings.themeId === 'rainy-cat' ? "bg-white/10 hover:bg-white/20" : "bg-slate-100 hover:bg-slate-200"
+                      "flex-1 py-3 rounded-2xl font-bold text-sm transition-all active:scale-95",
+                      settings.themeId === 'rainy-cat' ? "bg-white/10 hover:bg-white/20" : "bg-slate-100 hover:bg-slate-200 text-slate-600"
                     )}
                   >
-                    关闭
+                    取消
                   </button>
                   <button
+                    type="button"
                     onClick={saveOfflineConfig}
-                    className="flex-1 py-3 rounded-2xl font-bold transition-all active:scale-95 bg-orange-500 hover:bg-orange-600 text-white shadow-lg shadow-orange-500/30"
+                    className="flex-1 py-3 rounded-2xl font-bold text-sm transition-all active:scale-95 bg-orange-500 hover:bg-orange-600 text-white shadow-lg shadow-orange-500/30"
                   >
                     保存并生效
                   </button>

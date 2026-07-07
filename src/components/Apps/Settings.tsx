@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChevronLeft, Save, Globe, Key, Cpu, Brain, Palette, Sliders, Type, Image as ImageIcon, Trash2, Upload, Smartphone, Plus, Minus, Layout, Check, Database, Mic, ShieldAlert, Lock, Cloud, HelpCircle, Maximize, X, RefreshCw, Link2 } from 'lucide-react';
+import { ChevronLeft, Save, Globe, Key, Cpu, Brain, Palette, Sliders, Type, Image as ImageIcon, Trash2, Upload, Smartphone, Plus, Minus, Layout, Check, Database, Mic, ShieldAlert, Lock, Cloud, HelpCircle, Maximize, X, RefreshCw, Link2, Send, Zap, Moon, Heart } from 'lucide-react';
 import { AppSettings, AppInfo } from '../../types';
 import { cn } from '../../lib/utils';
 import { get, set } from 'idb-keyval';
@@ -1190,52 +1190,78 @@ export default function SettingsApp({
           <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
             <div className="space-y-4">
               <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-                <ImageIcon size={14} /> 系统主题选择
+                <Palette size={14} /> 系统主题选择
               </label>
               <div className="grid grid-cols-2 gap-4">
                 <button
                   onClick={() => setForm({ ...form, themeId: 'normal' })}
                   className={cn(
-                    "p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-3",
-                    form.themeId === 'normal' ? "border-blue-500 bg-blue-50 shadow-md" : "border-slate-200 bg-white hover:bg-slate-50"
+                    "p-6 rounded-[32px] border-2 transition-all flex flex-col items-center gap-4 group",
+                    form.themeId === 'normal' ? "border-blue-500 bg-blue-50/50 shadow-lg shadow-blue-500/10" : "border-slate-100 bg-white hover:border-slate-200"
                   )}
                 >
-                  <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-400 to-blue-600 shadow-inner" />
-                  <span className="font-bold text-slate-800">默认主题</span>
-                  <span className="text-[10px] text-slate-500 text-center">清爽现代的默认外观</span>
+                  <div className={cn(
+                    "w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-500 shadow-sm",
+                    form.themeId === 'normal' ? "bg-blue-500 text-white rotate-12 scale-110" : "bg-slate-50 text-slate-400 group-hover:bg-slate-100"
+                  )}>
+                    <Zap size={24} strokeWidth={2.5} />
+                  </div>
+                  <div className="text-center">
+                    <p className="font-black text-slate-800 text-sm tracking-tight">默认主题</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Classic Modern</p>
+                  </div>
                 </button>
-                  <button
-                    onClick={() => {
-                      const newSettings: AppSettings = { ...form, themeId: 'pink-cat' as const };
-                      setForm(newSettings);
-                      onSave(newSettings);
-                    }}
-                    className={cn(
-                      "p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-3",
-                      form.themeId === 'pink-cat' ? "border-pink-500 bg-pink-50 shadow-md" : "border-slate-200 bg-white hover:bg-slate-50"
-                    )}
-                  >
-                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-pink-200 to-pink-400 shadow-inner relative overflow-hidden" />
-                    <span className="font-bold text-slate-800">粉白小兔</span>
-                    <span className="text-[10px] text-slate-500 text-center">温柔沉浸式粉白体验</span>
-                  </button>
-                  <button
-                    onClick={() => {
-                      const newSettings: AppSettings = { ...form, themeId: 'rainy-cat' as const };
-                      setForm(newSettings);
-                      onSave(newSettings);
-                    }}
-                    className={cn(
-                      "p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-3",
-                      form.themeId === 'rainy-cat' ? "border-slate-800 bg-slate-900 shadow-md" : "border-slate-200 bg-white hover:bg-slate-50"
-                    )}
-                  >
-                    <div className="w-16 h-16 rounded-full bg-slate-800 shadow-inner relative overflow-hidden flex items-center justify-center">
-                      <Cloud className="text-white/20" size={32} />
-                    </div>
-                    <span className="font-bold text-slate-800">雨夜小猫</span>
-                    <span className="text-[10px] text-slate-500 text-center">静谧治愈的雨夜氛围</span>
-                  </button>
+
+                <button
+                  onClick={() => {
+                    const newSettings: AppSettings = { ...form, themeId: 'pink-cat' as const };
+                    setForm(newSettings);
+                    onSave(newSettings);
+                  }}
+                  className={cn(
+                    "p-6 rounded-[32px] border-2 transition-all flex flex-col items-center gap-4 group",
+                    form.themeId === 'pink-cat' ? "border-pink-500 bg-pink-50/50 shadow-lg shadow-pink-500/10" : "border-slate-100 bg-white hover:border-slate-200"
+                  )}
+                >
+                  <div className={cn(
+                    "w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-500 shadow-sm",
+                    form.themeId === 'pink-cat' ? "bg-pink-500 text-white -rotate-12 scale-110" : "bg-slate-50 text-slate-400 group-hover:bg-slate-100"
+                  )}>
+                    <Send size={24} strokeWidth={2.5} />
+                  </div>
+                  <div className="text-center">
+                    <p className="font-black text-slate-800 text-sm tracking-tight">粉白小兔</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Sweet & Pure</p>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => {
+                    const newSettings: AppSettings = { ...form, themeId: 'rainy-cat' as const };
+                    setForm(newSettings);
+                    onSave(newSettings);
+                  }}
+                  className={cn(
+                    "p-6 rounded-[32px] border-2 transition-all flex flex-col items-center gap-4 group",
+                    form.themeId === 'rainy-cat' ? "border-slate-800 bg-slate-50/50 shadow-lg shadow-slate-900/10" : "border-slate-100 bg-white hover:border-slate-200"
+                  )}
+                >
+                  <div className={cn(
+                    "w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-500 shadow-sm",
+                    form.themeId === 'rainy-cat' ? "bg-slate-900 text-white rotate-6 scale-110" : "bg-slate-50 text-slate-400 group-hover:bg-slate-100"
+                  )}>
+                    <Moon size={24} strokeWidth={2.5} />
+                  </div>
+                  <div className="text-center">
+                    <p className="font-black text-slate-800 text-sm tracking-tight">雨夜小猫</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Nocturnal Calm</p>
+                  </div>
+                </button>
+
+                <div className="p-6 rounded-[32px] border-2 border-dashed border-slate-200 bg-slate-50/30 flex flex-col items-center justify-center gap-2 opacity-60">
+                   <Plus size={20} className="text-slate-300" />
+                   <span className="text-[10px] font-bold text-slate-400">更多主题待解锁</span>
+                </div>
               </div>
             </div>
           </div>
