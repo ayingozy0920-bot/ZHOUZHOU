@@ -52,6 +52,7 @@ export default function SettingsApp({
   const [ttsTestText, setTtsTestText] = useState('这是一段语音测试，测试成功。');
   const [isTestingImage, setIsTestingImage] = useState(false);
   const [testImageUrl, setTestImageUrl] = useState<string | null>(null);
+  const [imageGenError, setImageGenError] = useState<string | null>(null);
   const [isFetchingImageModels, setIsFetchingImageModels] = useState(false);
   const [availableImageModels, setAvailableImageModels] = useState<string[]>([]);
   const [isTestingImageConnection, setIsTestingImageConnection] = useState(false);
@@ -138,6 +139,7 @@ export default function SettingsApp({
     if (!form.imageGenApiKey) return showToast('请输入 API Key', 'error');
     setIsTestingImage(true);
     setTestImageUrl(null);
+    setImageGenError(null);
     try {
       const data = await apiFetch({
         endpoint: '/api/image-gen',
@@ -160,6 +162,7 @@ export default function SettingsApp({
       }
     } catch (e: any) {
       console.error('Image Gen test error:', e);
+      setImageGenError(e.message || '图片生成失败，请检查配置或通道');
       showToast(`❌ 生成失败: ${e.message}`, 'error');
     } finally {
       setIsTestingImage(false);
@@ -1731,6 +1734,17 @@ export default function SettingsApp({
                       >
                         <span className="w-1.5 h-1.5 rounded-full bg-rose-500 mt-1.5 flex-shrink-0" />
                         <span>链接失败: {imageConnectionError}</span>
+                      </motion.div>
+                    )}
+
+                    {imageGenError && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: -5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="text-xs text-rose-600 font-medium flex items-start gap-1.5 px-3 py-2 bg-rose-50/50 rounded-xl border border-rose-100/50"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500 mt-1.5 flex-shrink-0" />
+                        <span>生成失败: {imageGenError}</span>
                       </motion.div>
                     )}
                   </div>

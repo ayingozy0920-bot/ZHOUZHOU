@@ -460,6 +460,36 @@ async function startServer() {
       if (size === '1:1') size = '1024x1024';
       if (size === '9:16') size = '1024x1792';
       if (size === '16:9') size = '1792x1024';
+      if (size === '3:4') size = '768x1024';
+      if (size === '4:3') size = '1024x768';
+
+      // Detect model type for specialized compatibility mapping
+      const isDalle3 = targetModel.toLowerCase().includes('dall-e-3');
+      const isDalle2 = targetModel.toLowerCase().includes('dall-e-2');
+      const isDalle = isDalle3 || isDalle2;
+      
+      let finalPrompt = fullPrompt;
+      let finalSize = size;
+      
+      // If it's a Midjourney, Flux, or custom model (which includes gpt-image-2, etc.), 
+      // these third-party systems usually map aspect ratios to --ar parameters or prompts,
+      // while requiring the standard 'size' payload parameter to be '1024x1024'.
+      // If we send DALL-E-3 sizes (like 1024x1792) to them, the API gateways (One-API/New-API) will crash with a 400/500 error.
+      if (!isDalle) {
+        if (ratio === '9:16' || settings.imageGenSize === '9:16') {
+          if (!finalPrompt.includes('--ar')) finalPrompt += ' --ar 9:16';
+          finalSize = '1024x1024';
+        } else if (ratio === '16:9' || settings.imageGenSize === '16:9') {
+          if (!finalPrompt.includes('--ar')) finalPrompt += ' --ar 16:9';
+          finalSize = '1024x1024';
+        } else if (ratio === '3:4' || settings.imageGenSize === '3:4') {
+          if (!finalPrompt.includes('--ar')) finalPrompt += ' --ar 3:4';
+          finalSize = '1024x1024';
+        } else if (ratio === '4:3' || settings.imageGenSize === '4:3') {
+          if (!finalPrompt.includes('--ar')) finalPrompt += ' --ar 4:3';
+          finalSize = '1024x1024';
+        }
+      }
 
       let targetUrl = cleanUrl;
       if (!targetUrl.includes('/images/generations')) {
@@ -469,29 +499,62 @@ async function startServer() {
           targetUrl = targetUrl.replace(/\/+$/, '') + '/v1/images/generations';
         }
       }
+
+      // Build compatible request body
+      const reqBody: any = {
+        model: targetModel,
+        prompt: finalPrompt,
+        n: 1,
+        size: finalSize
+      };
+
+      // Only include 'quality' parameter for DALL-E 3 models, as third-party model endpoints (like Flux/Midjourney)
+      // will throw 400 Bad Request if they receive an unknown parameter.
+      if (isDalle3) {
+        reqBody.quality = settings.imageGenQuality || 'standard';
+      }
+
+      // Only include 'negative_prompt' if it's set and model is not standard DALL-E (which does not support it in the body)
+      const negPromptVal = negative_prompt || settings.imageGenNegativePrompt;
+      if (negPromptVal && !isDalle) {
+        reqBody.negative_prompt = negPromptVal;
+      }
       
+      console.log(`[Image Gen] Requesting ${targetUrl} with model: ${targetModel}, size: ${finalSize}, prompt length: ${finalPrompt.length}`);
+      logToFile(`[Image Gen Request] URL: ${targetUrl}, body: ${JSON.stringify({ ...reqBody, prompt: finalPrompt.substring(0, 50) + '...' })}`);
+
       const response = await fetch(targetUrl, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          model: targetModel,
-          prompt: fullPrompt,
-          n: 1,
-          size: size,
-          quality: settings.imageGenQuality || 'standard',
-          ...(negative_prompt || settings.imageGenNegativePrompt ? { negative_prompt: negative_prompt || settings.imageGenNegativePrompt } : {})
-        })
+        body: JSON.stringify(reqBody)
       });
 
       if (!response.ok) {
-        const err = await response.json();
-        throw new Error(err.error?.message || err.message || `HTTP ${response.status}`);
+        const errText = await response.text();
+        console.error(`[Image Gen Error] Provider returned status ${response.status}:`, errText);
+        logToFile(`[Image Gen Error] Provider returned status ${response.status}: ${errText}`);
+        
+        let errMsg = errText;
+        try {
+          const err = JSON.parse(errText);
+          errMsg = err.error?.message || err.message || errMsg;
+        } catch (e) {}
+        throw new Error(errMsg || `HTTP ${response.status}`);
       }
 
-      const data = await response.json();
+      const responseText = await response.text();
+      let data: any;
+      try {
+        data = JSON.parse(responseText);
+      } catch (e) {
+        console.error(`[Image Gen Error] Failed to parse JSON response:`, responseText);
+        logToFile(`[Image Gen Error] Failed to parse JSON response: ${responseText}`);
+        throw new Error(`Failed to parse provider response: ${responseText.substring(0, 200)}`);
+      }
+
       let imageUrl = data.data?.[0]?.url;
       
       if (imageUrl) {
@@ -501,10 +564,13 @@ async function startServer() {
       } else if (data.data?.[0]?.b64_json) {
         res.json({ b64: data.data[0].b64_json });
       } else {
+        console.error(`[Image Gen Error] No image data inside response:`, JSON.stringify(data));
+        logToFile(`[Image Gen Error] No image data inside response: ${JSON.stringify(data)}`);
         res.status(500).json({ error: "No image data returned from provider" });
       }
     } catch (error: any) {
       console.error("Image Gen error:", error);
+      logToFile(`[Image Gen Exception] message: ${error.message}`);
       res.status(500).json({ error: error.message });
     }
   });

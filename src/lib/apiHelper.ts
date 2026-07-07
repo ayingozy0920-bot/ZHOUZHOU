@@ -267,17 +267,62 @@ async function handleDirectFetch(endpoint: string, body: any): Promise<any> {
     const baseUrl = settings.imageGenBaseUrl || 'https://api.openai.com/v1';
     const cleanUrl = baseUrl.replace(/\/+$/, '');
     
-    const fullPrompt = `${settings.imageGenPositivePrompt || ''}, ${prompt}`;
+    const posPrompt = settings.imageGenPositivePrompt || '';
+    const fullPrompt = posPrompt ? `${posPrompt}, ${prompt}` : prompt;
     
-    const requestBody = {
-      model: settings.imageGenModel || 'gpt-image-2',
-      prompt: fullPrompt,
+    const targetModel = settings.imageGenModel || 'gpt-image-2';
+
+    // Map ratio to OpenAI sizes if needed
+    let size = settings.imageGenSize || '1024x1024';
+    if (size === '1:1') size = '1024x1024';
+    if (size === '9:16') size = '1024x1792';
+    if (size === '16:9') size = '1792x1024';
+    if (size === '3:4') size = '768x1024';
+    if (size === '4:3') size = '1024x768';
+
+    // Detect model type for specialized compatibility mapping
+    const isDalle3 = targetModel.toLowerCase().includes('dall-e-3');
+    const isDalle2 = targetModel.toLowerCase().includes('dall-e-2');
+    const isDalle = isDalle3 || isDalle2;
+    
+    let finalPrompt = fullPrompt;
+    let finalSize = size;
+    
+    if (!isDalle) {
+      const ratio = settings.imageGenSize;
+      if (ratio === '9:16') {
+        if (!finalPrompt.includes('--ar')) finalPrompt += ' --ar 9:16';
+        finalSize = '1024x1024';
+      } else if (ratio === '16:9') {
+        if (!finalPrompt.includes('--ar')) finalPrompt += ' --ar 16:9';
+        finalSize = '1024x1024';
+      } else if (ratio === '3:4') {
+        if (!finalPrompt.includes('--ar')) finalPrompt += ' --ar 3:4';
+        finalSize = '1024x1024';
+      } else if (ratio === '4:3') {
+        if (!finalPrompt.includes('--ar')) finalPrompt += ' --ar 4:3';
+        finalSize = '1024x1024';
+      }
+    }
+
+    // Build compatible request body
+    const requestBody: any = {
+      model: targetModel,
+      prompt: finalPrompt,
       n: 1,
-      size: settings.imageGenSize || '1024x1024',
-      quality: settings.imageGenQuality || 'standard',
-      response_format: 'b64_json',
-      ...(settings.imageGenNegativePrompt ? { negative_prompt: settings.imageGenNegativePrompt } : {})
+      size: finalSize
     };
+
+    // Only include 'quality' parameter for DALL-E 3 models
+    if (isDalle3) {
+      requestBody.quality = settings.imageGenQuality || 'standard';
+    }
+
+    // Only include 'negative_prompt' if it's set and model is not standard DALL-E
+    const negPromptVal = settings.imageGenNegativePrompt;
+    if (negPromptVal && !isDalle) {
+      requestBody.negative_prompt = negPromptVal;
+    }
 
     const response = await fetch(`${cleanUrl}/images/generations`, {
       method: 'POST',
