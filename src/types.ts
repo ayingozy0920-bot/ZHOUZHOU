@@ -1,3 +1,11 @@
+export interface OpeningMemory {
+  id: string;
+  title: string;
+  dateStr: string;
+  summary: string;
+  timestamp: number;
+}
+
 export interface Widget {
   id: string;
   type: 'time' | 'weather' | 'music' | 'photo' | 'quote' | 'battery' | 'calendar' | 'todo' | 'countdown' | 'contact' | 'together' | 'schedule' | 'memo' | 'step' | 'mood' | 'healing-battery' | 'ins-split' | 'ticket' | 'collage' | 'ins-split-v2' | 'manga-blink' | 'film-frame' | 'ticket-v2' | 'polaroid-stack' | 'dynamic-cat' | 'live-weather' | 'ins-large-v1' | 'ins-large-v2' | 'ins-weather-calendar' | 'ins-photo-square' | 'ins-profile-card' | 'ins-circle-widget' | 'ins-music-circle-widget' | 'ins-photo-wall-v1' | 'ins-photo-wall-v2' | 'ins-signature-v1' | 'ins-signature-v2' | 'ins-large-calendar' | 'ins-love-music' | 'custom-generator';
@@ -343,6 +351,13 @@ export interface Friend {
   moodIndex?: number;
   innerThoughts?: string;
   autoTranslateEnabled?: boolean;
+  isNarrationMode?: boolean;
+  activeOpening?: {
+    id: string;
+    title: string;
+    startTimestamp: number;
+  };
+  openingMemories?: OpeningMemory[];
   characterImageGenEnabled?: boolean;
   characterImageGenFrequency?: '2_per_day' | '3_per_day' | '5_per_day' | 'unlimited';
   characterImageGenPositivePrompt?: string;
@@ -396,12 +411,20 @@ export interface GroupChat {
   chatBackground?: string;
   chatThemeId?: string;
   autoTranslateEnabled?: boolean;
+  isNarrationMode?: boolean;
   language?: string;
   disableActionDescription?: boolean;
   groupNotice?: string;
   memberTitles?: Record<string, { title: string; color: string }>;
   worldBookEnabled?: boolean;
   selectedWorldBookIds?: string[];
+  activeOpening?: {
+    id: string;
+    title: string;
+    startTimestamp: number;
+  };
+  openingMemories?: OpeningMemory[];
+  isHtmlCardEnabled?: boolean;
 }
 
 export interface OnlineMemoryEntry {
@@ -431,8 +454,9 @@ export interface ChatMessage {
   id?: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
-  type?: 'text' | 'image' | 'video' | 'voice' | 'transfer' | 'location' | 'call' | 'memory' | 'sticker' | 'blindbox-gift' | 'dice' | 'offline-invitation' | 'photo_card' | 'date_summary' | 'shopping-receipt' | 'red-packet';
+  type?: 'text' | 'image' | 'video' | 'voice' | 'transfer' | 'location' | 'call' | 'memory' | 'sticker' | 'blindbox-gift' | 'dice' | 'offline-invitation' | 'photo_card' | 'date_summary' | 'shopping-receipt' | 'red-packet' | 'opening-card' | 'group-announcement';
   mediaUrl?: string;
+  stickerUrl?: string;
   duration?: number; // for voice or call duration
   amount?: string; // for transfer
   transferStatus?: 'pending' | 'received' | 'refunded'; // for transfer
@@ -453,6 +477,7 @@ export interface ChatMessage {
     date: string;
     timeLabel: string;
   };
+  openingData?: { title: string; content: string; dateStr: string };
   giftData?: {
     boxId: string;
     boxName: string;
@@ -491,6 +516,13 @@ export interface ChatMessage {
   innerMonologue?: string;
   status?: string;
   outfit?: string;
+  announcementData?: {
+    content: string;
+    author: string;
+    timestamp: number;
+    confirms?: string[]; // list of member IDs/names who confirmed
+    declines?: string[]; // list of member IDs/names who declined
+  };
 }
 
 export interface MovieReport {

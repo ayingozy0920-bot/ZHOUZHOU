@@ -48,6 +48,7 @@ import { useSettings } from './hooks/useSettings';
 import { useMemory } from './hooks/useMemory';
 import { useFriends } from './hooks/useFriends';
 import { useGifts } from './hooks/useGifts';
+import { OCEAN_BLUE_ICON_BGS } from './lib/themeIcons';
 import { set, get } from 'idb-keyval';
 import ChatApp from './components/Apps/Chat';
 import SettingsApp from './components/Apps/Settings';
@@ -1009,7 +1010,7 @@ ${recentMemories}
   return (
     <div 
       className={cn(
-        "flex flex-col selection:bg-blue-100 transition-all duration-500",
+        "flex flex-col selection:bg-blue-100 transition-colors duration-500",
         settings.fullScreenMode ? "w-screen h-dvh overflow-hidden fixed inset-0 z-[9999]" : "w-full min-h-screen bg-slate-900 py-10 px-4"
       )}
       style={{ 
@@ -1073,7 +1074,7 @@ ${recentMemories}
       )}>
         <div 
           className={cn(
-            "relative overflow-hidden flex flex-col transition-all duration-500",
+            "relative overflow-hidden flex flex-col transition-colors duration-500",
             settings.themeId === 'rainy-cat' && "grayscale-[0.2] contrast-[0.9]",
             settings.themeId === 'pink-cat' && "cute-rabbit-theme",
             settings.themeId === 'ocean-blue' && "ocean-snow-theme",
@@ -1354,6 +1355,8 @@ ${recentMemories}
                   {APPS.slice(0, 4).map((app) => {
                     const Icon = IconMap[app.icon];
                     const customIcon = settings.customIcons?.[app.id];
+                    const themeIconBg = settings.themeId === 'ocean-blue' ? OCEAN_BLUE_ICON_BGS[app.id] : null;
+
                     return (
                       <div key={`dock-${app.id}`} className="relative w-[68px] h-12 flex items-center justify-center">
                         
@@ -1362,14 +1365,15 @@ ${recentMemories}
                           onClick={() => setActiveApp(app.id)}
                           className={cn(
                             "w-12 h-12 rounded-full flex items-center justify-center transition-all overflow-hidden z-10",
-                            settings.themeId === 'rainy-cat' ? "bg-white/5 backdrop-blur-md border border-white/10" : (!customIcon && app.color)
+                            settings.themeId === 'rainy-cat' ? "bg-white/5 backdrop-blur-md border border-white/10" : (!customIcon && !themeIconBg && app.color)
                           )}
+                          style={themeIconBg ? { backgroundImage: `url(${themeIconBg})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}
                         >
-                          {customIcon ? (
+                          {themeIconBg ? null : customIcon ? (
                             <img src={customIcon} className="w-full h-full object-cover" />
                           ) : (
                             <Icon size={24} className={cn(
-                              "text-white",
+                              "text-white drop-shadow-md",
                               settings.themeId === 'rainy-cat' && "text-white/40"
                             )} />
                           )}

@@ -3,6 +3,7 @@ import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/re
 import { AppId, AppInfo, DesktopItem, Widget, AppSettings } from '../types';
 import { cn } from '../lib/utils';
 import { DEFAULT_SETTINGS } from '../hooks/useSettings';
+import { OCEAN_BLUE_ICON_BGS } from '../lib/themeIcons';
 import { Plus, X, Edit2, Check, Cloud, Sun, Music, Camera, Quote, Battery, Calendar as CalendarIcon, Clock, Trash2, History, RefreshCw, ListTodo, Timer, User, Heart, MessageSquare, StickyNote, Footprints, Smile as SmileIcon, Play, SkipBack, SkipForward, Upload } from 'lucide-react';
 
 const GRID_COLS = 4;
@@ -368,6 +369,7 @@ const DesktopItemRenderer = React.memo(({ item, settings, apps, iconMap, isEditM
   const app = isApp ? apps.find((a: any) => a.id === item.appId) : null;
   const Icon = app ? iconMap[app.icon] : null;
   const customIcon = app ? settings.customIcons?.[app.id] : null;
+  const themeIconBg = app && settings.themeId === 'ocean-blue' ? OCEAN_BLUE_ICON_BGS[app.id] : null;
 
   const targetX = item.position.x * (CELL_WIDTH + GAP_X);
   const targetY = item.position.y * (CELL_HEIGHT + GAP_Y);
@@ -433,14 +435,15 @@ const DesktopItemRenderer = React.memo(({ item, settings, apps, iconMap, isEditM
               onClick={() => !isEditMode && onOpenApp(app.id)}
               className={cn(
                 "absolute inset-0 rounded-[12px] aspect-square flex items-center justify-center transition-all overflow-hidden z-10",
-                settings.themeId === 'rainy-cat' ? "bg-white/5 backdrop-blur-md border border-white/10" : app.color
+                settings.themeId === 'rainy-cat' ? "bg-white/5 backdrop-blur-md border border-white/10" : (!customIcon && !themeIconBg && app.color)
               )}
+              style={themeIconBg ? { backgroundImage: `url(${themeIconBg})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}
             >
-              {customIcon ? (
+              {themeIconBg ? null : customIcon ? (
                 <img src={customIcon} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
               ) : (
                 <Icon size={24} className={cn(
-                  "text-white",
+                  "text-white drop-shadow-md",
                   settings.themeId === 'rainy-cat' && "text-white/40"
                 )} />
               )}
@@ -467,9 +470,19 @@ const DesktopItemRenderer = React.memo(({ item, settings, apps, iconMap, isEditM
             {item.folderItems?.slice(0, 4).map((appId: string) => {
               const folderApp = apps.find((a: any) => a.id === appId);
               const FolderIcon = folderApp ? iconMap[folderApp.icon] : null;
+              const fCustomIcon = folderApp ? settings.customIcons?.[folderApp.id] : null;
+              const fThemeIconBg = folderApp && settings.themeId === 'ocean-blue' ? OCEAN_BLUE_ICON_BGS[folderApp.id] : null;
               return (
-                <div key={appId} className={cn("w-full h-full rounded-sm flex items-center justify-center", folderApp?.color || "bg-slate-400")}>
-                  {FolderIcon && <FolderIcon size={8} className="text-white" />}
+                <div 
+                  key={appId} 
+                  className={cn("w-full h-full rounded-sm flex items-center justify-center overflow-hidden", (!fCustomIcon && !fThemeIconBg) ? (folderApp?.color || "bg-slate-400") : "")}
+                  style={fThemeIconBg ? { backgroundImage: `url(${fThemeIconBg})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}
+                >
+                  {fThemeIconBg ? null : fCustomIcon ? (
+                    <img src={fCustomIcon} className="w-full h-full object-cover" />
+                  ) : FolderIcon ? (
+                    <FolderIcon size={8} className="text-white drop-shadow-sm" />
+                  ) : null}
                 </div>
               );
             })}

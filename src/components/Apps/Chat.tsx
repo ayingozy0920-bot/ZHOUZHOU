@@ -247,7 +247,7 @@ export default function ChatApp({ settings, onBack, onStartCall, externalCallSta
   return (
     <div 
       className={cn(
-        "flex flex-col w-full relative h-full transition-all duration-500 overflow-hidden chat-app-main",
+        "flex flex-col w-full relative h-full transition-colors duration-500 overflow-hidden chat-app-main",
         isDark ? (settings.appBackgroundUrl || settings.activeChatThemeId ? "bg-transparent text-white" : "wechat-dark-mode") : 
         (isRabbit ? "cute-rabbit-theme sparkle-bg" : (settings.appBackgroundUrl || settings.activeChatThemeId ? "bg-transparent text-slate-900" : "bg-slate-100 text-slate-900")),
         settings.fullScreenMode ? "chat-app-fullscreen" : ""
@@ -271,6 +271,7 @@ export default function ChatApp({ settings, onBack, onStartCall, externalCallSta
             user={user}
             friends={friends}
             messages={chats[selectedGroupId] || []}
+            allChats={chats}
             settings={settings}
             onBack={() => setSelectedGroupId(null)}
             onSendMessage={(msg) => addGroupMessage(selectedGroupId, msg)}
@@ -436,7 +437,7 @@ export default function ChatApp({ settings, onBack, onStartCall, externalCallSta
 
             {/* Content */}
             <div className={cn(
-              "flex-1 overflow-y-auto transition-all duration-500 relative z-10",
+              "flex-1 overflow-y-auto transition-colors duration-500 relative z-10",
               isDark ? "bg-transparent" : 
               (isRabbit ? "bg-pink-50/20" : (settings.themeId === 'rainy-cat' ? "bg-black/20 backdrop-blur-xl" : (settings.appBackgroundUrl ? "bg-transparent" : "bg-[#f5f5f5]")))
             )}
@@ -880,7 +881,7 @@ function ChatSettings({ friend, messages, settings, groups, chats, friends, user
   if (activeView === 'search') {
     return (
       <div className={cn(
-        "flex flex-col h-full transition-all duration-500",
+        "flex flex-col h-full transition-colors duration-500",
         settings.themeId === 'rainy-cat' ? "bg-black/20 backdrop-blur-xl text-white" : "bg-slate-50"
       )}>
         <div className={cn(
@@ -956,7 +957,7 @@ function ChatSettings({ friend, messages, settings, groups, chats, friends, user
 
     return (
       <div className={cn(
-        "flex flex-col h-full transition-all duration-500",
+        "flex flex-col h-full transition-colors duration-500",
         settings.themeId === 'rainy-cat' ? "bg-black/20 backdrop-blur-xl text-white" : "bg-slate-50"
       )}>
         <div className={cn(
@@ -1088,7 +1089,7 @@ function ChatSettings({ friend, messages, settings, groups, chats, friends, user
 
     return (
       <div className={cn(
-        "flex flex-col h-full transition-all duration-500",
+        "flex flex-col h-full transition-colors duration-500",
         settings.themeId === 'rainy-cat' ? "bg-black/20 backdrop-blur-xl text-white" : "bg-slate-50"
       )}>
         <div className={cn(
@@ -1214,7 +1215,7 @@ function ChatSettings({ friend, messages, settings, groups, chats, friends, user
   if (activeView === 'memory') {
     return (
       <div className={cn(
-        "flex flex-col h-full transition-all duration-500",
+        "flex flex-col h-full transition-colors duration-500",
         settings.themeId === 'rainy-cat' ? "bg-black/20 backdrop-blur-xl text-white" : "bg-slate-50"
       )}>
         <div className={cn(
@@ -1417,7 +1418,7 @@ function ChatSettings({ friend, messages, settings, groups, chats, friends, user
 
   return (
     <div className={cn(
-      "flex flex-col h-full transition-all duration-500",
+      "flex flex-col h-full transition-colors duration-500",
       settings.themeId === 'rainy-cat' ? "bg-black/20 backdrop-blur-xl text-white" : "bg-slate-100"
     )}>
       <div className={cn(
@@ -2097,6 +2098,58 @@ const getAffectionLevelInfo = (affection: number) => {
   } else {
     return { level: 6, name: '静待心意', range: [95, 100], text: '6级｜静待心意' };
   }
+};
+
+const getPureStickerUrl = (content: string, customStickers: any[] = []) => {
+  if (!content) return null;
+  const trimmed = content.trim();
+  const match = trimmed.match(/^\[表情:\s*(.*?)\]$/);
+  if (match) {
+    const desc = match[1];
+    const foundSticker = customStickers.find((s: any) => s.description.includes(desc) || desc.includes(s.description));
+    if (foundSticker) {
+      return { url: foundSticker.url, desc };
+    }
+  }
+  return null;
+};
+
+const renderMessageTimestamp = (msg: any, prevMsg?: any) => {
+  if (!msg.timestamp) return null;
+  const showTime = !prevMsg || !prevMsg.timestamp || (msg.timestamp - prevMsg.timestamp > 5 * 60 * 1000);
+  if (showTime) {
+    const date = new Date(msg.timestamp);
+    const now = new Date();
+    const isToday = date.toDateString() === now.toDateString();
+    
+    let timeStr = '';
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    
+    if (isToday) {
+      timeStr = `${hours}:${minutes}`;
+    } else {
+      const yesterday = new Date();
+      yesterday.setDate(now.getDate() - 1);
+      const isYesterday = date.toDateString() === yesterday.toDateString();
+      if (isYesterday) {
+        timeStr = `昨天 ${hours}:${minutes}`;
+      } else if (date.getFullYear() === now.getFullYear()) {
+        timeStr = `${date.getMonth() + 1}月${date.getDate()}日 ${hours}:${minutes}`;
+      } else {
+        timeStr = `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 ${hours}:${minutes}`;
+      }
+    }
+    
+    return (
+      <div className="w-full text-center my-3 select-none">
+        <span className="text-slate-400 dark:text-slate-500 text-[11px]">
+          {timeStr}
+        </span>
+      </div>
+    );
+  }
+  return null;
 };
 
 function ChatWindow({ 
@@ -4483,7 +4536,7 @@ ${context}`;
 
   return (
     <div className={cn(
-      "flex flex-col h-full transition-all duration-500 relative overflow-hidden chat-window-container",
+      "flex flex-col h-full transition-colors duration-500 relative overflow-hidden chat-window-container",
       settings.themeId === 'rainy-cat' ? "bg-black/10 backdrop-blur-xl" : (settings.appBackgroundUrl ? "bg-transparent" : "bg-[#f5f5f5]"),
       settings.isCuteRabbitThemeEnabled && "cute-rabbit-theme"
     )} style={{
@@ -4733,8 +4786,15 @@ ${context}`;
       {/* Messages */}
       <div 
         ref={scrollRef} 
+        onClick={() => {
+          if (showEmojiPicker) setShowEmojiPicker(false);
+          if (showFeatures) setShowFeatures(false);
+          if (document.activeElement instanceof HTMLElement) {
+            document.activeElement.blur();
+          }
+        }}
         className={cn(
-          "flex-1 overflow-y-auto overflow-x-hidden p-4 pb-[20px] space-y-4 transition-all duration-300 relative chat-message-list",
+          "flex-1 overflow-y-auto overflow-x-hidden p-4 pb-[20px] space-y-4 transition-colors duration-300 relative chat-message-list",
           settings.isDarkThemeEnabled ? "bg-black" : 
           (settings.isCuteRabbitThemeEnabled ? "bg-pink-50/30" : (settings.themeId === 'rainy-cat' ? "bg-transparent" : (isOfflineMode ? (offlineConfig.bgImage ? "bg-transparent" : "bg-[#e5e5e5]") : (friend.chatBackground || settings.chatWallpaperUrl ? "bg-transparent" : "bg-[#f5f5f5]"))))
         )}
@@ -4758,7 +4818,7 @@ ${context}`;
         {/* Background Overlay for better readability */}
         {((!isOfflineMode && (friend.chatBackground || settings.chatWallpaperUrl)) || (isOfflineMode && offlineConfig.bgImage)) && (
           <div className={cn(
-            "absolute inset-0 pointer-events-none transition-all duration-500",
+            "absolute inset-0 pointer-events-none transition-colors duration-500",
             settings.themeId === 'rainy-cat' ? "bg-black/20" : (isOfflineMode ? "bg-black/0 backdrop-blur-none" : "bg-white/30 backdrop-blur-[2px]")
           )} />
         )}
@@ -4882,56 +4942,59 @@ ${context}`;
                 </div>
               );
             }
+            const prevMsg = i > 0 ? currentMessages[i - 1] : undefined;
             return (
-              <div key={msg.id ? `msg-${msg.id}-${i}` : `msg-ts-${msg.timestamp}-${i}-${msg.role}`} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`flex gap-2 max-w-[80%] ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-                  <img 
-                    src={msg.role === 'user' ? user.avatar : friend.avatar} 
-                    alt="avatar" 
-                    loading="lazy"
-                    className="w-10 h-10 rounded-lg bg-slate-200 shrink-0 object-cover chat-avatar" 
-                  />
-                  <div 
-                    data-message-index={i}
-                    onClick={() => {
-                      if (longPressTriggeredRef.current) {
-                        longPressTriggeredRef.current = false;
-                        return;
-                      }
-                      if (isMultiSelectMode) {
-                        setSelectedMessages(prev => 
-                          prev.includes(i) ? prev.filter(idx => idx !== i) : [...prev, i]
-                        );
-                      }
-                    }}
-                    onContextMenu={(e) => {
-                      e.preventDefault();
-                      openMessageMenu(i);
-                    }}
-                    onPointerDown={(e) => {
-                      longPressTriggeredRef.current = false;
-                      longPressTimer.current = setTimeout(() => {
-                        longPressTriggeredRef.current = true;
+              <div key={msg.id ? `msg-${msg.id}-${i}` : `msg-ts-${msg.timestamp}-${i}-${msg.role}`} className="flex flex-col w-full">
+                {renderMessageTimestamp(msg, prevMsg)}
+                <div className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`flex gap-2 max-w-[80%] ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
+                    <img 
+                      src={msg.role === 'user' ? user.avatar : friend.avatar} 
+                      alt="avatar" 
+                      loading="lazy"
+                      className="w-10 h-10 rounded-lg bg-slate-200 shrink-0 object-cover chat-avatar" 
+                    />
+                    <div 
+                      data-message-index={i}
+                      onClick={() => {
+                        if (longPressTriggeredRef.current) {
+                          longPressTriggeredRef.current = false;
+                          return;
+                        }
+                        if (isMultiSelectMode) {
+                          setSelectedMessages(prev => 
+                            prev.includes(i) ? prev.filter(idx => idx !== i) : [...prev, i]
+                          );
+                        }
+                      }}
+                      onContextMenu={(e) => {
+                        e.preventDefault();
                         openMessageMenu(i);
-                      }, 800);
-                    }}
-                    onPointerUp={() => {
-                      if (longPressTimer.current) clearTimeout(longPressTimer.current);
-                    }}
-                    onPointerLeave={() => {
-                      if (longPressTimer.current) clearTimeout(longPressTimer.current);
-                    }}
-                    className={cn(
-                      "p-2.5 rounded-lg text-sm shadow-sm relative break-all transition-all duration-300 group chat-bubble-container",
-                      isMultiSelectMode && "cursor-pointer",
-                      (settings.themeId === 'rainy-cat' || (isOfflineMode && (!msg.type || msg.type === 'text')) || msg.type === 'sticker' || settings.activeChatThemeId || settings.activeBubbleThemeId || settings.globalCustomCss || settings.bubbleCustomCss)
-                        ? "bg-transparent shadow-none p-0" 
-                        : (settings.isInsBubbleEnabled 
-                            ? (msg.role === 'user' ? 'ins-bubble-user' : 'ins-bubble-assistant')
-                            : (msg.role === 'user' ? 'bg-pink-100 text-pink-900 chat-bubble-user' : 'bg-white text-black chat-bubble-assistant')),
-                      msg.type === 'image' || msg.type === 'video' ? 'p-1' : '',
-                      settings.isInsBubbleEnabled && "ins-bubble-container"
-                    )}
+                      }}
+                      onPointerDown={(e) => {
+                        longPressTriggeredRef.current = false;
+                        longPressTimer.current = setTimeout(() => {
+                          longPressTriggeredRef.current = true;
+                          openMessageMenu(i);
+                        }, 800);
+                      }}
+                      onPointerUp={() => {
+                        if (longPressTimer.current) clearTimeout(longPressTimer.current);
+                      }}
+                      onPointerLeave={() => {
+                        if (longPressTimer.current) clearTimeout(longPressTimer.current);
+                      }}
+                      className={cn(
+                        "p-2.5 rounded-lg text-sm shadow-sm relative break-all transition-all duration-300 group chat-bubble-container",
+                        isMultiSelectMode && "cursor-pointer",
+                        (settings.themeId === 'rainy-cat' || (isOfflineMode && (!msg.type || msg.type === 'text')) || msg.type === 'sticker' || getPureStickerUrl(msg.content, settings.customStickers || []) || settings.activeChatThemeId || settings.activeBubbleThemeId || settings.globalCustomCss || settings.bubbleCustomCss)
+                          ? "bg-transparent shadow-none p-0" 
+                          : (settings.isInsBubbleEnabled 
+                              ? (msg.role === 'user' ? 'ins-bubble-user' : 'ins-bubble-assistant')
+                              : (msg.role === 'user' ? 'bg-pink-100 text-pink-900 chat-bubble-user' : 'bg-white text-black chat-bubble-assistant')),
+                        msg.type === 'image' || msg.type === 'video' ? 'p-1' : '',
+                        settings.isInsBubbleEnabled && "ins-bubble-container"
+                      )}
                     style={{ 
                       WebkitTouchCallout: 'none',
                       WebkitUserSelect: 'none',
@@ -5093,7 +5156,7 @@ ${context}`;
                         <div className="mt-1 text-[12px] opacity-30 animate-pulse italic">正在翻译...</div>
                       )}
                     </div>
-                  ) : settings.themeId === 'rainy-cat' && (!msg.type || msg.type === 'text') ? (
+                  ) : settings.themeId === 'rainy-cat' && (!msg.type || msg.type === 'text') && !getPureStickerUrl(msg.content, settings.customStickers || []) ? (
                     <div className="flex flex-col gap-1">
                       <CatBubble isUser={msg.role === 'user'}>
                         {msg.content}
@@ -5135,7 +5198,7 @@ ${context}`;
                     </div>
                   ) : (
                     <>
-                      {(!msg.type || msg.type === 'text') && (
+                      {(!msg.type || msg.type === 'text') && !getPureStickerUrl(msg.content, settings.customStickers || []) && (
                         <div 
                           className={cn(
                             "flex flex-col gap-1", 
@@ -5532,8 +5595,9 @@ ${context}`;
                 </div>
               </div>
             </div>
-          );
-        })}
+          </div>
+        );
+      })}
         {isLoading && (
             <div className="flex justify-start">
               <div className={cn(
@@ -7673,7 +7737,7 @@ function FriendProfile({ friend, settings, onBack, onStartChat, onViewMoments, o
 
   return (
     <div className={cn(
-      "flex flex-col h-full relative transition-all duration-500",
+      "flex flex-col h-full relative transition-colors duration-500",
       settings.themeId === 'rainy-cat' ? "bg-black/20 backdrop-blur-xl text-white" : "bg-slate-100"
     )}>
       <input 
@@ -7902,7 +7966,7 @@ function FriendProfile({ friend, settings, onBack, onStartChat, onViewMoments, o
               </span>
             </div>
             <div className={cn(
-              "overflow-hidden transition-all duration-500",
+              "overflow-hidden transition-colors duration-500",
               isPersonaExpanded ? "max-h-none opacity-100" : "max-h-12 opacity-80"
             )}>
               <p className={cn(
@@ -8178,7 +8242,7 @@ function FriendMoments({
   };
 
   return (
-    <div className={cn("flex flex-col h-full relative transition-all duration-500", settings.themeId === 'rainy-cat' ? "bg-black/20 backdrop-blur-xl text-white" : "bg-white")}>
+    <div className={cn("flex flex-col h-full relative transition-colors duration-500", settings.themeId === 'rainy-cat' ? "bg-black/20 backdrop-blur-xl text-white" : "bg-white")}>
       <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
       <div className="absolute top-0 left-0 right-0 z-20 p-3 flex items-center justify-between pointer-events-none">
         <button onClick={onBack} className="p-1.5 rounded-full pointer-events-auto bg-black/20 text-white"><ChevronLeft size={20} /></button>
@@ -8240,7 +8304,7 @@ function DiscoverTab({
   };
 
   return (
-    <div className={cn("h-full flex flex-col transition-all duration-500", settings.themeId === 'rainy-cat' ? "bg-black/20 backdrop-blur-xl text-white" : "bg-slate-100")}>
+    <div className={cn("h-full flex flex-col transition-colors duration-500", settings.themeId === 'rainy-cat' ? "bg-black/20 backdrop-blur-xl text-white" : "bg-slate-100")}>
       <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
       <div className="flex-1 overflow-y-auto scroll-smooth">
         <div className="relative h-64">
@@ -8304,7 +8368,7 @@ function MeTab({
 
   return (
     <div className={cn(
-      "h-full transition-all duration-500",
+      "h-full transition-colors duration-500",
       settings.isDarkThemeEnabled ? "bg-transparent text-white" : 
       (isRabbit ? "bg-transparent" : (settings.themeId === 'rainy-cat' ? "bg-black/20 backdrop-blur-xl text-white" : (settings.appBackgroundUrl ? "bg-transparent" : "bg-slate-100")))
     )}>
@@ -9334,7 +9398,7 @@ function FavoritesView({ user, settings, onBack, onDelete }: { user: any, settin
 
   return (
     <div className={cn(
-      "h-full flex flex-col transition-all duration-500",
+      "h-full flex flex-col transition-colors duration-500",
       isDark ? "bg-transparent text-white" : 
       (isRabbit ? "bg-transparent" : (settings.themeId === 'rainy-cat' ? "bg-black/20 backdrop-blur-xl text-white" : (settings.appBackgroundUrl ? "bg-transparent" : "bg-slate-100")))
     )}>
@@ -9652,7 +9716,7 @@ function PaymentPage({ user, settings, onBack, onUpdate, onAddTransaction, onAdd
             <div 
               onClick={(e) => { e.stopPropagation(); setBackgroundModal({ type: 'balance' }); }}
               className={cn(
-                "p-8 rounded-[32px] shadow-2xl relative overflow-hidden group cursor-pointer transition-all duration-500",
+                "p-8 rounded-[32px] shadow-2xl relative overflow-hidden group cursor-pointer transition-colors duration-500",
                 user.balanceBackground 
                   ? "bg-slate-900 text-white" 
                   : "bg-white/80 backdrop-blur-xl border border-white/20 text-slate-900"
@@ -9710,7 +9774,7 @@ function PaymentPage({ user, settings, onBack, onUpdate, onAddTransaction, onAdd
                     key={`${card.id}-${idx}`}
                     onClick={(e) => { e.stopPropagation(); setBackgroundModal({ type: 'card', id: card.id }); }}
                     className={cn(
-                      "min-w-[280px] h-[180px] rounded-[24px] p-6 snap-center relative overflow-hidden shadow-xl transition-all duration-500 cursor-pointer group",
+                      "min-w-[280px] h-[180px] rounded-[24px] p-6 snap-center relative overflow-hidden shadow-xl transition-colors duration-500 cursor-pointer group",
                       card.backgroundUrl ? "bg-slate-900 text-white" : getCardGradient(card.theme)
                     )}
                   >
@@ -10069,7 +10133,7 @@ function PersonaArchiveView({
 
   return (
     <div className={cn(
-      "h-full flex flex-col transition-all duration-500",
+      "h-full flex flex-col transition-colors duration-500",
       isDark ? "bg-transparent text-white" : 
       (isRabbit ? "bg-transparent" : (settings.themeId === 'rainy-cat' ? "bg-black/20 backdrop-blur-xl text-white" : (settings.appBackgroundUrl ? "bg-transparent" : "bg-slate-100")))
     )}>
