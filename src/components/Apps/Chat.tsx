@@ -62,10 +62,13 @@ import {
   Check,
   Smartphone,
   ShieldAlert,
-  Edit3
+  Edit3,
+  Cpu
 } from 'lucide-react';
-import { AppSettings, Friend, ChatMessage, OfflineMemory, ListenTogetherState, AppId, ChatTheme, OfflineConfig } from '../../types';
+import { AppSettings, Friend, ChatMessage, OfflineMemory, ListenTogetherState, AppId, ChatTheme, OfflineConfig, GroupChat } from '../../types';
 import { CCDPhotoCard } from './CCDPhotoCard';
+import { CreateGroupPage } from './CreateGroupPage';
+import { GroupChatWindow } from './GroupChatWindow';
 import { motion, AnimatePresence } from 'motion/react';
 import { getGeminiClient, getGeminiModel } from '../../lib/gemini';
 import { useFriends } from '../../hooks/useFriends';
@@ -116,9 +119,13 @@ export default function ChatApp({ settings, onBack, onStartCall, externalCallSta
   const [showProfileSelector, setShowProfileSelector] = useState(false);
   const [showMemoryApp, setShowMemoryApp] = useState(false);
   const [activeMeSubView, setActiveMeSubView] = useState<'favorites' | 'personas' | 'beautification' | 'moments' | 'payment' | null>(null);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
   const { 
-    user, updateUser, friends, chats, addFriend, deleteFriend, updateFriend, 
-    toggleBlock, addMessage, updateMessage, importMessages, addFavorite, removeFavorite,
+    user, updateUser, friends, groups, chats, addFriend, deleteFriend, updateFriend, 
+    toggleBlock, addMessage, updateMessage, importMessages, 
+    addGroupChat, updateGroupChat, deleteGroupChat, addGroupMessage, updateGroupMessage, importGroupMessages,
+    addFavorite, removeFavorite,
     addPersona, updatePersona, deletePersona, togglePersona,
     addTransaction, updateBankCardBalance, addMoment, deleteMoment, toggleLikeMoment,
     addCommentToMoment, updateFriendMomentsSettings, getAllMoments,
@@ -126,6 +133,7 @@ export default function ChatApp({ settings, onBack, onStartCall, externalCallSta
   } = useFriends();
 
   const selectedFriend = friends.find(f => f.id === selectedFriendId);
+  const selectedGroup = groups.find(g => g.id === selectedGroupId);
   const viewingFriend = friends.find(f => f.id === viewingFriendProfileId);
   const momentsFriend = friends.find(f => f.id === viewingMomentsFriendId);
 
@@ -256,7 +264,43 @@ export default function ChatApp({ settings, onBack, onStartCall, externalCallSta
       {/* Global Background Layer handled by App.tsx */}
 
       <AnimatePresence mode="wait">
-        {selectedFriendId ? (
+        {selectedGroupId ? (
+          <GroupChatWindow 
+            key={selectedGroupId}
+            group={selectedGroup!}
+            user={user}
+            friends={friends}
+            messages={chats[selectedGroupId] || []}
+            settings={settings}
+            onBack={() => setSelectedGroupId(null)}
+            onSendMessage={(msg) => addGroupMessage(selectedGroupId, msg)}
+            onUpdateMessage={(index, updates) => updateGroupMessage(selectedGroupId, index, updates)}
+            onUpdateGroup={(updates) => updateGroupChat(selectedGroupId, updates)}
+            onClearMessages={() => importGroupMessages(selectedGroupId, [])}
+            onAddMember={(friendId) => {
+              if (!selectedGroup.memberIds.includes(friendId)) {
+                updateGroupChat(selectedGroupId, { memberIds: [...selectedGroup.memberIds, friendId] });
+              }
+            }}
+            onRemoveMember={(friendId) => {
+              updateGroupChat(selectedGroupId, { memberIds: selectedGroup.memberIds.filter(id => id !== friendId) });
+            }}
+            onDeleteGroup={() => deleteGroupChat(selectedGroupId)}
+            onUpdateSettings={onUpdateSettings}
+          />
+        ) : showCreateGroup ? (
+          <CreateGroupPage 
+            key="create-group"
+            friends={friends}
+            settings={settings}
+            onBack={() => setShowCreateGroup(false)}
+            onCreateGroup={(memberIds, name) => {
+              const newId = addGroupChat(memberIds, name);
+              setShowCreateGroup(false);
+              setSelectedGroupId(newId);
+            }}
+          />
+        ) : selectedFriendId ? (
           // @ts-ignore - key is a valid React prop
           <ChatWindow 
             key={selectedFriendId}
@@ -265,6 +309,8 @@ export default function ChatApp({ settings, onBack, onStartCall, externalCallSta
             friends={friends}
             messages={chats[selectedFriendId] || []}
             settings={settings}
+            groups={groups}
+            chats={chats}
             onBack={() => setSelectedFriendId(null)}
             onSendMessage={(msg) => addMessage(selectedFriendId, msg)}
             onUpdateFriend={(updates) => updateFriend(selectedFriendId, updates)}
@@ -282,6 +328,7 @@ export default function ChatApp({ settings, onBack, onStartCall, externalCallSta
             onManualMoment={handleManualMoment}
             onUpdateSettings={onUpdateSettings}
             onOpenApp={onOpenApp}
+            onShowCreateGroup={() => setShowCreateGroup(true)}
           />
         ) : (viewingMomentsFriendId && momentsFriend) ? (
           <FriendMoments 
@@ -403,6 +450,34 @@ export default function ChatApp({ settings, onBack, onStartCall, externalCallSta
                   isDark ? "divide-white/5 bg-transparent" : 
                   (isRabbit ? "divide-pink-100 bg-white/40 backdrop-blur-sm" : (settings.themeId === 'rainy-cat' ? "divide-white/5" : (settings.appBackgroundUrl ? "divide-slate-100/50 bg-transparent" : "divide-slate-100 bg-white")))
                 )}>
+                  {groups.map((group, idx) => (
+                    <button 
+                      key={`group-${group.id}-${idx}`}
+                      onClick={() => setSelectedGroupId(group.id)}
+                      className={cn(
+                        "w-full flex items-center gap-2.5 p-3 transition-colors text-left",
+                        settings.themeId === 'rainy-cat' ? "hover:bg-white/5 text-white" : (settings.appBackgroundUrl ? "hover:bg-white/20 text-slate-800" : "hover:bg-slate-50 text-slate-800")
+                      )}
+                      style={settings.appBackgroundUrl ? { backgroundColor: `rgba(255, 255, 255, ${Math.max(0, (settings.chatWallpaperOpacity ?? 0.8) * 0.1)})` } : {}}
+                    >
+                      <img src={group.avatar} alt={group.name} loading="lazy" className="w-10 h-10 rounded-lg bg-slate-200 object-cover" />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex justify-between items-center mb-0.5">
+                          <span className="font-bold text-sm truncate">{group.name} ({group.memberIds.length + 1})</span>
+                          <span className={cn(
+                            "text-[10px]",
+                            settings.themeId === 'rainy-cat' ? "text-white/40" : "text-slate-400"
+                          )}>{group.lastTime}</span>
+                        </div>
+                        <p className={cn(
+                          "text-xs truncate",
+                          settings.themeId === 'rainy-cat' ? "text-white/60" : "text-slate-500"
+                        )}>
+                          {group.lastMessage}
+                        </p>
+                      </div>
+                    </button>
+                  ))}
                   {friends.filter(f => !f.isBlocked).map((friend, idx) => (
                     <button 
                       key={`${friend.id}-${idx}`}
@@ -689,20 +764,25 @@ function NavButton({ active, icon: Icon, label, onClick, themeColor, isDark }: {
   );
 }
 
-function ChatSettings({ friend, messages, settings, onBack, onUpdateFriend, onImportMessages, summarizeContent, onShowMomentSettings, activeModal, setActiveModal }: { 
+function ChatSettings({ friend, messages, settings, groups, chats, friends, user, onBack, onUpdateFriend, onImportMessages, summarizeContent, onShowMomentSettings, activeModal, setActiveModal, onShowCreateGroup }: { 
   friend: Friend, 
   messages: ChatMessage[], 
   settings: AppSettings,
+  groups: GroupChat[],
+  chats: Record<string, ChatMessage[]>,
+  friends: Friend[],
+  user: any,
   onBack: () => void,
   onUpdateFriend: (updates: Partial<Friend>) => void,
   onImportMessages: (msgs: ChatMessage[]) => void,
   summarizeContent: (friend: Friend, messages: ChatMessage[], type: 'chat' | 'call' | 'group' | 'offline', customPrompt?: string, range?: { start: number, end: number }) => Promise<string | null>,
   onShowMomentSettings: (id: string) => void,
   activeModal: string | null,
-  setActiveModal: (modal: any) => void
+  setActiveModal: (modal: any) => void,
+  onShowCreateGroup?: () => void
 }) {
-  const { addOnlineMemory } = useMemory();
-  const [activeView, setActiveView] = useState<'main' | 'search' | 'memory'>('main');
+  const { addOnlineMemory, getFriendMemory } = useMemory();
+  const [activeView, setActiveView] = useState<'main' | 'search' | 'memory' | 'shared-group-memory' | 'tokens-panel'>('main');
   const [searchQuery, setSearchQuery] = useState('');
   const [tempPrompt, setTempPrompt] = useState(friend.memorySettings?.summaryPrompt || '');
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -857,6 +937,275 @@ function ChatSettings({ friend, messages, settings, onBack, onUpdateFriend, onIm
               </div>
             ))
           )}
+        </div>
+      </div>
+    );
+  }
+
+  if (activeView === 'shared-group-memory') {
+    const sharedSettings = friend.sharedGroupMemorySettings || {
+      enabled: false,
+      memoryCount: 30,
+      customPrompt: ''
+    };
+    const updateSharedSettings = (updates: Partial<typeof sharedSettings>) => {
+      onUpdateFriend({
+        sharedGroupMemorySettings: { ...sharedSettings, ...updates }
+      });
+    };
+
+    return (
+      <div className={cn(
+        "flex flex-col h-full transition-all duration-500",
+        settings.themeId === 'rainy-cat' ? "bg-black/20 backdrop-blur-xl text-white" : "bg-slate-50"
+      )}>
+        <div className={cn(
+          "px-3 py-2 flex items-center gap-2 border-b transition-all duration-300",
+          settings.themeId === 'rainy-cat' ? "bg-white/5 border-white/10" : "bg-white"
+        )}>
+          <button onClick={() => setActiveView('main')} className="p-1">
+            <ChevronLeft size={20} />
+          </button>
+          <span className="font-bold">共享群聊记忆设置</span>
+        </div>
+        
+        <div className="flex-1 overflow-y-auto p-4 space-y-6">
+          <div className="flex items-center gap-4 mb-4">
+            <div className="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-500">
+              <Users size={32} />
+            </div>
+            <div>
+              <h3 className="font-bold text-lg">共享群聊记忆</h3>
+              <p className="text-xs opacity-50">让 {friend.name} 读取共同群聊记录与时间线，实现实时互动与吃醋质问</p>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="text-sm font-bold">开启共享群聊记忆</h4>
+                <p className="text-[10px] opacity-50">私聊时允许角色读取共同群聊上下文及时间线</p>
+              </div>
+              <button 
+                onClick={() => updateSharedSettings({ enabled: !sharedSettings.enabled })}
+                className={cn(
+                  "w-12 h-6 rounded-full transition-all relative",
+                  sharedSettings.enabled ? "bg-indigo-600" : "bg-slate-300"
+                )}
+              >
+                <div className={cn(
+                  "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
+                  sharedSettings.enabled ? "right-1" : "left-1"
+                )} />
+              </button>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <h4 className="text-sm font-bold">共享记忆条数</h4>
+                <span className="text-sm font-bold text-indigo-600">{sharedSettings.memoryCount || 30} 条</span>
+              </div>
+              <p className="text-[10px] opacity-50">角色在私聊中可读取的最近共同群聊记录数量（默认30条）</p>
+              <input 
+                type="range" 
+                min="5" 
+                max="100" 
+                value={sharedSettings.memoryCount || 30}
+                onChange={(e) => updateSharedSettings({ memoryCount: parseInt(e.target.value) })}
+                className="w-full accent-indigo-600"
+              />
+              <div className="flex justify-between text-[10px] opacity-30">
+                <span>5条</span>
+                <span>默认30条</span>
+                <span>100条</span>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <h4 className="text-sm font-bold">用户自定义输入与补充指令</h4>
+              <p className="text-[10px] opacity-50">自定义角色在私聊中对群聊记忆的反应方式、语气或特定剧情设定</p>
+              <textarea 
+                value={sharedSettings.customPrompt || ''}
+                onChange={(e) => updateSharedSettings({ customPrompt: e.target.value })}
+                placeholder="例如：如果我在群里和其他人聊天却冷落了你，你要表现得吃醋或傲娇，质问我为什么只在群里聊天不理你..."
+                className={cn(
+                  "w-full h-28 p-3 text-xs rounded-xl outline-none resize-none transition-all",
+                  settings.themeId === 'rainy-cat' ? "bg-white/10 text-white border border-white/10" : "bg-white text-slate-800 border border-slate-200"
+                )}
+              />
+            </div>
+
+            <div className="bg-indigo-50 border border-indigo-100 p-3 rounded-xl flex items-start gap-2">
+              <span className="text-indigo-600">💡</span>
+              <p className="text-[10px] text-indigo-700">
+                提示：角色具备精准时间线感知。如果用户在群聊里不回复角色，等了十分钟甚至更久后才来私聊，角色会在新的一轮私聊中自然地说出：“你就知道在群里聊天，不理我……”等符合人设的生动反应。
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (activeView === 'tokens-panel') {
+    const worldBookEntries = settings.worldBookEntries || [];
+    const activeEntries = worldBookEntries.filter(e => 
+      e.isEnabled && (e.scope === 'global' || (e.scope === 'character' && (e.linkedCharacterIds || []).includes(friend.profileId || '')))
+    );
+    let worldBookText = '';
+    activeEntries.forEach(e => {
+      worldBookText += `[${e.category}] ${e.name}\n${e.content}\n`;
+    });
+    const worldBookChars = worldBookText.length;
+    const worldBookTokens = Math.round(worldBookChars * 1.4);
+
+    let personaText = `【角色人设】\n${friend.persona || ''}\n【User资料】\n姓名：${user?.name || ''} 昵称：${user?.wechatNickname || ''} 简介：${user?.signature || ''} 人设：${user?.persona || ''}`;
+    const personaChars = personaText.length;
+    const personaTokens = Math.round(personaChars * 1.4);
+
+    const contextLimit = friend.memorySettings?.contextLimit || 50;
+    const slicedMsgs = messages.filter(m => m.role !== 'system').slice(-contextLimit);
+    let contextText = slicedMsgs.map(m => `${m.role}: ${m.content}`).join('\n');
+    
+    const friendMemoryStore = getFriendMemory(friend.id);
+    if (friend.offlineMemory?.summary) contextText += `\n${friend.offlineMemory.summary}`;
+    friendMemoryStore.onlineMemories.slice(0, 15).forEach(m => contextText += `\n${m.content}`);
+    
+    if (friend.sharedGroupMemorySettings?.enabled) {
+      const memoryCount = friend.sharedGroupMemorySettings.memoryCount || 30;
+      const relevantGroups = (groups || []).filter(g => g.memberIds.includes(friend.id));
+      relevantGroups.forEach(g => {
+        const msgs = (chats || {})[g.id] || [];
+        msgs.slice(-memoryCount).forEach(m => contextText += `\n${m.content}`);
+      });
+    }
+
+    const contextChars = contextText.length;
+    const contextTokens = Math.round(contextChars * 1.4);
+
+    const totalTokens = worldBookTokens + personaTokens + contextTokens;
+    const isHeavy = totalTokens > 8000;
+
+    return (
+      <div className={cn(
+        "flex flex-col h-full transition-all duration-500",
+        settings.themeId === 'rainy-cat' ? "bg-black/20 backdrop-blur-xl text-white" : "bg-slate-50"
+      )}>
+        <div className={cn(
+          "px-3 py-2 flex items-center gap-2 border-b transition-all duration-300",
+          settings.themeId === 'rainy-cat' ? "bg-white/5 border-white/10" : "bg-white"
+        )}>
+          <button onClick={() => setActiveView('main')} className="p-1">
+            <ChevronLeft size={20} />
+          </button>
+          <span className="font-bold">Tokens 消耗与负载面板</span>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-blue-100 rounded-xl flex items-center justify-center text-blue-600 font-bold">
+                <Cpu size={24} />
+              </div>
+              <div>
+                <h3 className="font-bold text-base">Token 实时负载分析</h3>
+                <p className="text-xs opacity-50">用于评估当前 AI 对话的 Token 消耗与响应速度</p>
+              </div>
+            </div>
+            <button 
+              onClick={() => {
+                setActiveView('tokens-panel');
+              }}
+              className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-bold flex items-center gap-1 active:scale-95 transition-all"
+            >
+              <RefreshCw size={14} /> 刷新
+            </button>
+          </div>
+
+          <div className={cn(
+            "p-4 rounded-2xl border transition-all",
+            isHeavy 
+              ? (settings.themeId === 'rainy-cat' ? "bg-amber-500/20 border-amber-500/40 text-amber-200" : "bg-amber-50 border-amber-200 text-amber-800")
+              : (settings.themeId === 'rainy-cat' ? "bg-blue-500/20 border-blue-500/40 text-blue-200" : "bg-blue-50 border-blue-100 text-blue-900")
+          )}>
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-xs font-bold uppercase tracking-wider opacity-80">当前总 Token 预估</span>
+              <span className="text-xl font-black font-mono">{totalTokens.toLocaleString()} tokens</span>
+            </div>
+            <div className="text-xs opacity-90 leading-relaxed">
+              {isHeavy ? (
+                <p>⚠️ <strong>负载偏高提示</strong>：当前总 Token 超过 8000。由于输入文本较长，大模型预处理需要更多时间，可能导致回复变慢（约数十秒）。建议精简世界书、减少上下文记忆条数。</p>
+              ) : (
+                <p>✨ <strong>负载健康</strong>：当前 Token 处于适宜范围，大模型可以快速响应（通常数秒内完成）。</p>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            <h4 className="text-xs font-bold opacity-60 uppercase tracking-wider">Token 构成明细 (三维度)</h4>
+            
+            <div className={cn(
+              "p-4 rounded-xl border flex items-center justify-between",
+              settings.themeId === 'rainy-cat' ? "bg-white/5 border-white/10" : "bg-white border-slate-200"
+            )}>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold">📖 世界书 (World Book)</span>
+                  <span className="text-[10px] px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full font-bold">激活条目: {activeEntries.length} 条</span>
+                </div>
+                <p className="text-[10px] opacity-50">包含当前对该角色生效的所有全局及专属世界书设定内容</p>
+              </div>
+              <div className="text-right">
+                <span className="font-mono font-bold text-sm text-purple-600">~{worldBookTokens.toLocaleString()}</span>
+                <p className="text-[10px] opacity-40">{worldBookChars} 字符</p>
+              </div>
+            </div>
+
+            <div className={cn(
+              "p-4 rounded-xl border flex items-center justify-between",
+              settings.themeId === 'rainy-cat' ? "bg-white/5 border-white/10" : "bg-white border-slate-200"
+            )}>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold">👤 角色人设与用户资料 (Persona)</span>
+                </div>
+                <p className="text-[10px] opacity-50">包含角色核心人设文本以及用户的基本资料设定</p>
+              </div>
+              <div className="text-right">
+                <span className="font-mono font-bold text-sm text-blue-600">~{personaTokens.toLocaleString()}</span>
+                <p className="text-[10px] opacity-40">{personaChars} 字符</p>
+              </div>
+            </div>
+
+            <div className={cn(
+              "p-4 rounded-xl border flex items-center justify-between",
+              settings.themeId === 'rainy-cat' ? "bg-white/5 border-white/10" : "bg-white border-slate-200"
+            )}>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-bold">🧠 上下文记忆与群聊 (Context Memory)</span>
+                  <span className="text-[10px] px-2 py-0.5 bg-green-100 text-green-700 rounded-full font-bold">聊天记录: {slicedMsgs.length} 条</span>
+                </div>
+                <p className="text-[10px] opacity-50">包含最近聊天上下文、长期记忆库总结及开启的共享群聊记录</p>
+              </div>
+              <div className="text-right">
+                <span className="font-mono font-bold text-sm text-green-600">~{contextTokens.toLocaleString()}</span>
+                <p className="text-[10px] opacity-40">{contextChars} 字符</p>
+              </div>
+            </div>
+          </div>
+
+          <div className={cn(
+            "p-4 rounded-xl border space-y-2",
+            settings.themeId === 'rainy-cat' ? "bg-white/5 border-white/10" : "bg-white border-slate-200"
+          )}>
+            <h4 className="text-xs font-bold">💡 最佳 Token 值与加速建议</h4>
+            <ul className="text-xs opacity-75 space-y-1.5 list-disc pl-4">
+              <li><strong>最佳推荐范围</strong>：总 Token 保持在 <strong>2,000 ~ 4,000</strong> 之间，此时大模型处理速度最快（通常在 3-5 秒内返回）。</li>
+              <li><strong>调小上下文条数</strong>：如果在“记忆模块”中设置的上下文条数过大（如超过 100 条），可在记忆模块中将条数调整至 30-50 条，显著减少响应等待时间。</li>
+              <li><strong>精简世界书</strong>：关闭暂时不需要的世界书条目，或者缩减冗长的背景设定。</li>
+            </ul>
+          </div>
         </div>
       </div>
     );
@@ -1103,10 +1452,14 @@ function ChatSettings({ friend, messages, settings, onBack, onUpdateFriend, onIm
               settings.themeId === 'rainy-cat' ? "text-white/40" : "text-slate-500"
             )}>{friend.name}</span>
           </div>
-          <button className={cn(
-            "w-14 h-14 border-2 border-dashed rounded-lg flex items-center justify-center transition-all duration-300",
-            settings.themeId === 'rainy-cat' ? "border-white/10 text-white/20 hover:border-white/20 hover:text-white/40" : "border-slate-200 text-slate-300 hover:border-slate-400 hover:text-slate-400"
-          )}>
+          <button 
+            onClick={() => onShowCreateGroup?.()}
+            className={cn(
+              "w-14 h-14 border-2 border-dashed rounded-lg flex items-center justify-center transition-all duration-300",
+              settings.themeId === 'rainy-cat' ? "border-white/10 text-white/20 hover:border-white/20 hover:text-white/40" : "border-slate-200 text-slate-300 hover:border-slate-400 hover:text-slate-400"
+            )}
+            title="发起群聊"
+          >
             <Plus size={24} />
           </button>
         </div>
@@ -1145,6 +1498,40 @@ function ChatSettings({ friend, messages, settings, onBack, onUpdateFriend, onIm
             </div>
             <div className="flex items-center gap-1">
               <span className="text-[10px] opacity-40">上下文/总结设置</span>
+              <ChevronLeft size={16} className={cn(
+                "rotate-180 transition-all duration-300",
+                settings.themeId === 'rainy-cat' ? "text-white/20" : "text-slate-300"
+              )} />
+            </div>
+          </button>
+
+          <button onClick={() => setActiveView('shared-group-memory')} className={cn(
+            "w-full px-4 py-3 flex items-center justify-between transition-all duration-300",
+            settings.themeId === 'rainy-cat' ? "active:bg-white/10" : "active:bg-slate-50"
+          )}>
+            <div className="flex items-center gap-3">
+              <Users size={18} className="text-indigo-500 transition-all duration-300" />
+              <span className="text-sm font-bold">共享群聊记忆</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] opacity-40">{friend.sharedGroupMemorySettings?.enabled ? '已开启' : '未开启'}</span>
+              <ChevronLeft size={16} className={cn(
+                "rotate-180 transition-all duration-300",
+                settings.themeId === 'rainy-cat' ? "text-white/20" : "text-slate-300"
+              )} />
+            </div>
+          </button>
+
+          <button onClick={() => setActiveView('tokens-panel')} className={cn(
+            "w-full px-4 py-3 flex items-center justify-between transition-all duration-300",
+            settings.themeId === 'rainy-cat' ? "active:bg-white/10" : "active:bg-slate-50"
+          )}>
+            <div className="flex items-center gap-3">
+              <Cpu size={18} className="text-blue-500 transition-all duration-300" />
+              <span className="text-sm font-bold">Tokens 面板 (字数与负载)</span>
+            </div>
+            <div className="flex items-center gap-1">
+              <span className="text-[10px] opacity-40">评估回复速度</span>
               <ChevronLeft size={16} className={cn(
                 "rotate-180 transition-all duration-300",
                 settings.themeId === 'rainy-cat' ? "text-white/20" : "text-slate-300"
@@ -1713,11 +2100,11 @@ const getAffectionLevelInfo = (affection: number) => {
 };
 
 function ChatWindow({ 
-  friend, user, friends, messages, settings, onBack, onSendMessage, onUpdateFriend, 
+  friend, user, friends, messages, settings, groups, chats, onBack, onSendMessage, onUpdateFriend, 
   onImportMessages, onStartCall, externalCallStatus, onClearCallStatus, 
   summarizeContent, listenTogetherState, onUpdateListenTogether, 
   onShowMomentSettings, addTransaction, onUpdateMessage, addMoment, onManualMoment,
-  onUpdateSettings, onOpenApp
+  onUpdateSettings, onOpenApp, onShowCreateGroup
 }: { 
   key?: any,
   friend: Friend, 
@@ -1725,6 +2112,8 @@ function ChatWindow({
   friends: Friend[],
   messages: ChatMessage[], 
   settings: AppSettings, 
+  groups: GroupChat[],
+  chats: Record<string, ChatMessage[]>,
   onBack: () => void,
   onSendMessage: (msg: ChatMessage) => void,
   onUpdateFriend: (updates: Partial<Friend>) => void,
@@ -1741,7 +2130,8 @@ function ChatWindow({
   addMoment: (content: string, images?: string[], location?: string, visibility?: any, visibleTo?: string[], hiddenFrom?: string[], authorId?: string) => any,
   onManualMoment: (friendId: string) => Promise<boolean>,
   onUpdateSettings: (updates: Partial<AppSettings>) => void,
-  onOpenApp?: (appId: AppId, data?: any) => void
+  onOpenApp?: (appId: AppId, data?: any) => void,
+  onShowCreateGroup?: () => void
 }) {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -1806,7 +2196,9 @@ function ChatWindow({
     onlineContextCount: friend.offlineConfig?.onlineContextCount || 50,
     customCss: friend.offlineConfig?.customCss || '',
     writingStylePresets: friend.offlineConfig?.writingStylePresets || [],
-    cardTheme: friend.offlineConfig?.cardTheme || 'classic'
+    cardTheme: friend.offlineConfig?.cardTheme || 'classic',
+    worldBookEnabled: friend.offlineConfig?.worldBookEnabled || false,
+    selectedWorldBookIds: friend.offlineConfig?.selectedWorldBookIds || []
   }));
 
   const [newPresetName, setNewPresetName] = useState('');
@@ -2174,9 +2566,18 @@ function ChatWindow({
 
       // Active world book entries
       const worldBookEntries = settings.worldBookEntries || [];
-      const activeEntries = worldBookEntries.filter(e => 
-        e.isEnabled && (e.scope === 'global' || (e.scope === 'character' && (e.linkedCharacterIds || []).includes(friend.profileId || '')))
-      );
+      let activeEntries: any[] = [];
+      if (isOfflineMode) {
+        if (offlineConfig.worldBookEnabled && offlineConfig.selectedWorldBookIds && offlineConfig.selectedWorldBookIds.length > 0) {
+          activeEntries = worldBookEntries.filter(e => e.isEnabled && offlineConfig.selectedWorldBookIds?.includes(e.id));
+        } else {
+          activeEntries = [];
+        }
+      } else {
+        activeEntries = worldBookEntries.filter(e => 
+          e.isEnabled && (e.scope === 'global' || (e.scope === 'character' && (e.linkedCharacterIds || []).includes(friend.profileId || '')))
+        );
+      }
       const highPriorityEntries = activeEntries.filter(e => e.priority === 'high');
       const otherPriorityEntries = activeEntries.filter(e => e.priority !== 'high');
 
@@ -2490,6 +2891,55 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
         systemPrompt += `\n\n【当前对话User人设】\n你正在和以下身份的User对话，请严格遵守User的人设信息和限制：\n姓名：${activePersona?.name ?? '本人'}\n微信号：${activePersona?.wechatId ?? '微信号'}\n人设设定：${activePersona?.persona ?? '无'}\n个性签名：${activePersona?.signature ?? '无'}\n\n请在对话中自然地称呼User，并根据其人设调整你的语气 and 态度。`;
       } else if (user?.name || user?.wechatNickname) {
         systemPrompt += `\n\n【User基本资料】\n姓名：${user?.name || '未设置'}\n昵称：${user?.wechatNickname || '未设置'}\n微信号：${user?.wechatId || '未设置'}\n个人简介：${user?.signature || '未设置'}\n人设：${user?.persona || '未设置'}\n请在对话中自然地体现对User资料的了解。`;
+      }
+
+      // Add Shared Group Chat Memory awareness if enabled
+      if (friend.sharedGroupMemorySettings?.enabled) {
+        const memoryCount = friend.sharedGroupMemorySettings.memoryCount || 30;
+        const customPrompt = friend.sharedGroupMemorySettings.customPrompt || '';
+        
+        const relevantGroups = (groups || []).filter(g => g.memberIds.includes(friend.id));
+        if (relevantGroups.length > 0) {
+          let allGroupMsgs: { groupName: string; content: string; senderName: string; timestamp: number }[] = [];
+          relevantGroups.forEach(g => {
+            const msgs = (chats || {})[g.id] || [];
+            msgs.forEach(m => {
+              const senderName = m.role === 'user' ? (user?.name || '用户') : (m.description || (friends.find(fr => fr.id === m.role)?.name) || friend.name);
+              allGroupMsgs.push({
+                groupName: g.name,
+                content: m.content,
+                senderName,
+                timestamp: m.timestamp || Date.now()
+              });
+            });
+          });
+
+          allGroupMsgs.sort((a, b) => a.timestamp - b.timestamp);
+          const slicedGroupMsgs = allGroupMsgs.slice(-memoryCount);
+
+          if (slicedGroupMsgs.length > 0) {
+            const now = Date.now();
+            const formattedGroupMemory = slicedGroupMsgs.map(m => {
+              const diffMinutes = Math.floor((now - m.timestamp) / (1000 * 60));
+              const exactDate = new Date(m.timestamp).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+              let timeDesc = `${exactDate}`;
+              if (diffMinutes < 1) {
+                timeDesc = `刚刚 (实时)`;
+              } else if (diffMinutes < 60) {
+                timeDesc = `${diffMinutes}分钟前`;
+              } else if (diffMinutes < 24 * 60) {
+                const hours = Math.floor(diffMinutes / 60);
+                timeDesc = `${hours}小时前 (${exactDate})`;
+              } else {
+                const days = Math.floor(diffMinutes / (24 * 60));
+                timeDesc = `${days}天前 (${exactDate})`;
+              }
+              return `- [群聊《${m.groupName}》| 时间: ${timeDesc}] ${m.senderName}: ${m.content}`;
+            }).join('\n');
+
+            systemPrompt += `\n\n【共享群聊记忆与时间线感知 (SHARED GROUP MEMORY)】\n你与用户共同所在的群聊最近聊天记录（共${slicedGroupMsgs.length}条，具备精准时间线感知）：\n${formattedGroupMemory}\n\n用户自定义补充指令/预期反应：${customPrompt || '无'}\n\n【核心行为准则】：\n1. 时间线感知：请严格注意上面每条群聊记录发生的时间（例如是“刚刚实时聊的”、“10分钟前”、“几小时前”还是“几天前”）。\n2. 真实情绪互动：如果你发现用户在群聊里跟别人聊天或者活跃却冷落了你，过了一段时间才来找你私聊，你要能够敏锐察觉并根据你的人设自然地在私聊中提起、吃醋、吐槽或质问（例如：“哼，刚才在群里聊得那么开心，怎么现在才来找我……”）。`;
+          }
+        }
       }
 
       // Apply Context Limit
@@ -3970,6 +4420,10 @@ ${context}`;
           friend={friend} 
           messages={messages} 
           settings={settings}
+          groups={groups}
+          chats={chats}
+          friends={friends}
+          user={user}
           onBack={() => setShowSettings(false)} 
           onUpdateFriend={onUpdateFriend}
           onImportMessages={onImportMessages}
@@ -3977,6 +4431,7 @@ ${context}`;
           onShowMomentSettings={onShowMomentSettings}
           activeModal={activeModal}
           setActiveModal={setActiveModal}
+          onShowCreateGroup={onShowCreateGroup}
         />
         {/* Render modals even in settings view */}
         <AnimatePresence>
@@ -5968,6 +6423,74 @@ ${context}`;
                         )}
                       />
                     </div>
+                  </div>
+
+                  {/* World Book Integration Control */}
+                  <div className="space-y-4 bg-slate-50/50 p-4 rounded-2xl border border-slate-100">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="text-xs font-extrabold text-slate-600">世界书携带控制</h4>
+                        <p className="text-[10px] text-slate-400">线下剧情默认不携带世界书，开启后可自主勾选要注入的世界书</p>
+                      </div>
+                      <button 
+                        type="button"
+                        onClick={() => setOfflineConfig(prev => ({ ...prev, worldBookEnabled: !prev.worldBookEnabled }))}
+                        className={cn(
+                          "w-12 h-6 rounded-full transition-all relative",
+                          offlineConfig.worldBookEnabled ? "bg-orange-500" : "bg-slate-300"
+                        )}
+                      >
+                        <div className={cn(
+                          "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
+                          offlineConfig.worldBookEnabled ? "right-1" : "left-1"
+                        )} />
+                      </button>
+                    </div>
+
+                    {offlineConfig.worldBookEnabled && (
+                      <div className="space-y-2 pt-2 border-t border-slate-100">
+                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest px-1">选择线下剧情要读取的世界书条目</p>
+                        {(!settings.worldBookEntries || settings.worldBookEntries.length === 0) ? (
+                          <p className="text-xs text-slate-400 text-center py-4">暂无世界书条目，请先在“世界书”应用中添加设定。</p>
+                        ) : (
+                          <div className="space-y-2">
+                            {settings.worldBookEntries.map(wb => {
+                              const isSelected = (offlineConfig.selectedWorldBookIds || []).includes(wb.id);
+                              return (
+                                <div 
+                                  key={wb.id}
+                                  onClick={() => {
+                                    const currentIds = offlineConfig.selectedWorldBookIds || [];
+                                    const newIds = isSelected 
+                                      ? currentIds.filter(id => id !== wb.id)
+                                      : [...currentIds, wb.id];
+                                    setOfflineConfig(prev => ({ ...prev, selectedWorldBookIds: newIds }));
+                                  }}
+                                  className={cn(
+                                    "p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all",
+                                    isSelected ? "bg-orange-50/50 border-orange-300" : "bg-white border-slate-200"
+                                  )}
+                                >
+                                  <div className="pr-2 flex-1">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs font-bold text-slate-800">{wb.name}</span>
+                                      <span className="text-[9px] px-1.5 py-0.5 bg-slate-100 text-slate-600 rounded-md">{wb.category}</span>
+                                    </div>
+                                    <p className="text-[10px] text-slate-500 line-clamp-1 mt-0.5">{wb.content}</p>
+                                  </div>
+                                  <div className={cn(
+                                    "w-4 h-4 rounded border flex items-center justify-center",
+                                    isSelected ? "bg-orange-500 border-orange-500 text-white" : "border-slate-300"
+                                  )}>
+                                    {isSelected && <Check size={12} />}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
 
                   {/* Context Count Selection */}

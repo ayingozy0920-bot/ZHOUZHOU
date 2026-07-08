@@ -1,49 +1,13 @@
 import { useState, useEffect } from 'react';
-import { Friend, ChatMessage, UserPersona, FavoriteMessage, MomentPost } from '../types';
+import { Friend, ChatMessage, UserPersona, FavoriteMessage, MomentPost, GroupChat, UserProfile, BankCard, Transaction } from '../types';
 import { get, set } from 'idb-keyval';
+
+export type { BankCard, Transaction };
 
 const FRIENDS_KEY = 'zhouzhou_ji_friends';
 const CHATS_KEY = 'zhouzhou_ji_chats';
+const GROUPS_KEY = 'zhouzhou_ji_groups';
 const USER_PROFILE_KEY = 'zhouzhou_ji_user_profile';
-
-export interface BankCard {
-  id: string;
-  bankName: string;
-  cardNumber: string;
-  balance: number;
-  cardType: string;
-  theme: string;
-  backgroundUrl?: string;
-}
-
-export interface Transaction {
-  id: string;
-  type: 'topup' | 'spend' | 'transfer-out' | 'transfer-in';
-  amount: number;
-  title: string;
-  timestamp: number;
-  targetId?: string;
-  paymentMethodId?: string; // 'wallet' or bank card id
-}
-
-export interface UserProfile {
-  name: string;
-  avatar: string;
-  id: string;
-  wechatId?: string;
-  signature?: string;
-  persona?: string;
-  momentsBackground?: string;
-  moments?: MomentPost[];
-  favorites?: FavoriteMessage[];
-  personas?: UserPersona[];
-  activePersonaId?: string;
-  balance?: number;
-  balanceBackground?: string;
-  paymentBackground?: string;
-  bankCards?: BankCard[];
-  transactions?: Transaction[];
-}
 
 const DEFAULT_USER: UserProfile = {
   name: '我的名字',
@@ -150,6 +114,7 @@ const INITIAL_FRIENDS: Friend[] = [
 export function useFriends() {
   const [user, setUser] = useState<UserProfile>(DEFAULT_USER);
   const [friends, setFriends] = useState<Friend[]>(INITIAL_FRIENDS);
+  const [groups, setGroups] = useState<GroupChat[]>([]);
   const [chats, setChats] = useState<Record<string, ChatMessage[]>>({});
   const [isLoaded, setIsLoaded] = useState(false);
 
@@ -158,6 +123,7 @@ export function useFriends() {
       try {
         const savedUser = await get(USER_PROFILE_KEY);
         const savedFriends = await get(FRIENDS_KEY);
+        const savedGroups = await get(GROUPS_KEY);
         const savedChats = await get(CHATS_KEY);
 
         if (savedUser) setUser(savedUser);
@@ -170,6 +136,12 @@ export function useFriends() {
         else {
           const localFriends = localStorage.getItem(FRIENDS_KEY);
           if (localFriends) setFriends(JSON.parse(localFriends));
+        }
+
+        if (savedGroups) setGroups(savedGroups);
+        else {
+          const localGroups = localStorage.getItem(GROUPS_KEY);
+          if (localGroups) setGroups(JSON.parse(localGroups));
         }
 
         if (savedChats) setChats(savedChats);
@@ -185,6 +157,113 @@ export function useFriends() {
     }
     loadData();
   }, []);
+
+  const saveGroups = async (newGroups: GroupChat[]) => {
+    setGroups(newGroups);
+    await set(GROUPS_KEY, newGroups).catch(console.error);
+  };
+
+  const addGroupChat = (memberIds: string[], customName?: string) => {
+    const memberNames = friends.filter(f => memberIds.includes(f.id)).map(f => f.name);
+    const name = customName || (memberNames.slice(0, 3).join('、') + (memberNames.length > 3 ? '等' : '') + '的群聊');
+    const avatar = friends.find(f => f.id === memberIds[0])?.avatar || 'https://api.dicebear.com/7.x/identicon/svg?seed=group';
+    const newGroup: GroupChat = {
+      id: `group-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      name,
+      memberIds,
+      avatar,
+      createdAt: Date.now(),
+      lastMessage: '群聊已创建，开始聊天吧',
+      lastTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    };
+    saveGroups([newGroup, ...groups]);
+    return newGroup.id;
+  };
+
+  const updateGroupChat = (id: string, updates: Partial<GroupChat>) => {
+    const newGroups = groups.map(g => g.id === id ? { ...g, ...updates } : g);
+    saveGroups(newGroups);
+  };
+
+  const deleteGroupChat = (id: string) => {
+    const newGroups = groups.filter(g => g.id !== id);
+    saveGroups(newGroups);
+    const newChats = { ...chats };
+    delete newChats[id];
+    setChats(newChats);
+    set(CHATS_KEY, newChats).catch(console.error);
+  };
+
+  const addGroupMessage = (groupId: string, message: ChatMessage) => {
+    setChats(prevChats => {
+      const newChats = {
+        ...prevChats,
+        [groupId]: [...(prevChats[groupId] || []), message]
+      };
+      set(CHATS_KEY, newChats).catch(console.error);
+      return newChats;
+    });
+
+    setGroups(prevGroups => {
+      const newGroups = prevGroups.map(g => {
+        if (g.id === groupId) {
+          return {
+            ...g,
+            lastMessage: message.content,
+            lastTime: new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          };
+        }
+        return g;
+      });
+      set(GROUPS_KEY, newGroups).catch(console.error);
+      return newGroups;
+    });
+  };
+
+  const updateGroupMessage = (groupId: string, messageIndex: number, updates: Partial<ChatMessage>) => {
+    setChats(prevChats => {
+      const groupChats = prevChats[groupId] || [];
+      if (messageIndex >= 0 && messageIndex < groupChats.length) {
+        const updatedChats = [...groupChats];
+        updatedChats[messageIndex] = { ...updatedChats[messageIndex], ...updates };
+        const newChats = {
+          ...prevChats,
+          [groupId]: updatedChats
+        };
+        set(CHATS_KEY, newChats).catch(console.error);
+        return newChats;
+      }
+      return prevChats;
+    });
+  };
+
+  const importGroupMessages = (groupId: string, messages: ChatMessage[]) => {
+    setChats(prevChats => {
+      const newChats = {
+        ...prevChats,
+        [groupId]: messages
+      };
+      set(CHATS_KEY, newChats).catch(console.error);
+      return newChats;
+    });
+    if (messages.length > 0) {
+      const lastMsg = messages[messages.length - 1];
+      setGroups(prevGroups => {
+        const newGroups = prevGroups.map(g => {
+          if (g.id === groupId) {
+            return {
+              ...g,
+              lastMessage: lastMsg.content,
+              lastTime: new Date(lastMsg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            };
+          }
+          return g;
+        });
+        set(GROUPS_KEY, newGroups).catch(console.error);
+        return newGroups;
+      });
+    }
+  };
 
   const saveUser = async (newUser: UserProfile) => {
     setUser(newUser);
@@ -580,6 +659,7 @@ export function useFriends() {
     user, 
     updateUser, 
     friends, 
+    groups,
     chats, 
     addFriend, 
     deleteFriend, 
@@ -588,6 +668,12 @@ export function useFriends() {
     addMessage, 
     updateMessage,
     importMessages, 
+    addGroupChat,
+    updateGroupChat,
+    deleteGroupChat,
+    addGroupMessage,
+    updateGroupMessage,
+    importGroupMessages,
     isLoaded,
     addFavorite,
     removeFavorite,

@@ -213,14 +213,20 @@ export interface BankCard {
   bankName: string;
   cardNumber: string;
   balance: number;
+  cardType?: string;
+  theme?: string;
+  backgroundUrl?: string;
 }
 
 export interface Transaction {
   id: string;
-  type: 'blindbox_purchase' | 'recharge' | 'gift_sent';
+  type: 'topup' | 'spend' | 'transfer-out' | 'transfer-in' | 'blindbox_purchase' | 'recharge' | 'gift_sent';
   amount: number;
-  description: string;
+  title?: string;
+  description?: string;
   timestamp: number;
+  targetId?: string;
+  paymentMethodId?: string;
 }
 
 export interface BlindBox {
@@ -300,6 +306,8 @@ export interface OfflineConfig {
   writingStylePresets?: any[];
   bgImage?: string;
   customCss?: string;
+  worldBookEnabled?: boolean;
+  selectedWorldBookIds?: string[];
 }
 
 export interface MomentsSettings {
@@ -370,6 +378,30 @@ export interface Friend {
     syncThreshold: number;
     summaryPrompt?: string;
   };
+  sharedGroupMemorySettings?: {
+    enabled: boolean;
+    memoryCount: number;
+    customPrompt?: string;
+  };
+}
+
+export interface GroupChat {
+  id: string;
+  name: string;
+  memberIds: string[];
+  avatar: string;
+  createdAt: number;
+  lastMessage?: string;
+  lastTime?: string;
+  chatBackground?: string;
+  chatThemeId?: string;
+  autoTranslateEnabled?: boolean;
+  language?: string;
+  disableActionDescription?: boolean;
+  groupNotice?: string;
+  memberTitles?: Record<string, { title: string; color: string }>;
+  worldBookEnabled?: boolean;
+  selectedWorldBookIds?: string[];
 }
 
 export interface OnlineMemoryEntry {
@@ -399,7 +431,7 @@ export interface ChatMessage {
   id?: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
-  type?: 'text' | 'image' | 'video' | 'voice' | 'transfer' | 'location' | 'call' | 'memory' | 'sticker' | 'blindbox-gift' | 'dice' | 'offline-invitation' | 'photo_card' | 'date_summary' | 'shopping-receipt';
+  type?: 'text' | 'image' | 'video' | 'voice' | 'transfer' | 'location' | 'call' | 'memory' | 'sticker' | 'blindbox-gift' | 'dice' | 'offline-invitation' | 'photo_card' | 'date_summary' | 'shopping-receipt' | 'red-packet';
   mediaUrl?: string;
   duration?: number; // for voice or call duration
   amount?: string; // for transfer
@@ -435,6 +467,20 @@ export interface ChatMessage {
     friendName: string;
     openingText: string;
     status: 'pending' | 'accepted' | 'declined';
+  };
+  redPacketData?: {
+    id: string;
+    packetType: 'random' | 'normal' | 'exclusive'; // 'random' (拼手速), 'normal' (普通), 'exclusive' (专属)
+    totalAmount: number;
+    count: number;
+    remainingAmount: number;
+    remainingCount: number;
+    message: string;
+    senderId: string;
+    senderName: string;
+    targetMemberId?: string; // for exclusive
+    targetMemberName?: string;
+    claims: Array<{ memberId: string; memberName: string; amount: number; timestamp: number }>;
   };
   isSystemNotification?: boolean;
   notificationType?: string;
@@ -543,6 +589,25 @@ export interface UserPersona {
   persona: string;
   signature: string;
   isEnabled: boolean;
+}
+
+export interface UserProfile {
+  name: string;
+  avatar: string;
+  id: string;
+  wechatId?: string;
+  signature?: string;
+  persona?: string;
+  momentsBackground?: string;
+  moments?: MomentPost[];
+  favorites?: FavoriteMessage[];
+  personas?: UserPersona[];
+  activePersonaId?: string;
+  balance?: number;
+  balanceBackground?: string;
+  paymentBackground?: string;
+  bankCards?: BankCard[];
+  transactions?: Transaction[];
 }
 
 export interface FavoriteMessage {

@@ -332,6 +332,8 @@ interface Character {
     maxWords: number;
     style: string;
     perspective: string;
+    worldBookEnabled?: boolean;
+    selectedWorldBookIds?: string[];
   };
   diaries?: { date: string, weather: string, content: string, feeling: string }[];
   phoneData?: {
@@ -3020,11 +3022,14 @@ function OfflineChatPage({ char, onBack, userProfile, onUpdateChar, worldBooks, 
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<'main' | 'world_books' | 'tokens'>('main');
   const [localSettings, setLocalSettings] = useState({
     minWords: char.meetingSettings?.minWords || 800,
     maxWords: char.meetingSettings?.maxWords || 1500,
     style: char.meetingSettings?.style || '小说文风',
-    perspective: char.meetingSettings?.perspective || '第三人称'
+    perspective: char.meetingSettings?.perspective || '第三人称',
+    worldBookEnabled: char.meetingSettings?.worldBookEnabled || false,
+    selectedWorldBookIds: char.meetingSettings?.selectedWorldBookIds || []
   });
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -3051,17 +3056,29 @@ function OfflineChatPage({ char, onBack, userProfile, onUpdateChar, worldBooks, 
     
     setIsTyping(true);
     try {
-      const relevantBooks = (worldBooks || []).filter(b => !b.characterId || b.characterId === char.id);
-      
       const meetingSettings = char.meetingSettings || localSettings;
+
+      let worldBookPrompt = '';
+      if (meetingSettings.worldBookEnabled && meetingSettings.selectedWorldBookIds && meetingSettings.selectedWorldBookIds.length > 0) {
+        const selectedWbs = (worldBooks || []).filter(wb => meetingSettings.selectedWorldBookIds?.includes(wb.id));
+        if (selectedWbs.length > 0) {
+          worldBookPrompt = '\n\n【时空古籍 (世界书设定)】\n' + selectedWbs.map(wb => `《${wb.title}》: ${wb.content}`).join('\n\n');
+        }
+      }
+
+      const onlineMsgs = (char.messages || []).slice(-30);
+      const onlineHistoryText = onlineMsgs.length > 0
+        ? '【线上聊天历史记录（最近30条）】\n' + onlineMsgs.map(m => `${m.role === 'user' ? '用户' : (char?.name ?? '角色')}: ${m.content}`).join('\n') + '\n\n'
+        : '';
+
+      const offlineMsgs = messages.slice(-30);
+      const offlineHistoryText = offlineMsgs.map(m => `${m.role === 'user' ? '用户' : (char?.name ?? '角色')}: ${m.content}`).join('\n');
 
       const systemPrompt = `你现在是《平行时空》App中的角色，正在与用户进行“溯遇”模式下的线下约会聊天。
 
-你的身份设定如下：
-${char.settingsCard}
-
-时空古籍 (知识库) - 你必须融入这些背景设定：
-${relevantBooks.map(b => `《${b.title}》: ${b.content}`).join('\n\n')}
+你的身份设定如下（完整专属人设）：
+${char.settingsCard || char.personality}
+${worldBookPrompt}
 
 对话要求：
 1. 你的回复文风预设为：“${meetingSettings.style}”。
@@ -3076,12 +3093,12 @@ ${relevantBooks.map(b => `《${b.title}》: ${b.content}`).join('\n\n')}
 
 请根据用户的输入，以及上述人称和文风设定，生成深情、感性且富有画面感的回复。`;
 
-      const chatHistory = messages.map(m => `${m.role === 'user' ? '用户' : (char?.name ?? '角色')}: ${m.content}`).join('\n');
-      
+      const contentsPrompt = `${onlineHistoryText}线下约会对话历史：\n${offlineHistoryText}\n\n当前用户对你说：${userMsg.content}\n\n请开始你的沉浸式长篇叙述：`;
+
       const ai = getGeminiClient(settings);
       const response = await ai.models.generateContent({ 
         model: getGeminiModel(settings),
-        contents: `线下约会对话历史：\n${chatHistory}\n\n当前用户对你说：${userMsg.content}\n\n请开始你的沉浸式长篇叙述（不少于800字）：`,
+        contents: contentsPrompt,
         config: {
           systemInstruction: systemPrompt
         }
@@ -3191,54 +3208,175 @@ ${relevantBooks.map(b => `《${b.title}》: ${b.content}`).join('\n\n')}
               initial={{ opacity: 0, scale: 0.95 }} 
               animate={{ opacity: 1, scale: 1 }} 
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-[#FAF7F2] w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl relative border border-amber-100"
+              className="bg-[#FAF7F2] w-full max-w-sm rounded-[2.5rem] p-8 shadow-2xl relative border border-amber-100 max-h-[85vh] flex flex-col"
               onClick={e => e.stopPropagation()}
             >
                <div className="absolute top-4 right-4 text-amber-900/40 cursor-pointer p-2 hover:bg-amber-100/50 rounded-full transition-colors" onClick={() => setIsSettingsOpen(false)}>
                  <X size={20} />
                </div>
-               <h3 className="text-lg font-black text-amber-900 tracking-widest italic mb-6 text-center">时空见面预设</h3>
+               <h3 className="text-lg font-black text-amber-900 tracking-widest italic mb-4 text-center">时空见面预设</h3>
+
+               <div className="flex gap-1 bg-amber-100/50 p-1 rounded-xl mb-4 text-xs font-bold text-amber-900">
+                 <button onClick={() => setSettingsTab('main')} className={cn("flex-1 py-1.5 rounded-lg transition-all", settingsTab === 'main' ? "bg-amber-900 text-white shadow" : "opacity-60")}>常规</button>
+                 <button onClick={() => setSettingsTab('world_books')} className={cn("flex-1 py-1.5 rounded-lg transition-all", settingsTab === 'world_books' ? "bg-amber-900 text-white shadow" : "opacity-60")}>世界书</button>
+                 <button onClick={() => setSettingsTab('tokens')} className={cn("flex-1 py-1.5 rounded-lg transition-all", settingsTab === 'tokens' ? "bg-amber-900 text-white shadow" : "opacity-60")}>Tokens</button>
+               </div>
                
-               <div className="space-y-6">
-                  <div>
-                    <p className="text-[10px] font-bold text-amber-900/50 mb-2 uppercase tracking-widest px-1">角色回复字数设置</p>
-                    <div className="flex items-center gap-2">
-                      <input type="number" value={localSettings.minWords} onChange={e => setLocalSettings(prev => ({...prev, minWords: parseInt(e.target.value) || 0}))} className="w-full bg-white border border-amber-100 rounded-xl p-3 text-center text-sm font-bold text-amber-900 outline-none focus:border-amber-400 transition-colors" />
-                      <span className="text-amber-900/40">-</span>
-                      <input type="number" value={localSettings.maxWords} onChange={e => setLocalSettings(prev => ({...prev, maxWords: parseInt(e.target.value) || 0}))} className="w-full bg-white border border-amber-100 rounded-xl p-3 text-center text-sm font-bold text-amber-900 outline-none focus:border-amber-400 transition-colors" />
-                      <span className="text-xs font-bold text-amber-900/60 ml-1">字</span>
-                    </div>
-                  </div>
+               <div className="flex-1 overflow-y-auto space-y-6 pr-1">
+                 {settingsTab === 'main' && (
+                   <div className="space-y-6">
+                      <div>
+                        <p className="text-[10px] font-bold text-amber-900/50 mb-2 uppercase tracking-widest px-1">角色回复字数设置</p>
+                        <div className="flex items-center gap-2">
+                          <input type="number" value={localSettings.minWords} onChange={e => setLocalSettings(prev => ({...prev, minWords: parseInt(e.target.value) || 0}))} className="w-full bg-white border border-amber-100 rounded-xl p-3 text-center text-sm font-bold text-amber-900 outline-none focus:border-amber-400 transition-colors" />
+                          <span className="text-amber-900/40">-</span>
+                          <input type="number" value={localSettings.maxWords} onChange={e => setLocalSettings(prev => ({...prev, maxWords: parseInt(e.target.value) || 0}))} className="w-full bg-white border border-amber-100 rounded-xl p-3 text-center text-sm font-bold text-amber-900 outline-none focus:border-amber-400 transition-colors" />
+                          <span className="text-xs font-bold text-amber-900/60 ml-1">字</span>
+                        </div>
+                      </div>
 
-                  <div>
-                    <p className="text-[10px] font-bold text-amber-900/50 mb-2 uppercase tracking-widest px-1">文风预设</p>
-                    <div className="grid grid-cols-3 gap-2">
-                       {['小说文风', '日常风格', '剧本模式'].map(style => (
-                         <button 
-                           key={style}
-                           onClick={() => setLocalSettings(prev => ({...prev, style}))}
-                           className={cn("py-3 text-xs font-bold rounded-xl border transition-all active:scale-95", localSettings.style === style ? "bg-amber-900 text-white border-amber-900" : "bg-white text-amber-900/70 border-amber-100 hover:border-amber-300")}
-                         >
-                           {style}
-                         </button>
-                       ))}
-                    </div>
-                  </div>
+                      <div>
+                        <p className="text-[10px] font-bold text-amber-900/50 mb-2 uppercase tracking-widest px-1">文风预设</p>
+                        <div className="grid grid-cols-3 gap-2">
+                           {['小说文风', '日常风格', '剧本模式'].map(style => (
+                             <button 
+                               key={style}
+                               onClick={() => setLocalSettings(prev => ({...prev, style}))}
+                               className={cn("py-3 text-xs font-bold rounded-xl border transition-all active:scale-95", localSettings.style === style ? "bg-amber-900 text-white border-amber-900" : "bg-white text-amber-900/70 border-amber-100 hover:border-amber-300")}
+                             >
+                               {style}
+                             </button>
+                           ))}
+                        </div>
+                      </div>
 
-                  <div>
-                    <p className="text-[10px] font-bold text-amber-900/50 mb-2 uppercase tracking-widest px-1">人称设置</p>
-                    <div className="grid grid-cols-3 gap-2">
-                       {['第一人称', '第二人称', '第三人称'].map(perspective => (
-                         <button 
-                           key={perspective}
-                           onClick={() => setLocalSettings(prev => ({...prev, perspective}))}
-                           className={cn("py-3 text-xs font-bold rounded-xl border transition-all active:scale-95", localSettings.perspective === perspective ? "bg-amber-900 text-white border-amber-900" : "bg-white text-amber-900/70 border-amber-100 hover:border-amber-300")}
-                         >
-                           {perspective}
-                         </button>
-                       ))}
-                    </div>
-                  </div>
+                      <div>
+                        <p className="text-[10px] font-bold text-amber-900/50 mb-2 uppercase tracking-widest px-1">人称设置</p>
+                        <div className="grid grid-cols-3 gap-2">
+                           {['第一人称', '第二人称', '第三人称'].map(perspective => (
+                             <button 
+                               key={perspective}
+                               onClick={() => setLocalSettings(prev => ({...prev, perspective}))}
+                               className={cn("py-3 text-xs font-bold rounded-xl border transition-all active:scale-95", localSettings.perspective === perspective ? "bg-amber-900 text-white border-amber-900" : "bg-white text-amber-900/70 border-amber-100 hover:border-amber-300")}
+                             >
+                               {perspective}
+                             </button>
+                           ))}
+                        </div>
+                      </div>
+                   </div>
+                 )}
+
+                 {settingsTab === 'world_books' && (
+                   <div className="space-y-4">
+                     <div className="flex items-center justify-between bg-amber-50 p-3 rounded-xl border border-amber-100">
+                       <div>
+                         <h4 className="text-xs font-bold text-amber-900">开启世界书携带</h4>
+                         <p className="text-[10px] text-amber-900/50">默认不携带，开启后可自主勾选要注入的世界书</p>
+                       </div>
+                       <button 
+                         onClick={() => setLocalSettings(prev => ({ ...prev, worldBookEnabled: !prev.worldBookEnabled }))}
+                         className={cn(
+                           "w-12 h-6 rounded-full transition-all relative",
+                           localSettings.worldBookEnabled ? "bg-amber-900" : "bg-slate-300"
+                         )}
+                       >
+                         <div className={cn(
+                           "absolute top-1 w-4 h-4 bg-white rounded-full transition-all",
+                           localSettings.worldBookEnabled ? "right-1" : "left-1"
+                         )} />
+                       </button>
+                     </div>
+
+                     {localSettings.worldBookEnabled && (
+                       <div className="space-y-2">
+                         <p className="text-[10px] font-bold text-amber-900/50 uppercase tracking-widest px-1">选择要注入的角色古籍</p>
+                         {(!worldBooks || worldBooks.length === 0) ? (
+                           <p className="text-xs text-amber-900/50 text-center py-4">暂无世界书条目</p>
+                         ) : (
+                           worldBooks.map(wb => {
+                             const isSelected = localSettings.selectedWorldBookIds.includes(wb.id);
+                             return (
+                               <div 
+                                 key={wb.id}
+                                 onClick={() => {
+                                   const newIds = isSelected 
+                                     ? localSettings.selectedWorldBookIds.filter(id => id !== wb.id)
+                                     : [...localSettings.selectedWorldBookIds, wb.id];
+                                   setLocalSettings(prev => ({ ...prev, selectedWorldBookIds: newIds }));
+                                 }}
+                                 className={cn(
+                                   "p-3 rounded-xl border flex items-center justify-between cursor-pointer transition-all",
+                                   isSelected ? "bg-amber-100/50 border-amber-300" : "bg-white border-amber-100"
+                                 )}
+                               >
+                                 <div className="pr-2 flex-1">
+                                   <div className="flex items-center gap-2">
+                                     <span className="text-xs font-bold text-amber-900">{wb.title}</span>
+                                     <span className="text-[9px] px-1.5 py-0.5 bg-amber-200/60 text-amber-800 rounded-md">{wb.tags?.[0] || '古籍'}</span>
+                                   </div>
+                                   <p className="text-[10px] text-amber-900/60 line-clamp-1 mt-0.5">{wb.content}</p>
+                                 </div>
+                                 <div className={cn(
+                                   "w-4 h-4 rounded border flex items-center justify-center",
+                                   isSelected ? "bg-amber-900 border-amber-900 text-white" : "border-amber-300"
+                                 )}>
+                                   {isSelected && <Check size={12} />}
+                                 </div>
+                               </div>
+                             );
+                           })
+                         )}
+                       </div>
+                     )}
+                   </div>
+                 )}
+
+                 {settingsTab === 'tokens' && (() => {
+                   const wbEntries = worldBooks || [];
+                   let wbText = '';
+                   if (localSettings.worldBookEnabled && localSettings.selectedWorldBookIds.length > 0) {
+                     wbEntries.filter(wb => localSettings.selectedWorldBookIds.includes(wb.id)).forEach(wb => {
+                       wbText += `《${wb.title}》: ${wb.content}\n`;
+                     });
+                   }
+                   const wbTokens = Math.round(wbText.length * 1.4);
+                   const personaTokens = Math.round((char.settingsCard || char.personality || '').length * 1.4);
+                   const onlineTokens = Math.round((char.messages || []).slice(-30).map(m => m.content).join('').length * 1.4);
+                   const offlineTokens = Math.round(messages.map(m => m.content).join('').length * 1.4);
+                   const totalTokens = wbTokens + personaTokens + onlineTokens + offlineTokens;
+
+                   return (
+                     <div className="space-y-3">
+                       <div className="bg-amber-100/60 p-4 rounded-xl border border-amber-200 text-amber-900">
+                         <div className="flex justify-between items-center mb-1">
+                           <span className="text-xs font-bold opacity-75">线下总 Token 预估</span>
+                           <span className="text-base font-black font-mono">{totalTokens.toLocaleString()}</span>
+                         </div>
+                         <p className="text-[10px] opacity-60">保持在 4000 左右可获得极佳的回复速度与连贯性</p>
+                       </div>
+
+                       <div className="space-y-2 text-xs">
+                         <div className="p-3 bg-white rounded-xl border border-amber-100 flex justify-between">
+                           <span>👤 角色完整人设</span>
+                           <span className="font-mono font-bold text-amber-900">~{personaTokens}</span>
+                         </div>
+                         <div className="p-3 bg-white rounded-xl border border-amber-100 flex justify-between">
+                           <span>💬 线上聊天历史 (最近30条)</span>
+                           <span className="font-mono font-bold text-amber-900">~{onlineTokens}</span>
+                         </div>
+                         <div className="p-3 bg-white rounded-xl border border-amber-100 flex justify-between">
+                           <span>📖 线下剧情上下文</span>
+                           <span className="font-mono font-bold text-amber-900">~{offlineTokens}</span>
+                         </div>
+                         <div className="p-3 bg-white rounded-xl border border-amber-100 flex justify-between">
+                           <span>📚 世界书 ({localSettings.worldBookEnabled ? `${localSettings.selectedWorldBookIds.length}条` : '未开启'})</span>
+                           <span className="font-mono font-bold text-amber-900">~{wbTokens}</span>
+                         </div>
+                       </div>
+                     </div>
+                   );
+                 })()}
                </div>
 
                <button 
@@ -3246,7 +3384,7 @@ ${relevantBooks.map(b => `《${b.title}》: ${b.content}`).join('\n\n')}
                    onUpdateChar({ ...char, meetingSettings: localSettings });
                    setIsSettingsOpen(false);
                  }}
-                 className="w-full mt-8 py-4 bg-amber-900 text-white rounded-2xl font-black uppercase tracking-widest text-sm shadow-xl shadow-amber-900/20 active:scale-95 transition-all"
+                 className="w-full mt-6 py-4 bg-amber-900 text-white rounded-2xl font-black uppercase tracking-widest text-sm shadow-xl shadow-amber-900/20 active:scale-95 transition-all"
                >
                  保存设置
                </button>

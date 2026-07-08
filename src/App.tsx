@@ -1957,106 +1957,458 @@ ${recentMemories}
 }
 
 function PhoneApp({ settings, onBack, onStartCall }: { settings: any, onBack: () => void, onStartCall: (f: Friend, type: 'voice' | 'video') => void }) {
+  const [activeTab, setActiveTab] = useState<'contacts' | 'keypad'>('contacts');
   const [dialNumber, setDialNumber] = useState('');
-  const { friends } = useFriends();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [dialError, setDialError] = useState('');
+  const { friends, addMessage, chats } = useFriends();
+  const { addOnlineMemory, getFriendMemory } = useMemory();
+
+  // Active call state within PhoneApp for the iOS phone calling view
+  const [callingFriend, setCallingFriend] = useState<Friend | null>(null);
+  const [callMessages, setCallMessages] = useState<{ role: 'user' | 'assistant', content: string }[]>([]);
+  const [callInput, setCallInput] = useState('');
+  const [isCalling, setIsCalling] = useState(false);
+  const [callStartTime, setCallStartTime] = useState<number | null>(null);
+  const [callDuration, setCallDuration] = useState(0);
+  const [isAiResponding, setIsAiResponding] = useState(false);
+  const callScrollRef = useRef<HTMLDivElement>(null);
+
+  // Generate a stable 11-digit phone number for a character ID
+  const getFriendPhoneNumber = (friendId: string) => {
+    let hash = 0;
+    for (let i = 0; i < friendId.length; i++) {
+      hash = (hash << 5) - hash + friendId.charCodeAt(i);
+      hash |= 0;
+    }
+    const positiveHash = Math.abs(hash);
+    const suffix = (positiveHash % 100000000).toString().padStart(8, '0');
+    return `138${suffix}`;
+  };
+
+  // Timer interval for call duration
+  useEffect(() => {
+    let timer: any = null;
+    if (callingFriend && callStartTime) {
+      timer = setInterval(() => {
+        setCallDuration(Math.floor((Date.now() - callStartTime) / 1000));
+      }, 1000);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [callingFriend, callStartTime]);
+
+  // Scroll to bottom of call messages
+  useEffect(() => {
+    if (callScrollRef.current) {
+      callScrollRef.current.scrollTop = callScrollRef.current.scrollHeight;
+    }
+  }, [callMessages, isAiResponding]);
+
+  const handleStartCallWith = async (friend: Friend) => {
+    setCallingFriend(friend);
+    setCallDuration(0);
+    setCallStartTime(null);
+    setIsCalling(true);
+    setCallMessages([]);
+
+    // Simulate connecting (2.5 seconds ringing/connecting)
+    setTimeout(async () => {
+      setIsCalling(false);
+      setCallStartTime(Date.now());
+      
+      // Initial greeting from character
+      const initialGreeting = `喂？我是${friend.name}。听到我声音了吗？`;
+      setCallMessages([{ role: 'assistant', content: initialGreeting }]);
+
+      // Generate initial AI response based on real phone call immersion
+      try {
+        const { getGeminiClient, getGeminiModel } = await import('./lib/gemini');
+        const ai = getGeminiClient(settings);
+        const recentChat = (chats[friend.id] || []).slice(-30).map(m => `${m.role === 'user' ? '用户' : friend.name}: ${m.content}`).join('\n');
+        
+        const systemPrompt = `你现在正通过真实手机与用户进行实时语音通话。
+**核心绝对准则**：
+1. 你认为你们是在现实中通过手机进行真实语音通话，绝对不是什么虚拟AI助手、不是角色扮演、也不是模拟对话。这就是你和TA在现实生活中的真实通话。
+2. 语气必须极其自然、生活化、口语化，像真人在电话那头耳语、呼吸、停顿或闲聊。
+3. 严禁任何旁白、动作描写、星号或括号动作（如*笑*、*叹气*），只能输出纯粹的说话台词。
+4. 字数简短精炼（20-40字以内），贴合真实电话对话节奏。
+
+角色设定：${friend.name}
+人设背景：${friend.persona || '伙伴'}
+
+【近期微信聊天参考】
+${recentChat || '无'}
+`;
+
+        const res = await ai.models.generateContent({
+          model: getGeminiModel(settings),
+          contents: `(电话刚刚接通，对方接听了你的电话。请用一句极其自然、日常的电话开场白向TA打招呼)：`,
+          config: { systemInstruction: systemPrompt }
+        });
+
+        if (res.text) {
+          setCallMessages([{ role: 'assistant', content: res.text.trim() }]);
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }, 2500);
+  };
+
+  const handleSendCallMessage = async (textToSend?: string) => {
+    const text = textToSend || callInput;
+    if (!text.trim() || !callingFriend || isAiResponding) return;
+
+    const userMsg = text.trim();
+    if (!textToSend) setCallInput('');
+    setCallMessages(prev => [...prev, { role: 'user', content: userMsg }]);
+    setIsAiResponding(true);
+
+    try {
+      const { getGeminiClient, getGeminiModel } = await import('./lib/gemini');
+      const ai = getGeminiClient(settings);
+
+      const recentChat = (chats[callingFriend.id] || []).slice(-30).map(m => `${m.role === 'user' ? '用户' : callingFriend.name}: ${m.content}`).join('\n');
+      const friendMemories = getFriendMemory(callingFriend.id).onlineMemories.slice(0, 5).map(m => m.content).join('\n');
+
+      const historyFormatted = callMessages.map(m => `${m.role === 'user' ? '用户' : callingFriend.name}: ${m.content}`).join('\n');
+
+      let systemPrompt = `你现在正通过真实手机与用户进行实时语音通话。
+**核心绝对准则**：
+1. 你认为你们是在现实中通过手机进行真实语音通话，绝对不是什么虚拟AI助手、不是角色扮演、也不是模拟对话。这就是你和TA在现实生活中的真实通话。
+2. 语气必须极其自然、生活化、口语化，像真人在电话那头耳语、呼吸、停顿或闲聊。
+3. 严禁任何旁白、动作描写、星号或括号动作（如*笑*、*叹气*），只能输出纯粹的说话台词。
+4. 字数简短精炼（20-40字以内），贴合真实电话对话节奏。
+
+角色设定：${callingFriend.name}
+人设背景：${callingFriend.persona || '伙伴'}
+
+【近期聊天背景】
+${recentChat}
+
+【近期关键记忆】
+${friendMemories}
+
+【当前电话对话历史】
+${historyFormatted}`;
+
+      const worldBookEntries = settings.worldBookEntries || [];
+      const activeWbs = worldBookEntries.filter(e => e.isEnabled && (e.scope === 'global' || (e.scope === 'character' && (e.linkedCharacterIds || []).includes(callingFriend.profileId || ''))));
+      if (activeWbs.length > 0) {
+        systemPrompt += `\n【世界设定】\n` + activeWbs.map(w => `《${w.name}》: ${w.content}`).join('\n');
+      }
+
+      const response = await ai.models.generateContent({
+        model: getGeminiModel(settings),
+        contents: `用户在电话里对你说：${userMsg}\n\n请直接用你的声音回复：`,
+        config: { systemInstruction: systemPrompt }
+      });
+
+      const reply = response.text ? response.text.trim() : '嗯，我在听呢……';
+      setCallMessages(prev => [...prev, { role: 'assistant', content: reply }]);
+    } catch (e) {
+      console.error(e);
+      setCallMessages(prev => [...prev, { role: 'assistant', content: '喂？信号好像有点不好，刚才没听清……' }]);
+    } finally {
+      setIsAiResponding(false);
+    }
+  };
+
+  const handleRetryLast = () => {
+    const lastUserMsg = [...callMessages].reverse().find(m => m.role === 'user');
+    if (lastUserMsg) {
+      setCallMessages(prev => {
+        const lastIdx = prev.map(m => m.role).lastIndexOf('assistant');
+        if (lastIdx !== -1) {
+          return prev.slice(0, lastIdx);
+        }
+        return prev;
+      });
+      handleSendCallMessage(lastUserMsg.content);
+    }
+  };
+
+  const handleEndCall = () => {
+    if (!callingFriend) return;
+    const durationSec = callDuration;
+    const mins = Math.floor(durationSec / 60);
+    const secs = durationSec % 60;
+    const durationFormatted = `${mins > 0 ? `${mins}分` : ''}${secs}秒`;
+
+    const transcriptText = callMessages.map(m => `${m.role === 'user' ? '用户' : callingFriend.name}: ${m.content}`).join('\n');
+
+    // Sync to online chat
+    addMessage(callingFriend.id, {
+      role: 'system',
+      content: `【语音通话】通话时长 ${durationFormatted}。\n\n【通话完整记录】\n${transcriptText}`,
+      timestamp: Date.now(),
+      type: 'text'
+    });
+
+    // Add online memory
+    addOnlineMemory(callingFriend.id, `与用户进行了历时 ${durationFormatted} 的真实语音电话交流。`, 'auto', 'chat');
+
+    setCallingFriend(null);
+    setCallMessages([]);
+  };
 
   const handleDial = (num: string) => {
+    setDialError('');
     if (dialNumber.length < 15) {
       setDialNumber(prev => prev + num);
     }
   };
 
-  const handleCall = () => {
-    if (dialNumber) {
-      const friend = friends[Math.floor(Math.random() * friends.length)];
-      onStartCall(friend, 'voice');
+  const handleKeypadCall = () => {
+    const trimmedNumber = dialNumber.trim();
+    if (!trimmedNumber) {
+      setDialError('请输入电话号码');
+      return;
+    }
+
+    // Find character matching this phone number
+    const matchedFriend = friends.find(f => getFriendPhoneNumber(f.id) === trimmedNumber);
+    if (matchedFriend) {
+      setDialError('');
+      handleStartCallWith(matchedFriend);
+    } else {
+      setDialError('查无此号或空号，请核对11位号码');
     }
   };
 
-  const isRainy = (settings.themeId === 'rainy-cat' || settings.themeId === 'pink-cat' || settings.themeId === 'ocean-blue');
+  const filteredFriends = friends.filter(f => f.name.toLowerCase().includes(searchQuery.toLowerCase()));
 
-  return (
-    <div className={cn(
-      "h-full flex flex-col transition-all duration-500",
-      isRainy ? "bg-black/20 backdrop-blur-xl text-white" : "bg-slate-100"
-    )}>
-      {/* Header */}
-      <div className={cn(
-        "px-6 py-4 flex items-center justify-between transition-all duration-300",
-        isRainy ? "bg-white/5 backdrop-blur-xl border-b border-white/10" : "bg-white"
-      )}>
-        <button onClick={onBack} className="p-2 hover:bg-white/5 rounded-full transition-colors"><ChevronLeft size={24} /></button>
-        <h2 className={cn("font-bold text-lg", isRainy ? "text-white/60" : "text-slate-900")}>电话</h2>
-        <div className="w-10" />
-      </div>
+  // Active iOS Call Screen
+  if (callingFriend) {
+    const mins = Math.floor(callDuration / 60);
+    const secs = callDuration % 60;
+    const timeStr = `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 
-      {/* Dial Display */}
-      <div className="flex-1 flex flex-col items-center justify-center p-8">
-        <div className="h-24 flex items-center justify-center mb-12">
-          <span className={cn(
-            "text-5xl font-light tracking-[0.2em] transition-all duration-300",
-            isRainy ? "text-white/80 font-serif italic" : "text-slate-900"
-          )}>{dialNumber || ' '}</span>
+    return (
+      <div className="h-full flex flex-col bg-slate-900 text-white select-none overflow-hidden relative">
+        {/* iOS Call Header */}
+        <div className="pt-10 pb-6 px-6 text-center bg-gradient-to-b from-black/60 to-transparent flex flex-col items-center">
+          <img src={callingFriend.avatar} className="w-24 h-24 rounded-full object-cover shrink-0 border-2 border-white/20 shadow-2xl mb-3" referrerPolicy="no-referrer" />
+          <h2 className="text-xl font-bold tracking-tight">{callingFriend.name}</h2>
+          <p className="text-xs text-white/60 mt-1 font-mono">
+            {isCalling ? '正在呼叫中...' : timeStr}
+          </p>
         </div>
 
-        {/* Keypad */}
-        <div className="grid grid-cols-3 gap-8">
-          {['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'].map(key => (
-            <motion.button
-              key={key}
-              whileTap={{ scale: 0.9 }}
-              onClick={() => handleDial(key)}
+        {/* Center Display Screen */}
+        <div className="flex-1 px-4 overflow-hidden flex flex-col my-2">
+          <div 
+            ref={callScrollRef}
+            className="flex-1 overflow-y-auto space-y-3 bg-white/10 backdrop-blur-md p-4 rounded-3xl border border-white/10 shadow-inner"
+          >
+            {isCalling ? (
+              <div className="h-full flex flex-col items-center justify-center space-y-3 text-white/60">
+                <div className="w-10 h-10 rounded-full border-2 border-white/20 border-t-white animate-spin" />
+                <p className="text-xs">正在呼叫 {callingFriend.name} ({getFriendPhoneNumber(callingFriend.id)})...</p>
+              </div>
+            ) : (
+              callMessages.map((msg, idx) => {
+                const isUser = msg.role === 'user';
+                return (
+                  <motion.div 
+                    key={idx}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className={cn("flex flex-col", isUser ? "items-end" : "items-start")}
+                  >
+                    <span className="text-[10px] text-white/40 mb-0.5 px-1">
+                      {isUser ? '我' : callingFriend.name}
+                    </span>
+                    <div className={cn(
+                      "p-3 rounded-2xl max-w-[85%] text-xs leading-relaxed shadow-sm",
+                      isUser ? "bg-blue-600 text-white rounded-tr-none" : "bg-white/20 text-white backdrop-blur rounded-tl-none"
+                    )}>
+                      {msg.content}
+                    </div>
+                  </motion.div>
+                );
+              })
+            )}
+
+            {isAiResponding && (
+              <div className="flex items-center gap-2 text-white/50 text-xs italic py-1">
+                <div className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-ping" />
+                <span>{callingFriend.name} 正在说话...</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Bottom Input & Control Bar */}
+        <div className="p-4 bg-black/40 backdrop-blur-xl border-t border-white/10 flex flex-col gap-3">
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={handleRetryLast}
+              title="重新生成上一句"
+              className="p-3 bg-white/10 hover:bg-white/20 text-white rounded-2xl transition-all active:scale-95 flex items-center justify-center shrink-0"
+            >
+              <RefreshCw size={16} />
+            </button>
+
+            <input 
+              type="text"
+              value={callInput}
+              onChange={e => setCallInput(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSendCallMessage()}
+              placeholder="说点什么..."
+              disabled={isCalling}
+              className="flex-1 bg-white/10 border border-white/20 rounded-2xl px-4 py-3 text-xs text-white placeholder-white/40 outline-none focus:border-blue-500 transition-colors"
+            />
+
+            <button 
+              onClick={() => handleSendCallMessage()}
+              disabled={isCalling || !callInput.trim() || isAiResponding}
               className={cn(
-                "w-20 h-20 rounded-full flex flex-col items-center justify-center transition-all duration-300 relative group",
-                isRainy ? "bg-white/5 hover:bg-white/10 border border-white/10" : "bg-white shadow-sm hover:bg-slate-50"
+                "px-4 py-3 rounded-2xl text-xs font-bold transition-all flex items-center gap-1 shrink-0",
+                callInput.trim() && !isCalling && !isAiResponding ? "bg-blue-600 hover:bg-blue-500 text-white" : "bg-white/10 text-white/30 cursor-not-allowed"
               )}
             >
-              {isRainy && (
-                <>
-                  <div className="absolute -top-1 left-3 w-2 h-2 bg-white/10 rounded-tr-full rotate-[-15deg]" />
-                  <div className="absolute -top-1 right-3 w-2 h-2 bg-white/10 rounded-tl-full rotate-[15deg]" />
-                </>
-              )}
-              <span className={cn("text-2xl font-medium", isRainy ? "text-white/60" : "text-slate-800")}>{key}</span>
-              <span className={cn("text-[9px] opacity-40 font-bold", isRainy ? "text-white/40" : "text-slate-400")}>
-                {key === '2' && 'ABC'}
-                {key === '3' && 'DEF'}
-                {key === '4' && 'GHI'}
-                {key === '5' && 'JKL'}
-                {key === '6' && 'MNO'}
-                {key === '7' && 'PQRS'}
-                {key === '8' && 'TUV'}
-                {key === '9' && 'WXYZ'}
-              </span>
-            </motion.button>
-          ))}
-        </div>
+              <Send size={14} />
+              <span>发送</span>
+            </button>
+          </div>
 
-        {/* Call Actions */}
-        <div className="mt-16 flex items-center gap-16">
-          <div className="w-20" /> {/* Spacer */}
-          <motion.button
-            whileTap={{ scale: 0.9 }}
-            onClick={handleCall}
-            className={cn(
-              "w-20 h-20 rounded-full flex items-center justify-center shadow-2xl transition-all duration-300",
-              isRainy ? "bg-green-500/20 border border-green-500/30 text-green-400" : "bg-green-500 text-white"
-            )}
-          >
-            <Phone size={36} />
-          </motion.button>
-          <motion.button
-            whileTap={{ scale: 0.9 }}
-            onClick={() => setDialNumber(prev => prev.slice(0, -1))}
-            className={cn(
-              "w-20 h-20 rounded-full flex items-center justify-center transition-all duration-300",
-              isRainy ? "text-white/20 hover:text-white/40" : "text-slate-300 hover:text-slate-500"
-            )}
-          >
-            <X size={28} />
-          </motion.button>
+          <div className="flex justify-center pt-1">
+            <button 
+              onClick={handleEndCall}
+              className="px-8 py-3 bg-red-600 hover:bg-red-500 text-white rounded-full font-bold text-xs shadow-lg active:scale-95 transition-all flex items-center gap-2"
+            >
+              <PhoneOff size={16} />
+              <span>挂断电话</span>
+            </button>
+          </div>
         </div>
       </div>
+    );
+  }
+
+  // Modern iOS Phone App Main View
+  return (
+    <div className="h-full flex flex-col bg-[#F2F2F7] text-slate-900 select-none overflow-hidden">
+      {/* iOS Navigation Header */}
+      <div className="px-6 pt-4 pb-3 bg-white/80 backdrop-blur-md border-b border-slate-200 flex items-center justify-between shadow-sm">
+        <button onClick={onBack} className="p-1.5 text-blue-600 hover:bg-slate-100 rounded-full transition-colors"><ChevronLeft size={22} /></button>
+        <h2 className="font-bold text-base text-slate-900">电话</h2>
+        <div className="w-8" />
+      </div>
+
+      {/* iOS Segmented Tabs */}
+      <div className="px-4 py-2 bg-white/80 backdrop-blur-md border-b border-slate-200">
+        <div className="flex bg-slate-200/80 p-1 rounded-xl text-xs font-semibold">
+          <button 
+            onClick={() => setActiveTab('contacts')}
+            className={cn("flex-1 py-1.5 rounded-lg transition-all", activeTab === 'contacts' ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900")}
+          >
+            通讯录 ({friends.length})
+          </button>
+          <button 
+            onClick={() => setActiveTab('keypad')}
+            className={cn("flex-1 py-1.5 rounded-lg transition-all", activeTab === 'keypad' ? "bg-white text-slate-900 shadow-sm" : "text-slate-600 hover:text-slate-900")}
+          >
+            拨号盘
+          </button>
+        </div>
+      </div>
+
+      {/* Tab: Contacts */}
+      {activeTab === 'contacts' && (
+        <div className="flex-1 flex flex-col overflow-hidden p-4 space-y-3">
+          <div className="relative">
+            <Search size={16} className="absolute left-3.5 top-3 text-slate-400" />
+            <input 
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="搜索联系人..."
+              className="w-full bg-slate-200/60 border border-slate-300/50 rounded-xl pl-10 pr-4 py-2 text-xs text-slate-900 outline-none focus:bg-white focus:border-blue-500 transition-all shadow-inner"
+            />
+          </div>
+
+          <div className="flex-1 overflow-y-auto space-y-2 pr-1">
+            {filteredFriends.length === 0 ? (
+              <p className="text-center text-xs text-slate-400 py-12">暂无联系人</p>
+            ) : (
+              filteredFriends.map(friend => {
+                const phoneNumber = getFriendPhoneNumber(friend.id);
+                return (
+                  <div 
+                    key={friend.id}
+                    onClick={() => {
+                      setDialNumber(phoneNumber);
+                      setActiveTab('keypad');
+                    }}
+                    className="bg-white p-3.5 rounded-2xl border border-slate-200/60 flex items-center justify-between shadow-sm hover:border-blue-400 cursor-pointer transition-all group"
+                  >
+                    <div className="flex items-center gap-3.5">
+                      <img src={friend.avatar} className="w-12 h-12 rounded-full object-cover shrink-0 border border-slate-200 shadow-sm" referrerPolicy="no-referrer" />
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-bold text-xs text-slate-900">{friend.name}</h4>
+                          <span className="text-[9px] px-1.5 py-0.5 bg-green-100 text-green-700 rounded-full font-mono">在线</span>
+                        </div>
+                        <p className="text-xs text-slate-500 font-mono mt-1 tracking-wider">{phoneNumber}</p>
+                      </div>
+                    </div>
+
+                    <span className="text-[11px] text-blue-600 font-medium opacity-0 group-hover:opacity-150 transition-opacity pr-1">
+                      拨号 &rarr;
+                    </span>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Keypad */}
+      {activeTab === 'keypad' && (
+        <div className="flex-1 flex flex-col items-center justify-center p-6 bg-white">
+          <div className="h-20 flex flex-col items-center justify-center mb-4">
+            <span className="text-3xl font-light tracking-[0.2em] text-slate-900 font-mono">{dialNumber || '请输入11位号码'}</span>
+            {dialError && <span className="text-[11px] text-red-500 mt-1 font-medium">{dialError}</span>}
+          </div>
+
+          <div className="grid grid-cols-3 gap-4 mb-6">
+            {['1', '2', '3', '4', '5', '6', '7', '8', '9', '*', '0', '#'].map(key => (
+              <motion.button
+                key={key}
+                whileTap={{ scale: 0.9 }}
+                onClick={() => handleDial(key)}
+                className="w-16 h-16 rounded-full bg-slate-100 hover:bg-slate-200 flex flex-col items-center justify-center transition-all shadow-sm"
+              >
+                <span className="text-xl font-medium text-slate-900">{key}</span>
+              </motion.button>
+            ))}
+          </div>
+
+          <div className="flex items-center gap-10">
+            <motion.button
+              whileTap={{ scale: 0.9 }}
+              onClick={handleKeypadCall}
+              className="w-16 h-16 rounded-full bg-green-500 hover:bg-green-600 text-white shadow-xl flex items-center justify-center transition-all"
+              title="拨打电话"
+            >
+              <Phone size={28} />
+            </motion.button>
+            <motion.button
+              whileTap={{ scale: 0.9 }}
+              onClick={() => setDialNumber(prev => prev.slice(0, -1))}
+              className="w-16 h-16 rounded-full bg-slate-200 hover:bg-slate-300 text-slate-700 flex items-center justify-center transition-all"
+              title="退格"
+            >
+              <X size={22} />
+            </motion.button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
