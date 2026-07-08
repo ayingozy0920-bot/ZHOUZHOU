@@ -399,7 +399,7 @@ export interface ChatMessage {
   id?: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
-  type?: 'text' | 'image' | 'video' | 'voice' | 'transfer' | 'location' | 'call' | 'memory' | 'sticker' | 'blindbox-gift' | 'dice' | 'offline-invitation' | 'photo_card' | 'date_summary';
+  type?: 'text' | 'image' | 'video' | 'voice' | 'transfer' | 'location' | 'call' | 'memory' | 'sticker' | 'blindbox-gift' | 'dice' | 'offline-invitation' | 'photo_card' | 'date_summary' | 'shopping-receipt';
   mediaUrl?: string;
   duration?: number; // for voice or call duration
   amount?: string; // for transfer
@@ -428,6 +428,7 @@ export interface ChatMessage {
     message: string;
     price: number;
     isOpened: boolean;
+    source?: string;
   };
   invitationData?: {
     friendId: string;

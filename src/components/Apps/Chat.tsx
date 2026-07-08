@@ -1893,10 +1893,16 @@ function ChatWindow({
     setIsEndingOffline(true);
     try {
       const finalSummary = summary || await summarizeContent(friend, offlineMessages, 'offline');
+      const summaryContent = finalSummary || '无总结';
+      let plotTitle = offlineConfig.location || '线下剧情';
+      const titleMatch = summaryContent.match(/【剧情标题[：:]\s*([^】\n]+)】/);
+      if (titleMatch && titleMatch[1]) {
+        plotTitle = titleMatch[1].trim();
+      }
       
       // Save to memory
       const newMemory: OfflineMemory = {
-        summary: finalSummary || '无总结',
+        summary: summaryContent,
         rawHistory: [...offlineMessages]
       };
       
@@ -1905,7 +1911,7 @@ function ChatWindow({
         offlineMemory: newMemory,
         carriedOfflineMessages: carriedMessages
       });
-      addOfflinePlot(friend.id, offlineConfig.location || '线下剧情', [...offlineMessages], finalSummary || '无总结');
+      addOfflinePlot(friend.id, plotTitle, [...offlineMessages], summaryContent);
     } catch (error) {
       console.error('Failed to summarize offline mode:', error);
     } finally {
@@ -2155,44 +2161,113 @@ function ChatWindow({
         get('character_schedules') || Promise.resolve({})
       ]);
 
-      let systemPrompt = `【绝对核心准则：世界书 & 角色记忆】
-你现在是一个极其真实的沉浸式角色扮演助手。你必须严格遵循以下优先级（世界书 > 角色人设 > 长期记忆 > 上下文）：
-1. **世界书（最高准则）**：世界书中的设定是不可动摇的真理，必须 100% 遵守，严禁 OOC。
-2. **人设与记忆**：你必须完美读取并记住 ${friend.name} 的人设、经历、背景以及你们过往的所有记忆点。
-3. **格式与段落**：回复必须优美、具有文学性，段落清晰，对话用中文双引号 “” 包裹，旁白直接输出在引号之外。
-4. **拒绝机器感**：严禁使用任何 AI 常用语。
-\n\n` + (isOfflineMode 
-        ? `你现在处于“线下剧情模式”。${friend.persona}\n当前地点：${offlineConfig.location}\n\n【线下剧情：硬性强制回复规范 - 极其重要】`
-        : `${friend.persona}`);
+      const beijingTimeStr = new Date().toLocaleString('zh-CN', { 
+        timeZone: 'Asia/Shanghai', 
+        year: 'numeric', 
+        month: '2-digit', 
+        day: '2-digit', 
+        hour: '2-digit', 
+        minute: '2-digit', 
+        second: '2-digit', 
+        hour12: false 
+      });
 
-      // Inject Full Character Persona
-      systemPrompt += `\n\n${friend.persona}`;
+      // Active world book entries
+      const worldBookEntries = settings.worldBookEntries || [];
+      const activeEntries = worldBookEntries.filter(e => 
+        e.isEnabled && (e.scope === 'global' || (e.scope === 'character' && (e.linkedCharacterIds || []).includes(friend.profileId || '')))
+      );
+      const highPriorityEntries = activeEntries.filter(e => e.priority === 'high');
+      const otherPriorityEntries = activeEntries.filter(e => e.priority !== 'high');
 
-      // Inject Offline Memory if available
-      if (friend.offlineMemory?.summary) {
-        systemPrompt += `\n\n【线下剧情记忆回顾】\n以下是你们之前在线下见面时发生的事情摘要：\n${friend.offlineMemory.summary}\n请在当下的互动中保持记忆连贯性，**一定会记住曾经发生过的所有事情，并且你可以偶尔主动提及发生过的事情和细节**。`;
+      // 1. Beijing Real-Time & Chat Message Timestamps
+      let systemPrompt = `【实时时间基准】
+当前北京实时时间：${beijingTimeStr}。请对北京时间与聊天消息的时间戳保持高度敏感和实时感知。
+
+【绝对核心准则与读取顺序】
+你必须严格按照以下顺序读取和响应设定与记忆：
+1. **世界书前置设定 + 角色人设** (最高优先级)
+2. **世界书后续设定** (中/低优先级)
+3. **线上线下聊天上下文** (无缝承接最近对话与线下约会结尾)
+4. **记忆库记忆** (长期记忆与历史剧情总结，遵循近期与久远分层)
+
+---
+`;
+
+      // 2. World Book Front (High) + Persona
+      if (highPriorityEntries.length > 0) {
+        systemPrompt += `【世界书设定 - 前置高优先级】\n`;
+        highPriorityEntries.forEach(entry => {
+          systemPrompt += `[${entry.category}] ${entry.name}\n${entry.content}\n\n`;
+        });
       }
 
-      // Inject Online Memories from Memory Store
+      systemPrompt += `【角色人设】\n${friend.persona}\n\n`;
+
+      if (isOfflineMode) {
+        systemPrompt += `当前处于【线下剧情模式】。地点：${offlineConfig.location}\n\n`;
+      }
+
+      // 3. World Book Back (Medium / Low)
+      if (otherPriorityEntries.length > 0) {
+        systemPrompt += `【世界书设定 - 中后置设定】\n`;
+        otherPriorityEntries.forEach(entry => {
+          const priorityLabel = entry.priority === 'medium' ? '中' : '后';
+          systemPrompt += `[${entry.category}] ${entry.name} (优先级: ${priorityLabel})\n${entry.content}\n\n`;
+        });
+      }
+
+      // 4. Online & Offline Chat Context (with seamless continuity)
+      if (isOfflineMode) {
+        const onlineHistoryCount = offlineConfig.onlineContextCount || 50;
+        const recentOnlineMessages = messages
+          .filter(m => m.role !== 'system')
+          .slice(-onlineHistoryCount);
+        
+        if (recentOnlineMessages.length > 0) {
+          const onlineContextString = recentOnlineMessages.map(m => {
+            const sender = m.role === 'user' ? '我' : friend.name;
+            const tStr = new Date(m.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+            return `[${tStr}] ${sender}: ${m.content}`;
+          }).join('\n');
+          systemPrompt += `【线上聊天上下文过渡】\n以下是进入线下约会前，你们在微信上的最新聊天对话。请在线下见面互动中，极其自然地承接并延续这一段聊天的话题与情绪：\n${onlineContextString}\n\n`;
+        }
+      } else {
+        if (friend.carriedOfflineMessages && friend.carriedOfflineMessages.length > 0) {
+          const recentOfflineLogs = friend.carriedOfflineMessages.slice(-30).map((m: any) => {
+            const sender = m.role === 'user' ? '我' : friend.name;
+            const tStr = new Date(m.timestamp).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+            return `[${tStr}] ${sender}: ${m.content}`;
+          }).join('\n');
+          systemPrompt += `【线下剧情上下文承接（刚刚结束的线下约会末尾记录）】\n以下是你们刚刚结束的线下约会/见面最后的对话与互动记录。当返回线上聊天时，**必须无缝续接在线下见面最后一段结束后的状态、情绪、未尽的话题或动作中进行线上互动**：\n${recentOfflineLogs}\n\n`;
+        }
+      }
+
+      // 5. Memory Store Memories
       const friendMemoryStore = getFriendMemory(friend.id);
+      let memorySection = "";
+      if (friend.offlineMemory?.summary) {
+        memorySection += `【当前/最新线下剧情摘要】\n${friend.offlineMemory.summary}\n\n`;
+      }
       if (friendMemoryStore.onlineMemories.length > 0) {
-        const recentMemories = friendMemoryStore.onlineMemories.slice(0, 15).map(m => `[${m.source === 'weibo' ? '微博' : '聊天'}] ${m.content}`).join('\n- ');
-        systemPrompt += `\n\n【长期记忆回顾】\n以下是你们过往互动中的重要记忆点，请在对话中自然体现：\n- ${recentMemories}`;
+        const recentMemories = friendMemoryStore.onlineMemories.slice(0, 15).map(m => {
+          const timeStr = new Date(m.timestamp).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+          return `[时间: ${timeStr}] [${m.source === 'weibo' ? '微博' : '聊天'}] ${m.content}`;
+        }).join('\n- ');
+        memorySection += `【长期记忆回顾】\n- ${recentMemories}\n\n`;
       }
-
-      // Inject Previous Completed Offline Plots from Memory Store
       if (friendMemoryStore.offlinePlots && friendMemoryStore.offlinePlots.length > 0) {
-        const recentOfflinePlotSummaries = friendMemoryStore.offlinePlots.slice(-10).map((p: any) => `[地点/场景: ${p.title}] 剧情概要: ${p.summary}`).join('\n- ');
-        systemPrompt += `\n\n【往期线下历史剧情记忆（合集回顾）】\n以下是你们此前经历过的所有线下剧情的梗概。请你一定要在当下的互动中，完美记住并连贯承接这些过往的细节与剧情线，让整个故事世界浑然一体，绝对不能产生遗忘、矛盾或逻辑断层，你也可以随时主动提起往事：\n- ${recentOfflinePlotSummaries}`;
+        const recentOfflinePlotSummaries = friendMemoryStore.offlinePlots.slice(-10).map((p: any) => {
+          const timeStr = new Date(p.timestamp).toLocaleString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+          return `[时间: ${timeStr}] [剧情标题: ${p.title}] 剧情概要: ${p.summary}`;
+        }).join('\n- ');
+        memorySection += `【往期线下历史剧情记忆合集】\n- ${recentOfflinePlotSummaries}\n\n`;
       }
 
-      // Inject Carried Offline History if in Online Mode
-      if (!isOfflineMode && friend.carriedOfflineMessages && friend.carriedOfflineMessages.length > 0) {
-        const recentOfflineLogs = friend.carriedOfflineMessages.slice(-30).map((m: any) => {
-          const sender = m.role === 'user' ? '我' : friend.name;
-          return `${sender}: ${m.content}`;
-        }).join('\n');
-        systemPrompt += `\n\n【近期线下剧情记忆（最新30条具体对话与旁白记录）】\n以下是你们刚刚在线下见面互动时的真实过程与对话记录。请你在当前的线上微信聊天中，**极其极其自然、深刻地承接这部分线下记忆，记住所有动作、情绪、许下的诺言和细节，并在聊天中可以偶尔主动提起它**：\n${recentOfflineLogs}`;
+      if (memorySection) {
+        systemPrompt += `【记忆库记忆与时间识别准则】\n${memorySection}
+1. **时间识别与分层**：精准识别上述记忆中每条记录的时间点。
+2. **近期与久远区分**：近期记忆可自然提及或承接；久远记忆在日常对话中不需要刻意提起或唠叨，只有当当前语境、话题天然关联或用户主动提起时方可提及，绝对不要无缘无故翻旧账。\n\n`;
       }
 
       if (isOfflineMode) {
@@ -2274,8 +2349,7 @@ ${(() => {
 })()}`;
       }
       
-      // Add World Book Entries
-      const worldBookEntries = settings.worldBookEntries || [];
+
       
       if (isOfflineMode) {
         systemPrompt += `\n\n【线下剧情模式禁令】
@@ -2328,21 +2402,7 @@ ${(() => {
         }
       }
 
-      const activeEntries = worldBookEntries.filter(e => 
-        e.isEnabled && (e.scope === 'global' || (e.scope === 'character' && (e.linkedCharacterIds || []).includes(friend.profileId || '')))
-      );
 
-      if (activeEntries.length > 0) {
-        // Sort by priority: high (前), medium (中), low (后)
-        const priorityOrder = { high: 0, medium: 1, low: 2 };
-        activeEntries.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
-
-        systemPrompt += `\n\n【世界书设定】\n请严格遵守以下世界观和背景设定。设定按优先级从高到低排列，高优先级设定（前）具有最高权威，若有冲突，请以高优先级为准：\n`;
-        activeEntries.forEach(entry => {
-          const priorityLabel = entry.priority === 'high' ? '前' : entry.priority === 'medium' ? '中' : '后';
-          systemPrompt += `\n[${entry.category}] ${entry.name} (优先级: ${priorityLabel})\n${entry.content}\n`;
-        });
-      }
         
       // Enhanced persona-aware instructions
       systemPrompt += `
@@ -2376,7 +2436,9 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
              - [SEND_TRANSFER:金额:说明] - 主动给用户转账（例如：[SEND_TRANSFER:520:爱你哟]）
              - [SEND_LOCATION:地点名称] - 发送你的当前位置（例如：[SEND_LOCATION:在心里呀]）
              - [SEND_STICKER:表情包ID] - 发送自定义表情包
-             - [OFFLINE_INVITATION:开场白] - 主动发起线下约会邀请。` : ''}
+             - [OFFLINE_INVITATION:开场白] - 主动发起线下约会邀请
+             - [MEITUAN_BUY:餐品名称|价格|描述|附言] - 使用美团给用户点外卖（例如：[MEITUAN_BUY:招牌红烧牛肉面|38.5|趁热吃，别饿肚子|辛苦啦]）
+             - [TAOBAO_BUY:商品名称|价格|描述|附言] - 使用淘宝给用户买商品/礼物（例如：[TAOBAO_BUY:限定小熊玩偶|128|希望你喜欢这个小礼物|送你的]）。注：请根据语境和人设适度使用，切勿过于频繁。` : ''}
       `;
 
       if (friend.language) {
@@ -2558,28 +2620,32 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
           newAffection = 60;
         }
 
-        // Generate fallback cute thoughts if innerThoughts is empty to keep cards lively
-        if (!innerThoughts) {
-          const fallbacks = [
-            "刚才的消息……我是不是回得太快了？他会不会觉得我很在乎啊……真是的。(*/ω＼*)",
-            "唔……想抱抱，但是不能说出口，要矜持！",
-            "不知道你现在在做什么呢，好想一直在你身边呀……",
-            "偷偷看着聊天界面，打字删删改改了好多次，哼，才不让你看出来呢！",
-            "哼哼，刚才那一瞬间，心里甜滋滋的，就像喝了草莓奶昔一样~",
-            "你这个人真是的，总是能轻易让我心跳加速……",
-            "想变成你口袋里的小猫咪，天天跟着你，喵~",
-            "好想现在就飞奔过去，扑进你怀里，跟你撒个娇嘛。(o>_<o)",
-            "你对我是不是也有一点点心动呢？哪怕只有一点点……",
-            "哪怕只是看着你的名字，都觉得今天是个大晴天！"
-          ];
-          innerThoughts = fallbacks[Math.floor(Math.random() * fallbacks.length)];
+        // Ensure innerThoughts always updates and refreshes to a new thought on every generation
+        const fallbacks = [
+          "刚才的消息……我是不是回得太快了？他会不会觉得我很在乎啊……真是的。(*/ω＼*)",
+          "唔……想抱抱，但是不能说出口，要矜持！",
+          "不知道你现在在做什么呢，好想一直在你身边呀……",
+          "偷偷看着聊天界面，打字删删改改了好多次，哼，才不让你看出来呢！",
+          "哼哼，刚才那一瞬间，心里甜滋滋的，就像喝了草莓奶昔一样~",
+          "你这个人真是的，总是能轻易让我心跳加速……",
+          "想变成你口袋里的小猫咪，天天跟着你，喵~",
+          "好想现在就飞奔过去，扑进你怀里，跟你撒个娇嘛。(o>_<o)",
+          "你对我是不是也有一点点心动呢？哪怕只有一点点……",
+          "哪怕只是看着你的名字，都觉得今天是个大晴天！",
+          "现在脑子里全都是你，根本没办法专心做别的事情啦……",
+          "唔，真想现在就听到你的声音呀"
+        ];
+
+        if (!innerThoughts || innerThoughts === friend.innerThoughts) {
+          const filtered = fallbacks.filter(f => f !== friend.innerThoughts);
+          innerThoughts = filtered[Math.floor(Math.random() * filtered.length)] || fallbacks[0];
         }
 
         // Save back to friend state
         onUpdateFriend({
           affection: newAffection,
           moodIndex,
-          innerThoughts: innerThoughts || friend.innerThoughts,
+          innerThoughts: innerThoughts,
           mood: currentStatus || friend.mood
         });
       } else {
@@ -2597,14 +2663,15 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
           "唔……想抱抱，但是不能说出口，要矜持！",
           "不知道你现在在做什么呢，好想一直在你身边呀……",
           "偷偷看着聊天界面，打字删删改改了好多次，哼，才不让你看出来呢！",
-          "哼哼，刚才那一瞬间，心里甜滋滋的，也就是喝了草莓奶昔一样~",
+          "哼哼，刚才那一瞬间，心里甜滋滋的，就像喝了草莓奶昔一样~",
           "你这个人真是的，总是能轻易让我心跳加速……",
           "想变成你口袋里的小猫咪，天天跟着你，喵~",
           "好想现在就飞奔过去，扑进你怀里，跟你撒个娇嘛。(o>_<o)",
           "你对我是一点点心动呢，还是很多很多的心动？",
           "心里好甜……只要能和你聊天，不管说什么都很开心！"
         ];
-        const fbThoughts = fallbacks[Math.floor(Math.random() * fallbacks.length)];
+        const filtered = fallbacks.filter(f => f !== friend.innerThoughts);
+        const fbThoughts = filtered[Math.floor(Math.random() * filtered.length)] || fallbacks[0];
         innerThoughts = fbThoughts; // Ensure sync for chat card
         currentStatus = "期待贴贴";
 
@@ -2749,6 +2816,10 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
         finalCleanContent = finalCleanContent.replace(/\(.*?\)/g, '').replace(/（.*?）/g, '').trim();
       }
 
+      finalCleanContent = finalCleanContent
+        .replace(/\[(?:MEITUAN_BUY|TAOBAO_BUY):[^\]]+\]/g, '')
+        .trim();
+
       // Handle Transfer commands
       if (fullContent.includes('[ACCEPT_TRANSFER]') || fullContent.includes('[REJECT_TRANSFER]')) {
         const lastTransferIndex = [...currentMsgs].reverse().findIndex(m => m.type === 'transfer' && m.transferStatus === 'pending');
@@ -2865,6 +2936,66 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
           setOfflineMessages(prev => [...prev, photoMsg]);
         } else {
           onSendMessage(photoMsg);
+        }
+      }
+
+      // Handle Meituan Buy
+      const meituanMatch = fullContent.match(/\[MEITUAN_BUY:(.*?)\|(.*?)\|(.*?)\|(.*?)\]/);
+      if (meituanMatch) {
+        const name = meituanMatch[1].trim();
+        const price = parseFloat(meituanMatch[2].trim()) || 35;
+        const desc = meituanMatch[3].trim();
+        const msg = meituanMatch[4].trim();
+        const receiptMsg: ChatMessage = {
+          role: 'assistant',
+          content: `[美团外卖] ${name}`,
+          type: 'shopping-receipt',
+          description: desc,
+          giftData: {
+            boxId: 'order-' + Date.now(),
+            boxName: name,
+            coverUrl: '',
+            message: msg,
+            price: price,
+            isOpened: false,
+            source: 'mt'
+          },
+          timestamp: Date.now() + 1
+        };
+        if (isOfflineMode) {
+          setOfflineMessages(prev => [...prev, receiptMsg]);
+        } else {
+          onSendMessage(receiptMsg);
+        }
+      }
+
+      // Handle Taobao Buy
+      const taobaoMatch = fullContent.match(/\[TAOBAO_BUY:(.*?)\|(.*?)\|(.*?)\|(.*?)\]/);
+      if (taobaoMatch) {
+        const name = taobaoMatch[1].trim();
+        const price = parseFloat(taobaoMatch[2].trim()) || 99;
+        const desc = taobaoMatch[3].trim();
+        const msg = taobaoMatch[4].trim();
+        const receiptMsg: ChatMessage = {
+          role: 'assistant',
+          content: `[淘宝购物] ${name}`,
+          type: 'shopping-receipt',
+          description: desc,
+          giftData: {
+            boxId: 'order-' + Date.now(),
+            boxName: name,
+            coverUrl: '',
+            message: msg,
+            price: price,
+            isOpened: false,
+            source: 'tb'
+          },
+          timestamp: Date.now() + 1
+        };
+        if (isOfflineMode) {
+          setOfflineMessages(prev => [...prev, receiptMsg]);
+        } else {
+          onSendMessage(receiptMsg);
         }
       }
 
@@ -4830,6 +4961,65 @@ ${context}`;
                           </div>
                         </div>
                       )}
+                      {msg.type === 'shopping-receipt' && msg.giftData && (() => {
+                        const isMeituan = msg.giftData.source === 'mt' || msg.content?.includes('美团');
+                        const headerEn = isMeituan ? 'MEITUAN SHOP MAGAZINE' : 'TAOBAO SHOP MAGAZINE';
+                        const headerZh = isMeituan ? '美 团 购 物 小 票' : '淘 宝 购 物 小 票';
+                        return (
+                          <div className="p-4 rounded-2xl border max-w-[280px] shadow-sm font-mono relative bg-[#fffdf9] text-slate-800 border-[#e5dfd3]">
+                            <div className="text-center pb-2 border-b border-dashed border-slate-300">
+                              <p className="text-[10px] tracking-widest font-black uppercase text-slate-500">{headerEn}</p>
+                              <p className="text-xs font-black tracking-wider text-slate-900 mt-0.5">{headerZh}</p>
+                              <p className="text-[9px] text-slate-400 mt-1">
+                                {new Date(msg.timestamp).toLocaleString([], { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                              </p>
+                            </div>
+                          
+                          <div className="py-2.5 space-y-1 text-xs border-b border-dashed border-slate-300">
+                            <div className="flex justify-between font-bold text-slate-500 text-[10px]">
+                              <span>商品名称</span>
+                              <span>数量 / 金额</span>
+                            </div>
+                            <div className="flex justify-between items-start pt-1">
+                              <span className="font-bold text-slate-900 truncate max-w-[150px]">{msg.giftData.boxName}</span>
+                              <span className="font-bold text-slate-900">01 / ¥{msg.giftData.price}</span>
+                            </div>
+                            {msg.description && (
+                              <p className="text-[10px] text-slate-500 truncate">{msg.description}</p>
+                            )}
+                          </div>
+
+                          <div className="py-2 space-y-1 text-xs border-b border-dashed border-slate-300">
+                            <div className="flex justify-between text-slate-600 text-[11px]">
+                              <span>小计</span>
+                              <span className="font-bold">¥{msg.giftData.price}</span>
+                            </div>
+                            <div className="flex justify-between text-slate-600 text-[11px]">
+                              <span>税收 / 运费 (0%)</span>
+                              <span>¥0.00</span>
+                            </div>
+                            <div className="flex justify-between text-slate-900 font-black text-sm pt-1 border-t border-dotted border-slate-200">
+                              <span>账单总额</span>
+                              <span className="text-orange-600">¥{msg.giftData.price}</span>
+                            </div>
+                          </div>
+
+                          {msg.giftData.message && (
+                            <div className="py-2 text-[11px] italic text-slate-600 border-b border-dashed border-slate-300 bg-amber-50/50 p-2 rounded-lg mt-2">
+                              " {msg.giftData.message} "
+                            </div>
+                          )}
+
+                          <div className="pt-3 flex justify-between items-end">
+                            <div>
+                              <p className="text-[9px] text-slate-400">SIGNATURE</p>
+                              <p className="text-xs font-serif italic font-bold text-slate-800">Shop Magazine.</p>
+                            </div>
+                            <span className="text-[10px] bg-slate-900 text-white px-2 py-0.5 rounded-full font-bold">已赠送</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
                       {msg.type === 'location' && (
                         <div className={cn(
                           "rounded-lg overflow-hidden border transition-all duration-300 min-w-[200px]",
@@ -6515,7 +6705,16 @@ ${context}`;
                     const targetMsgs = currentMessages.slice(start - 1, end);
                     const summary = await summarizeContent(friend, targetMsgs, isOfflineMode ? 'offline' : 'chat', friend.memorySettings?.summaryPrompt, { start, end });
                     if (summary) {
-                      addOnlineMemory(friend.id, summary, 'manual');
+                      if (isOfflineMode) {
+                        let plotTitle = '手动剧情总结';
+                        const titleMatch = summary.match(/【剧情标题[：:]\s*([^】\n]+)】/);
+                        if (titleMatch && titleMatch[1]) {
+                          plotTitle = titleMatch[1].trim();
+                        }
+                        addOfflinePlot(friend.id, plotTitle, targetMsgs, summary);
+                      } else {
+                        addOnlineMemory(friend.id, summary, 'manual');
+                      }
                       showToast('手动总结已存入记忆库');
                       setActiveModal(null);
                     }

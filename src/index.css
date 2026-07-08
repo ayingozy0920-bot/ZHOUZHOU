@@ -314,7 +314,7 @@
 .wechat-dark-mode .bg-slate-50,
 .wechat-dark-mode .bg-slate-100,
 .wechat-dark-mode .bg-slate-200,
-.wechat-dark-mode .bg-slate-500/5 {
+.wechat-dark-mode .bg-slate-500\/5 {
   background-color: #111111 !important;
   color: #ffffff !important;
 }

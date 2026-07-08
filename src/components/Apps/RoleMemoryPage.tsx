@@ -219,13 +219,13 @@ export default function RoleMemoryPage({ friend, memory, onBack }: RoleMemoryPag
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute inset-0 z-[200] bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 pointer-events-auto"
+              className="fixed inset-0 z-[200] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 pointer-events-auto overflow-y-auto pt-16 sm:pt-6"
             >
             <motion.div
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              className="bg-[#FFF9F9] w-full max-w-lg h-[90vh] sm:h-[80vh] rounded-t-[40px] sm:rounded-[40px] overflow-hidden flex flex-col shadow-2xl"
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-[#FFF9F9] w-full max-w-lg h-[80vh] rounded-[32px] overflow-hidden flex flex-col shadow-2xl relative my-auto"
             >
               <div className="p-6 flex items-center justify-between border-b border-pink-50">
                 <div className="flex gap-4">
@@ -309,13 +309,13 @@ export default function RoleMemoryPage({ friend, memory, onBack }: RoleMemoryPag
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="absolute inset-0 z-[200] bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-4 pointer-events-auto"
+              className="fixed inset-0 z-[200] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 pointer-events-auto overflow-y-auto pt-16 sm:pt-6"
             >
             <motion.div
-              initial={{ y: '100%' }}
-              animate={{ y: 0 }}
-              exit={{ y: '100%' }}
-              className="bg-[#FFF9F9] w-full max-w-lg h-[90vh] sm:h-[80vh] rounded-t-[40px] sm:rounded-[40px] overflow-hidden flex flex-col shadow-2xl"
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-[#FFF9F9] w-full max-w-lg h-[80vh] rounded-[32px] overflow-hidden flex flex-col shadow-2xl relative my-auto"
             >
               <div className="p-6 flex items-center justify-between border-b border-pink-50">
                 <h3 className="font-bold text-pink-500 truncate pr-4">线上记忆详情</h3>

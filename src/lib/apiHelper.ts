@@ -15,17 +15,28 @@ export async function apiFetch(req: ApiRequest): Promise<any> {
     });
 
     const contentType = response.headers.get('content-type') || '';
-    if (response.ok && contentType.includes('application/json')) {
+    if (contentType.includes('application/json')) {
       const data = await response.json();
       if (data && data.error) {
-        console.warn(`Local endpoint ${req.endpoint} returned JSON with error:`, data.error);
-      } else {
+        throw new Error(typeof data.error === 'string' ? data.error : JSON.stringify(data.error));
+      }
+      if (response.ok) {
         return data;
+      } else {
+        throw new Error(`API error: ${response.status}`);
       }
     } else {
-      console.warn(`Local endpoint ${req.endpoint} returned non-ok status: ${response.status}`);
+      const text = await response.text();
+      if (response.ok) {
+        return { text };
+      } else {
+        throw new Error(text || `API error: ${response.status}`);
+      }
     }
   } catch (error: any) {
+    if (error.message && (error.message.includes('PROHIBITED_CONTENT') || error.message.includes('safety') || error.message.includes('blocked') || error.message.includes('API key') || error.message.includes('429') || error.message.includes('quota'))) {
+      throw error;
+    }
     console.warn(`Local fetch to ${req.endpoint} failed. Falling back to direct client-side fetch...`, error);
   }
 

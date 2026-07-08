@@ -10,7 +10,11 @@ export function useMemory() {
   });
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(memoryStore));
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(memoryStore));
+    } catch (e) {
+      console.warn("Storage quota exceeded for memory store", e);
+    }
   }, [memoryStore]);
 
   const addOnlineMemory = (friendId: string, content: string, type: 'auto' | 'manual' = 'auto', source: 'chat' | 'weibo' = 'chat') => {

@@ -54,6 +54,7 @@ import SettingsApp from './components/Apps/Settings';
 import RainyBackground from './components/Theme/RainyBackground';
 import SnowBackground from './components/Theme/SnowBackground';
 import MemoryApp from './components/Apps/MemoryApp';
+import ShoppingApp from './components/Apps/ShoppingApp';
 import CharacterHomeApp from './components/Apps/CharacterHomeApp';
 import DatingApp from './components/Apps/DatingApp';
 import YueyuInteraction from './components/Apps/YueyuInteraction';
@@ -179,12 +180,9 @@ export default function App() {
   const summarizeContent = async (friend: Friend, messages: ChatMessage[], type: 'chat' | 'call' | 'group' | 'offline', customPrompt?: string, range?: { start: number, end: number }) => {
     if (!messages || messages.length === 0) return null;
     try {
-      const { getGeminiClient, getGeminiModel } = await import('./lib/gemini');
-      const ai = getGeminiClient(settings);
       const now = new Date();
       const dateStr = now.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
       const startTime = new Date(messages[0]?.timestamp || Date.now()).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
-      const endTime = now.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
 
       const context = messages.slice(-200).map(m => `${m.role === 'user' ? '我' : (friend?.name || '角色')}: ${m.content}`).join('\n');
       
@@ -238,58 +236,86 @@ export default function App() {
 -此报告旨在为后续内容创作提供核心参考依据，其首要任务是维护故事线的连贯性、角色行为的稳定性与世界设定的统一性，有效防止关键情节、人物关联与背景设定的遗漏或偏离。
 -确保内容客观中立、条理清晰。所有结论必须严格依据原始素材得出，杜绝任何形式的主观推测或延伸。`;
 
-      const offlineTemplate = `
-输出格式必须严格遵守以下模板（不要包含任何其他文字）：
+      const offlineTemplate = `请以第三方旁观者的客观视角，根据以下线下见面的完整对话内容，生成一份字数约500字的记忆总结。
+请严格分为以下板块输出：
 
-【线下剧情记录】
-剧情名称：${messages[0]?.content.slice(0, 20) || '未命名剧情'}...
-参与角色：${friend?.name || '角色'}、我
-时间：${dateStr}
-地点：[请根据对话内容推断地点，如：咖啡馆 / 家里 / 商场 / 公园]
+【剧情标题：请在这里写一个匹配本次剧情核心的精炼标题】
 
-【剧情概要】
-（1～3句话概括整个线下发生的事）
+【核心记忆】
+（精炼总结本次线下见面的核心情感、转折或灵魂共鸣）
 
-【关键互动】
-• 发生了什么重要动作
-• 角色说了什么关键话
-• 用户做了什么选择
-• 两人关系/氛围变化
+【剧情事件】
+（详细梳理本次见面发生的关键事件、剧情推进及人物对话互动）
 
-【重要细节】
-• 穿着/外貌
-• 环境/氛围
-• 小礼物/小动作/小甜蜜
-• 角色情绪状态
+【共同经历】
+（记录本次见面中的独特共同经历、地点、信物、约定或小互动）
 
-【剧情总结（给角色记忆）】
-（提炼成角色能记住的核心内容，不少于三百字。请详细描述情感变化、重要对话和未来可能的伏笔。）
-`;
+【核心标签词语】
+（列出3-6个能够完美匹配本次剧情核心的标签词，如：#初次心动 #雨中漫步 #久别重逢 等）`;
 
-      const finalPrompt = customPrompt 
-        ? `${customPrompt}\n\n${type === 'offline' ? offlineTemplate : onlinePrompt}\n\n对话内容：\n${context}` 
-        : `${type === 'offline' ? `你现在是${friend.name}的记忆助手。请根据以下线下剧情内容进行详细总结。\n${offlineTemplate}` : onlinePrompt}\n\n对话内容：\n${context}`;
+      const finalPrompt = type === 'offline' 
+        ? `${offlineTemplate}\n\n对话内容：\n${context}`
+        : (customPrompt ? `${customPrompt}\n\n${onlinePrompt}\n\n对话内容：\n${context}` : `${onlinePrompt}\n\n对话内容：\n${context}`);
 
-      const response = await ai.models.generateContent({
-        model: (await import('./lib/gemini')).getGeminiModel(settings),
-        contents: [{ role: 'user', parts: [{ text: finalPrompt }] }],
-        config: {
-          temperature: 0.3
-        }
-      });
+      // Try custom proxy API first if configured
+      const customApiUrl = localStorage.getItem('shop_backend_api_url') || settings.baseUrl || '';
+      const customApiKey = localStorage.getItem('shop_backend_api_key') || settings.apiKey || '';
+      const customModel = localStorage.getItem('shop_backend_selected_model') || settings.modelName || 'gpt-4o-mini';
 
       let summaryText = "";
-      try {
-        summaryText = response.text || "";
-      } catch (e) {
-        console.warn('Summarize access failed:', e);
-      }
-      
-      if (!summaryText && response.candidates?.[0]?.content?.parts?.[0]?.text) {
-        summaryText = response.candidates[0].content.parts[0].text;
+
+      if (customApiUrl.trim()) {
+        try {
+          const endpoint = customApiUrl.endsWith('/chat/completions') 
+            ? customApiUrl 
+            : customApiUrl.endsWith('/') 
+              ? `${customApiUrl}chat/completions` 
+              : `${customApiUrl}/chat/completions`;
+
+          const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+          if (customApiKey.trim()) {
+            headers['Authorization'] = `Bearer ${customApiKey.trim()}`;
+          }
+
+          const res = await fetch(endpoint, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              model: customModel,
+              messages: [
+                { role: 'system', content: 'You are a professional memory and plot summarizer.' },
+                { role: 'user', content: finalPrompt }
+              ],
+              temperature: 0.4
+            })
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            summaryText = data.choices?.[0]?.message?.content || data.content || '';
+          }
+        } catch (err) {
+          console.warn("Custom proxy API summarize failed, falling back to Gemini SDK", err);
+        }
       }
 
-      return summaryText ? roundTitle + summaryText : null;
+      if (!summaryText) {
+        const { getGeminiClient, getGeminiModel } = await import('./lib/gemini');
+        const ai = getGeminiClient(settings);
+        const response = await ai.models.generateContent({
+          model: getGeminiModel(settings),
+          contents: [{ role: 'user', parts: [{ text: finalPrompt }] }],
+          config: {
+            temperature: 0.3
+          }
+        });
+        summaryText = response.text || "";
+        if (!summaryText && response.candidates?.[0]?.content?.parts?.[0]?.text) {
+          summaryText = response.candidates[0].content.parts[0].text;
+        }
+      }
+
+      return summaryText ? (type === 'offline' ? summaryText : roundTitle + summaryText) : null;
     } catch (e: any) {
       console.error("Summarize error:", e);
       return null;
@@ -930,6 +956,16 @@ ${recentMemories}
               />;
             case 'memory':
               return <MemoryApp friends={friends} settings={settings} onBack={() => setActiveApp('home')} />;
+            case 'shopping':
+              return (
+                <ShoppingApp 
+                  settings={settings} 
+                  friends={friends} 
+                  onBack={() => setActiveApp('home')} 
+                  addMessage={addMessage}
+                  addTransaction={addTransaction}
+                />
+              );
             case 'meituan':
               return <CharacterHomeApp settings={settings} friends={friends} onBack={() => setActiveApp('home')} />;
             case 'dating':

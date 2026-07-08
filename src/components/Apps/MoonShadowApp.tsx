@@ -209,7 +209,11 @@ const MoonShadowApp: React.FC<MoonShadowAppProps> = React.memo(({ settings, onBa
   }, []);
 
   useEffect(() => {
-    localStorage.setItem('moon_shadow_movies', JSON.stringify(movies));
+    try {
+      localStorage.setItem('moon_shadow_movies', JSON.stringify(movies));
+    } catch (e) {
+      console.warn("Storage quota exceeded for moon_shadow_movies", e);
+    }
   }, [movies]);
 
   useEffect(() => {
