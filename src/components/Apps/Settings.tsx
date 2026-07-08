@@ -40,6 +40,60 @@ export default function SettingsApp({
   const importDataRef = useRef<HTMLInputElement>(null);
   const [editingAppId, setEditingAppId] = useState<string | null>(null);
   const [presetName, setPresetName] = useState('');
+  const [customFontNameInput, setCustomFontNameInput] = useState('');
+  const [customFontUrlInput, setCustomFontUrlInput] = useState('');
+  const fontFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleAddFontPreset = (name: string, url: string, applyNow = true) => {
+    if (!url.trim()) {
+      showToast('请输入字体直链或上传字体文件', 'error');
+      return;
+    }
+    const finalName = name.trim() || url.split('/').pop()?.split('?')[0] || `自定义字体 ${(form.fontPresets?.length || 0) + 1}`;
+    const newPreset = { id: 'font-' + Date.now(), name: finalName, url: url.trim() };
+    const newPresets = [...(form.fontPresets || []), newPreset];
+    const newSettings: AppSettings = { 
+      ...form, 
+      fontPresets: newPresets, 
+      ...(applyNow ? { customFontUrl: url.trim() } : {})
+    };
+    setForm(newSettings);
+    onSave(newSettings);
+    setCustomFontNameInput('');
+    setCustomFontUrlInput('');
+    showToast(applyNow ? `字体 "${finalName}" 保存并已启用` : `字体预设 "${finalName}" 保存成功`);
+  };
+
+  const handleDeleteFontPreset = (id: string, url: string) => {
+    const newPresets = (form.fontPresets || []).filter(p => p.id !== id);
+    const newSettings: AppSettings = {
+      ...form,
+      fontPresets: newPresets,
+      customFontUrl: form.customFontUrl === url ? '' : form.customFontUrl
+    };
+    setForm(newSettings);
+    onSave(newSettings);
+    showToast('已删除字体预设');
+  };
+
+  const handleFontFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = event.target?.result as string;
+      if (dataUrl) {
+        const fontName = file.name.replace(/\.[^/.]+$/, "");
+        setCustomFontUrlInput(dataUrl);
+        if (!customFontNameInput.trim()) {
+          setCustomFontNameInput(fontName);
+        }
+        showToast(`已加载本地字体文件：${fontName}`);
+      }
+    };
+    reader.readAsDataURL(file);
+    if (fontFileInputRef.current) fontFileInputRef.current.value = '';
+  };
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
     setToast({ message, type });
@@ -551,7 +605,7 @@ export default function SettingsApp({
   return (
     <div className={cn(
       "h-full flex flex-col relative overflow-hidden transition-all duration-500",
-      form.settingsBackgroundUrl ? "bg-transparent" : (form.themeId === 'pink-cat' ? "bg-[#fffafb]" : "bg-slate-50")
+      form.settingsBackgroundUrl ? "bg-transparent" : (form.themeId === 'pink-cat' ? "bg-[#fffafb]" : form.themeId === 'ocean-blue' ? "bg-[#f0f9ff]" : "bg-slate-50")
     )}>
       <div className={cn(
         "backdrop-blur-md border-b px-4 py-3 flex items-center gap-3 sticky top-0 z-20 transition-all duration-500",
@@ -1112,15 +1166,17 @@ export default function SettingsApp({
               </div>
 
               <div className="space-y-2">
-                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-                  <Type size={14} /> 字体样式
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
+                  <span className="flex items-center gap-2"><Type size={14} /> 字体样式</span>
+                  <span className="text-[10px] text-slate-400 font-normal">点击已选中字体可取消并使用系统默认</span>
                 </label>
                 <div className="grid grid-cols-2 gap-2">
                   {(['sans', 'serif', 'mono', 'rounded', 'cute-cheese', 'dynalight', 'lxgw-wenkai'] as const).map(font => (
                     <button
                       key={font}
                       onClick={() => {
-                        const newSettings = { ...form, fontFamily: font };
+                        const newFont = form.fontFamily === font ? undefined : font;
+                        const newSettings = { ...form, fontFamily: newFont };
                         setForm(newSettings);
                         onSave(newSettings);
                       }}
@@ -1141,6 +1197,128 @@ export default function SettingsApp({
                     </button>
                   ))}
                 </div>
+              </div>
+
+              <div className="space-y-4 pt-4 border-t border-slate-100">
+                <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                  <Link2 size={14} /> TTF 字体直链导入与预设管理
+                </label>
+                
+                <div className="space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-bold text-slate-600">字体标题名称</label>
+                    <input
+                      type="text"
+                      value={customFontNameInput}
+                      onChange={e => setCustomFontNameInput(e.target.value)}
+                      placeholder="例如：手写清爽体"
+                      className="w-full px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs outline-none focus:border-blue-500 shadow-sm"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-bold text-slate-600">字体直链 URL 或本地上传</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={customFontUrlInput}
+                        onChange={e => setCustomFontUrlInput(e.target.value)}
+                        placeholder="输入 .ttf 字体直链 (例如: https://.../font.ttf)"
+                        className="flex-1 px-3 py-2.5 bg-white border border-slate-200 rounded-xl text-xs outline-none focus:border-blue-500 shadow-sm"
+                      />
+                      <input type="file" ref={fontFileInputRef} className="hidden" accept=".ttf,.otf" onChange={handleFontFileUpload} />
+                      <button
+                        onClick={() => fontFileInputRef.current?.click()}
+                        className="px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-600 hover:bg-slate-100 flex items-center gap-1.5 shrink-0 shadow-sm font-bold"
+                        title="上传本地 TTF 文件"
+                      >
+                        <Upload size={14} /> 本地上传
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      onClick={() => handleAddFontPreset(customFontNameInput, customFontUrlInput, false)}
+                      className="flex-1 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-bold transition-all shadow-sm"
+                    >
+                      保存为预设
+                    </button>
+                    <button
+                      onClick={() => handleAddFontPreset(customFontNameInput, customFontUrlInput, true)}
+                      className="flex-1 py-2.5 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-xs font-bold transition-all shadow-sm"
+                    >
+                      保存并应用
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-slate-400">支持输入网络图床直链 (.ttf) 或直接上传本地字体文件。填写标题与直链后可保存为预设或直接应用。</p>
+                </div>
+
+                {form.fontPresets && form.fontPresets.length > 0 && (
+                  <div className="space-y-2">
+                    <span className="text-[11px] font-bold text-slate-500">已保存的字体预设：</span>
+                    <div className="grid grid-cols-1 gap-2">
+                      {form.fontPresets.map(preset => {
+                        const isActive = form.customFontUrl === preset.url;
+                        return (
+                          <div 
+                            key={preset.id} 
+                            className={cn(
+                              "flex items-center justify-between p-3 border rounded-xl transition-all",
+                              isActive ? "bg-blue-50/70 border-blue-500 shadow-sm" : "bg-white border-slate-200 hover:border-slate-300"
+                            )}
+                          >
+                            <div className="flex items-center gap-3 overflow-hidden">
+                              <div className={cn("w-2 h-2 rounded-full", isActive ? "bg-blue-500 animate-pulse" : "bg-slate-300")} />
+                              <div className="overflow-hidden">
+                                <p className="text-xs font-bold text-slate-800 truncate">{preset.name}</p>
+                                <p className="text-[10px] text-slate-400 truncate max-w-[220px]">{preset.url}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                onClick={() => {
+                                  const newSettings = { ...form, customFontUrl: preset.url };
+                                  setForm(newSettings);
+                                  onSave(newSettings);
+                                  showToast(`已切换至字体：${preset.name}`);
+                                }}
+                                className={cn(
+                                  "px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
+                                  isActive ? "bg-blue-500 text-white" : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                                )}
+                              >
+                                {isActive ? '使用中' : '应用'}
+                              </button>
+                              <button
+                                onClick={() => handleDeleteFontPreset(preset.id, preset.url)}
+                                className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                                title="删除预设"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {form.customFontUrl && (
+                  <div className="flex items-center justify-between p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
+                    <span className="truncate">当前自定义字体直链：{form.customFontUrl}</span>
+                    <button
+                      onClick={() => {
+                        const newSettings = { ...form, customFontUrl: '' };
+                        setForm(newSettings);
+                        onSave(newSettings);
+                        showToast('已清除自定义字体，恢复系统内置字体');
+                      }}
+                      className="px-2.5 py-1 bg-amber-200 hover:bg-amber-300 text-amber-900 rounded-lg font-bold shrink-0 ml-2"
+                    >
+                      停用自定义字体
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center justify-between p-4 bg-white border rounded-2xl shadow-sm">
@@ -1255,6 +1433,29 @@ export default function SettingsApp({
                   <div className="text-center">
                     <p className="font-black text-slate-800 text-sm tracking-tight">雨夜小猫</p>
                     <p className="text-[10px] text-slate-400 mt-0.5">Nocturnal Calm</p>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => {
+                    const newSettings: AppSettings = { ...form, themeId: 'ocean-blue' as const };
+                    setForm(newSettings);
+                    onSave(newSettings);
+                  }}
+                  className={cn(
+                    "p-6 rounded-[32px] border-2 transition-all flex flex-col items-center gap-4 group",
+                    form.themeId === 'ocean-blue' ? "border-sky-500 bg-sky-50/50 shadow-lg shadow-sky-500/10" : "border-slate-100 bg-white hover:border-slate-200"
+                  )}
+                >
+                  <div className={cn(
+                    "w-12 h-12 rounded-2xl flex items-center justify-center transition-all duration-500 shadow-sm",
+                    form.themeId === 'ocean-blue' ? "bg-sky-500 text-white -rotate-6 scale-110" : "bg-slate-50 text-slate-400 group-hover:bg-slate-100"
+                  )}>
+                    <Cloud size={24} strokeWidth={2.5} />
+                  </div>
+                  <div className="text-center">
+                    <p className="font-black text-slate-800 text-sm tracking-tight">大海浅蓝白</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5">Ocean Frost</p>
                   </div>
                 </button>
 

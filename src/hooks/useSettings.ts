@@ -20,6 +20,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   customIcons: {},
   hideStatusBar: false,
   customFontUrl: '',
+  fontPresets: [],
   homePages: [['chat', 'world-book', 'meituan', 'weibo', 'shopping', 'parallel-universe', 'check-phone', 'dating', 'calendar', 'diary', 'settings', 'memory']],
   themeId: 'rainy-cat',
   desktopLayout: [

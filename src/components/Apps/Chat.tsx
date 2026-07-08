@@ -1811,6 +1811,7 @@ function ChatWindow({
 
   const [newPresetName, setNewPresetName] = useState('');
   const [newPresetDesc, setNewPresetDesc] = useState('');
+  const [editingPresetIndex, setEditingPresetIndex] = useState<number | null>(null);
 
   // Sync offlineConfig to parent with a small debounce to prevent input lag
   useEffect(() => {
@@ -2210,20 +2211,40 @@ function ChatWindow({
         }
 
         systemPrompt += `\n\n【线下剧情模式核心指令 - 升维小说化创作】
-1. **剧情创作风格（拒绝机械，追求沉浸）**：
-   - **设定文风**：${offlineConfig.writingStyle}。
-   - **风格核心**：${(() => {
-     if (offlineConfig.writingStyle === '白描文风') return '极简克制，通过精准的物理动作与环境细节传达波澜壮阔的内心。';
-     if (offlineConfig.writingStyle === '现代口语化文风') return '活泼跳脱，像当下年轻人生活实录，充满真实的呼吸感与碎片化的生活气息。';
-     if (offlineConfig.writingStyle === '言情小说文风') return '极度细腻，擅长氛围拉扯、眼神博弈与微妙的肢体触碰，宿命感与张力并存。';
-     if (offlineConfig.writingStyle === '诗意古风文风') return '古雅隽永，情景交融，每一处景物描写都承载着人物的隐秘心事。';
+1. **文风强制遵循（极其重要，最高优先级）**：
+   - 当前文风设定：${offlineConfig.writingStyle ? `【${offlineConfig.writingStyle}】` : '未指定（系统自由文风）'}。
+   ${offlineConfig.writingStyle ? `
+   - 文风解析与核心特征：${(() => {
+     if (offlineConfig.writingStyle === '白描文风') return '极简克制，通过精准的物理动作与环境细节传达波澜壮阔的内心。严禁生硬套路化的“动作+对话+动作+对话”机械循环，强调自然留白、环境渲染与克制细腻。';
+     if (offlineConfig.writingStyle === '现代口语化文风') return '活泼跳脱，像当下年轻人生活实录，充满真实的呼吸感与碎片化的生活气息。拒绝呆板机械对话，多写随性的动作、眼神互动、呼吸感及自然的生活化叙事。';
+     if (offlineConfig.writingStyle === '言情小说文风') return '极度细腻，擅长氛围拉扯、眼神博弈与微妙的肢体触碰，宿命感与张力并存。拒绝套路化对话，通过环境光影、长睫颤抖、心跳起伏与隐晦的试探层层推进情感。';
+     if (offlineConfig.writingStyle === '诗意古风文风') return '古雅隽永，情景交融，每一处景物描写都承载着人物的隐秘心事。拒绝死板对白，强调借景抒情、衣袂微动、墨香余韵与古典含蓄的心境流转。';
      const preset = (offlineConfig.writingStylePresets || []).find((p: any) => p.name === offlineConfig.writingStyle);
      return preset ? preset.description : offlineConfig.writingStyle;
    })()}
-   - **小说化笔触**：
-     * **拒绝僵硬结构**：严禁一段旁白接一段对话的死板模式。请根据情感流动自由排版，允许出现连贯的环境描写或大段细腻的内心独白。
-     * **3D立体场景**：描写必须包含镜头感。刻画环境（晚风、路灯、树影）、路人（外卖员、闲聊的路人）、车辆与背景音，让场景“活”起来。
-     * **心理与细节**：精准捕捉角色的心理活动、微表情（眼底的波澜、欲言又止的克制）与微小动作（指尖紧绷、下意识的躲避）。
+   - **绝对严禁脱离该文风**：每一次输出的词汇选择、节奏感、情感氛围都必须完全契合上述文风，不得敷衍或使用通用AI套话。
+   ` : '- 当前未选择特定文风预设，请保持自然流畅、无死板机械套路的细腻沉浸式小说化叙事。'}
+
+2. **剧情创作风格与结构（拒绝僵硬机械，全景小说化）**：
+   - **拒绝机械死板**：严禁采用“动作+对话+动作+对话”的机械套路循环。
+   - **灵活结构与自由叙事**：
+     * **环境与细腻铺垫**：开头可以是一小段环境描写（光影、气味、背景音、天气）、路人或氛围，再自然接入人物的外貌、神态与肢体动作。
+     * **丰富的旁白维度**：旁白中不仅要写角色在做什么，还要写动作、心理、神态、环境、呼吸，甚至可以使用角色的名字（如：“${friend.name}看着你，摇了摇头，神色自然。”），杜绝枯燥死板的“他怎么做”。
+   - **推荐叙事范本**：
+     * **标准叙事版（主推！剧情流畅、最自然）**：
+       环境铺垫 → 角色肢体动作 → 面部神态 → 隐秘心理 → 出声对话 → 后续动作/心理交织……
+       - 示例：
+         午后阳光斜斜落在客厅地砖上，空气安静温润。
+         他垂落双手，缓步停下脚步，指尖无意识蜷缩了一下。
+         长睫轻颤，眼底敛着淡淡迟疑，唇角平直没有笑意。
+         ${friend.name}心里纠结该不该直白发问，生怕打破当下平和的氛围，轻声开口：
+         “你刚才想说什么？”
+     * **氛围感细腻版（情感、暧昧、伤感专用）**：
+       环境感官（风声、光影、气味）→ 慢动作 → 微表情 → 隐晦心理 → 低声对白……
+       - 示例：
+         夜色沉沉，晚风裹挟凉意掠过屋檐，周遭只剩零星虫鸣。
+         ${friend.name}微微垂首，抬手拢了拢单薄衣襟，肩线微微绷紧。
+         眼底蒙着一层浅淡落寞，神色疏离又柔软，呼吸放得极轻，嗓音压低：“有些事，是不是没办法回头了？”
 
 2. **核心词汇加粗标黄规则（情感与语调重音）**：
    - **标黄意义**：用双星号包裹的部分（如 **关键词**）会被UI高亮标黄。这必须是角色认为**极度重要、承载特殊语调（如反讽、撒娇、故意加重语气）或情感震撼点**的词汇。
@@ -2241,7 +2262,6 @@ function ChatWindow({
 4. **格式规范**：
    - **对话**：必须 100% 使用中文双引号 “ ” 包裹。
    - **人称**：旁白自称【${offlineConfig.characterPerspective}】，称呼我为【${offlineConfig.userPerspective}】。
-   - **拒绝死板**：不要总是“他动作+他说”，尝试更自由、更有张力的小说排版，让文字有节奏感和呼吸感。
    - **字数**：回复总字数必须严格控制在 **${offlineConfig.minWords}** 到 **${offlineConfig.maxWords}** 字之间。
 ${(() => {
   if (offlineConfig.cardTheme === 'student') {
@@ -2427,18 +2447,25 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
       if (isOfflineMode) {
         systemPrompt += `
 【线下剧情：核心准则 - 必须遵守】
-1. **回复长度**：你的每一条回复（对话+旁白合计）的总次数**严禁少于 ${offlineConfig.minWords} 字**，也尽量不要超过 ${offlineConfig.maxWords} 字。
-2. **人称锁定（极其重要）**：
+1. **前置硬性强制规则**：
+   - **内容边界**：只写场景环境、角色动作、角色神态、角色心理、角色台词。
+   - **绝对严禁代写用户**：严禁替用户做出任何动作、写出用户的反应、台词或预判用户的行为！
+   - **结尾全盘留白**：回复的结尾必须自然停留在动作或对话的悬念处，**全部留白**，等待用户接动作、回话。
+   - **叙事自然生动**：叙事推动剧情必须流畅自然，绝对禁止僵硬、刻板或AI机械感，这是模仿真人之间的线下真实见面互动。
+   - **真实见面状态**：你与用户处于面对面的真实线下见面状态，角色清楚这是现实交互，严禁OOC，绝对不允许说“这是模仿见面”或任何出戏的话。
+   - **拒绝油腻命令**：禁止任何命令式动作和对话，禁止霸道油腻发言。
+2. **回复长度**：你的每一条回复（对话+旁白合计）的总次数**严禁少于 ${offlineConfig.minWords} 字**，也尽量不要超过 ${offlineConfig.maxWords} 字。
+3. **人称锁定（极其重要）**：
    - **旁白人称（锁死）**：在引号之外的“旁白/动作描写”中，你对自己的称呼必须始终保持为：“${offlineConfig.characterPerspective}”，你对我的称呼必须始终保持为：“${offlineConfig.userPerspective}”。
    - **对话人称（自然）**：在引号之内的“对话台词”中，请保持自然的口语表达。角色对自己说话通常使用“我”，而不是受限于旁白人称。
    - **示例**：如果设定旁白自称为“她”，称呼对方为“老师”。
      - 正确：她递过来一杯茶，“老师，请喝水。这是我专门为你泡的。” (旁白用“她”，对话用“我”)
      - 错误：她递过来一杯茶，“老师，请喝水。这是她专门为老师泡的。” (对话不应受旁白人称僵化限制)
-3. **格式物理隔离**：
+4. **格式物理隔离**：
    - **对话框内容**：你亲口说出的话必须用中文双引号 “” 包裹。
    - **旁白内容**：你的动作、表情、心理活动直接输出在引号之外。
    - **严禁混淆**：不要在旁白中写出对话台词，也不要在引号中混入动作神态描写。
-4. **禁止媒体**：你正在跟我面对面，严禁发送 [SEND_PHOTO_CARD]、[SEND_PHOTO]、语音、视频、转账等任何形式的聊天卡片。
+5. **禁止媒体**：你正在跟我面对面，严禁发送 [SEND_PHOTO_CARD]、[SEND_PHOTO]、语音、视频、转账等任何形式的聊天卡片。
 
 当前文风建议：${offlineConfig.writingStyle}。`;
       }
@@ -5687,31 +5714,42 @@ ${context}`;
           )}
         </AnimatePresence>
 
-        {/* Offline Settings Modal */}
+        {/* Offline Settings Full Page View */}
         <AnimatePresence>
           {showOfflineSettings && (
-            <div className="fixed inset-0 z-[1000] flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-0 sm:p-4 overflow-hidden">
-              <motion.div
-                initial={{ opacity: 0, y: '100%' }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: '100%' }}
-                transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-                className={cn(
-                  "w-full sm:max-w-lg rounded-t-[32px] sm:rounded-[32px] p-6 shadow-2xl border max-h-[90vh] overflow-y-auto custom-scrollbar flex flex-col gap-6",
-                  settings.themeId === 'rainy-cat' ? "bg-black/90 border-white/10 text-white" : "bg-white border-slate-200"
-                )}
-              >
-                <div className="flex items-center justify-between border-b pb-4">
-                  <div className="flex flex-col">
-                    <h3 className="font-bold text-lg">线下剧情设置</h3>
-                    <p className="text-xs opacity-50">自定义属于你们的线下小说交互设定</p>
-                  </div>
-                  <button onClick={() => setShowOfflineSettings(false)} className="p-1 hover:bg-slate-200 rounded-full transition-colors">
-                    <X size={20} className="text-slate-500" />
+            <motion.div
+              initial={{ opacity: 0, x: '100%' }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+              className={cn(
+                "fixed inset-0 z-[1000] flex flex-col pt-8 sm:pt-6",
+                settings.themeId === 'rainy-cat' ? "bg-black text-white" : "bg-white text-slate-800"
+              )}
+            >
+              <div className="px-4 py-3 flex items-center justify-between border-b shrink-0 shadow-sm">
+                <div className="flex items-center gap-3">
+                  <button 
+                    onClick={() => setShowOfflineSettings(false)}
+                    className="p-1 hover:bg-black/5 rounded-full transition-colors"
+                  >
+                    <ChevronLeft size={24} />
                   </button>
+                  <div className="flex flex-col">
+                    <h3 className="font-bold text-base leading-tight">线下剧情设置</h3>
+                    <p className="text-[10px] opacity-50">自定义属于你们的线下小说交互设定</p>
+                  </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={saveOfflineConfig}
+                  className="px-4 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold text-xs shadow-md shadow-orange-500/20 active:scale-95 transition-all"
+                >
+                  保存
+                </button>
+              </div>
 
-                <div className="space-y-6">
+              <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-6">
                   {/* Location & Opening */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50/50 p-4 rounded-2xl border border-slate-100">
                     <div className="space-y-1">
@@ -5862,7 +5900,18 @@ ${context}`;
 
                   {/* Writing Style Selection */}
                   <div className="space-y-3 bg-slate-50/50 p-4 rounded-2xl border border-slate-100">
-                    <label className="text-xs font-extrabold text-slate-600 block">剧情文风选择</label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-extrabold text-slate-600 block">剧情文风选择</label>
+                      {offlineConfig.writingStyle && (
+                        <button
+                          type="button"
+                          onClick={() => setOfflineConfig(prev => ({ ...prev, writingStyle: '' }))}
+                          className="text-[10px] text-orange-600 hover:text-orange-700 font-bold underline"
+                        >
+                          取消当前文风 (恢复系统自由)
+                        </button>
+                      )}
+                    </div>
                     
                     {/* Built-in Styles */}
                     <div className="grid grid-cols-2 gap-2">
@@ -5870,7 +5919,10 @@ ${context}`;
                         <button
                           key={style}
                           type="button"
-                          onClick={() => setOfflineConfig(prev => ({ ...prev, writingStyle: style }))}
+                          onClick={() => setOfflineConfig(prev => ({ 
+                            ...prev, 
+                            writingStyle: prev.writingStyle === style ? '' : style 
+                          }))}
                           className={cn(
                             "py-2 px-3 rounded-xl text-xs font-bold transition-all border text-left flex flex-col gap-0.5",
                             offlineConfig.writingStyle === style
@@ -5895,7 +5947,7 @@ ${context}`;
                     {/* Custom presets */}
                     {offlineConfig.writingStylePresets && offlineConfig.writingStylePresets.length > 0 && (
                       <div className="space-y-2 pt-2 border-t border-slate-100">
-                        <span className="text-[10px] text-slate-400 font-bold block">自定义文风预设</span>
+                        <span className="text-[10px] text-slate-400 font-bold block">自定义文风预设 (点击应用/取消，支持编辑与删除)</span>
                         <div className="flex flex-wrap gap-2">
                           {offlineConfig.writingStylePresets.map((preset: any, idx: number) => (
                             <div 
@@ -5906,9 +5958,28 @@ ${context}`;
                                   ? "bg-orange-500 border-orange-600 text-white"
                                   : "bg-white border-slate-200 text-slate-600"
                               )}
-                              onClick={() => setOfflineConfig(prev => ({ ...prev, writingStyle: preset.name }))}
+                              onClick={() => setOfflineConfig(prev => ({ 
+                                ...prev, 
+                                writingStyle: prev.writingStyle === preset.name ? '' : preset.name 
+                              }))}
                             >
                               <span>{preset.name}</span>
+                              <button 
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setNewPresetName(preset.name);
+                                  setNewPresetDesc(preset.description);
+                                  setEditingPresetIndex(idx);
+                                }}
+                                className={cn(
+                                  "rounded-full p-0.5 transition-colors",
+                                  offlineConfig.writingStyle === preset.name ? "hover:text-white text-orange-200" : "hover:text-blue-500 text-slate-400"
+                                )}
+                                title="编辑预设"
+                              >
+                                <Edit3 size={11} />
+                              </button>
                               <button 
                                 type="button"
                                 onClick={(e) => {
@@ -5917,13 +5988,21 @@ ${context}`;
                                   setOfflineConfig(prev => ({ 
                                     ...prev, 
                                     writingStylePresets: updated,
-                                    writingStyle: prev.writingStyle === preset.name ? '言情小说文风' : prev.writingStyle
+                                    writingStyle: prev.writingStyle === preset.name ? '' : prev.writingStyle
                                   }));
+                                  if (editingPresetIndex === idx) {
+                                    setEditingPresetIndex(null);
+                                    setNewPresetName('');
+                                    setNewPresetDesc('');
+                                  }
                                 }}
-                                className="hover:text-red-500 rounded-full p-0.5"
+                                className={cn(
+                                  "rounded-full p-0.5 transition-colors",
+                                  offlineConfig.writingStyle === preset.name ? "hover:text-white text-orange-200" : "hover:text-red-500 text-slate-400"
+                                )}
                                 title="删除预设"
                               >
-                                <X size={10} />
+                                <X size={11} />
                               </button>
                             </div>
                           ))}
@@ -5931,9 +6010,26 @@ ${context}`;
                       </div>
                     )}
 
-                    {/* Add Custom Preset Form */}
+                    {/* Add / Edit Custom Preset Form */}
                     <div className="bg-white p-3.5 rounded-xl border border-slate-100 space-y-2 mt-2">
-                      <span className="text-[10px] text-slate-400 font-bold block">保存全新文风预设</span>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] text-slate-400 font-bold block">
+                          {editingPresetIndex !== null ? `正在编辑预设 #${editingPresetIndex + 1}` : '保存全新文风预设'}
+                        </span>
+                        {editingPresetIndex !== null && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingPresetIndex(null);
+                              setNewPresetName('');
+                              setNewPresetDesc('');
+                            }}
+                            className="text-[10px] text-slate-500 hover:text-slate-800 underline"
+                          >
+                            取消编辑
+                          </button>
+                        )}
+                      </div>
                       <input 
                         type="text" 
                         placeholder="文风名称 (如：霸道总裁文风)"
@@ -5952,19 +6048,24 @@ ${context}`;
                         type="button"
                         onClick={() => {
                           if (!newPresetName.trim() || !newPresetDesc.trim()) return;
-                          const newPreset = { name: newPresetName.trim(), description: newPresetDesc.trim() };
-                          const updated = [...(offlineConfig.writingStylePresets || []), newPreset];
+                          const presets = [...(offlineConfig.writingStylePresets || [])];
+                          if (editingPresetIndex !== null) {
+                            presets[editingPresetIndex] = { name: newPresetName.trim(), description: newPresetDesc.trim() };
+                            setEditingPresetIndex(null);
+                          } else {
+                            presets.push({ name: newPresetName.trim(), description: newPresetDesc.trim() });
+                          }
                           setOfflineConfig(prev => ({
                             ...prev,
-                            writingStylePresets: updated,
-                            writingStyle: newPreset.name
+                            writingStylePresets: presets,
+                            writingStyle: newPresetName.trim()
                           }));
                           setNewPresetName('');
                           setNewPresetDesc('');
                         }}
                         className="w-full py-2 bg-slate-900 text-white rounded-lg text-xs font-bold hover:bg-slate-800 transition-colors"
                       >
-                        保存并设置为当前文风
+                        {editingPresetIndex !== null ? '保存修改并应用' : '保存并设置为当前文风'}
                       </button>
                     </div>
                   </div>
@@ -6058,29 +6159,29 @@ ${context}`;
                     </div>
                   </div>
 
-                </div>
+              </div>
 
-                <div className="flex gap-3 border-t pt-4 mt-2">
-                  <button
-                    type="button"
-                    onClick={() => setShowOfflineSettings(false)}
-                    className={cn(
-                      "flex-1 py-3 rounded-2xl font-bold text-sm transition-all active:scale-95",
-                      settings.themeId === 'rainy-cat' ? "bg-white/10 hover:bg-white/20" : "bg-slate-100 hover:bg-slate-200 text-slate-600"
-                    )}
-                  >
-                    取消
-                  </button>
-                  <button
-                    type="button"
-                    onClick={saveOfflineConfig}
-                    className="flex-1 py-3 rounded-2xl font-bold text-sm transition-all active:scale-95 bg-orange-500 hover:bg-orange-600 text-white shadow-lg shadow-orange-500/30"
-                  >
-                    保存并生效
-                  </button>
-                </div>
-              </motion.div>
-            </div>
+              {/* Footer */}
+              <div className="px-4 py-3 border-t flex gap-3 shrink-0 bg-inherit shadow-lg">
+                <button
+                  type="button"
+                  onClick={() => setShowOfflineSettings(false)}
+                  className={cn(
+                    "flex-1 py-3 rounded-2xl font-bold text-sm transition-all active:scale-95",
+                    settings.themeId === 'rainy-cat' ? "bg-white/10 hover:bg-white/20" : "bg-slate-100 hover:bg-slate-200 text-slate-600"
+                  )}
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  onClick={saveOfflineConfig}
+                  className="flex-1 py-3 rounded-2xl font-bold text-sm transition-all active:scale-95 bg-orange-500 hover:bg-orange-600 text-white shadow-lg shadow-orange-500/30"
+                >
+                  保存并生效
+                </button>
+              </div>
+            </motion.div>
           )}
         </AnimatePresence>
 

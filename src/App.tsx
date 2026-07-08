@@ -52,6 +52,7 @@ import { set, get } from 'idb-keyval';
 import ChatApp from './components/Apps/Chat';
 import SettingsApp from './components/Apps/Settings';
 import RainyBackground from './components/Theme/RainyBackground';
+import SnowBackground from './components/Theme/SnowBackground';
 import MemoryApp from './components/Apps/MemoryApp';
 import CharacterHomeApp from './components/Apps/CharacterHomeApp';
 import DatingApp from './components/Apps/DatingApp';
@@ -1039,12 +1040,13 @@ ${recentMemories}
             "relative overflow-hidden flex flex-col transition-all duration-500",
             settings.themeId === 'rainy-cat' && "grayscale-[0.2] contrast-[0.9]",
             settings.themeId === 'pink-cat' && "cute-rabbit-theme",
+            settings.themeId === 'ocean-blue' && "ocean-snow-theme",
             settings.fullScreenMode 
               ? "fullscreen-immersive" 
               : "w-full max-w-[380px] h-[min(800px,90dvh)] min-h-[600px] sm:min-h-[700px] rounded-[24px] sm:rounded-[40px] border-[2px] sm:border-[4px] border-[#333] shadow-2xl my-4"
           )}
         style={{ 
-          background: settings.themeId === 'pink-cat' ? '#fffafb' : '#000',
+          background: settings.themeId === 'pink-cat' ? '#fffafb' : settings.themeId === 'ocean-blue' ? '#f0f9ff' : '#000',
           transform: 'translateZ(0)', // Force fixed elements to stay within this container
         }}
       >
@@ -1090,9 +1092,10 @@ ${recentMemories}
           }}
         />
         
-        {/* Raindrop Effect */}
+        {/* Effects */}
         {settings.themeId === 'rainy-cat' && <RainyBackground />}
         {settings.themeId === 'pink-cat' && <DynamicEffects />}
+        {settings.themeId === 'ocean-blue' && <SnowBackground />}
         
         {/* Status Bar */}
         {!settings.hideStatusBar && (
@@ -1161,10 +1164,12 @@ ${recentMemories}
              (activeApp === 'settings' && settings.settingsBackgroundUrl) || 
              settings.wallpaperUrl) ? "bg-transparent" : (
               settings.themeId === 'pink-cat' ? "bg-[#fffafb]" : (
-                settings.themeId !== 'rainy-cat' && activeApp === 'chat' ? "bg-[#f5f5f5]" :
-                settings.themeId !== 'rainy-cat' && activeApp === 'settings' ? "bg-slate-50" :
-                settings.themeId !== 'rainy-cat' && activeApp === 'calendar' ? "bg-[#FFF0F5]" :
-                settings.themeId !== 'rainy-cat' && activeApp === 'memory' ? "bg-slate-900" : ""
+                settings.themeId === 'ocean-blue' ? "bg-[#f0f9ff]" : (
+                  settings.themeId !== 'rainy-cat' && activeApp === 'chat' ? "bg-[#f5f5f5]" :
+                  settings.themeId !== 'rainy-cat' && activeApp === 'settings' ? "bg-slate-50" :
+                  settings.themeId !== 'rainy-cat' && activeApp === 'calendar' ? "bg-[#FFF0F5]" :
+                  settings.themeId !== 'rainy-cat' && activeApp === 'memory' ? "bg-slate-900" : ""
+                )
               )
             )
           )}
@@ -1190,9 +1195,12 @@ ${recentMemories}
                     animate={{ scale: 1, opacity: 1 }}
                     className="flex justify-center mb-4"
                   >
-                    {(settings.themeId === 'rainy-cat' || settings.themeId === 'pink-cat') ? (
-                      <div className="w-12 h-12 rounded-full bg-pink-100/20 backdrop-blur-md flex items-center justify-center border border-pink-200/20">
-                        <Heart className="text-pink-300" size={24} />
+                    {(settings.themeId === 'rainy-cat' || settings.themeId === 'pink-cat' || settings.themeId === 'ocean-blue') ? (
+                      <div className={cn(
+                        "w-12 h-12 rounded-full backdrop-blur-md flex items-center justify-center border",
+                        settings.themeId === 'ocean-blue' ? "bg-sky-100/20 border-sky-200/20 text-sky-400" : "bg-pink-100/20 border-pink-200/20"
+                      )}>
+                        <Heart className={settings.themeId === 'ocean-blue' ? "text-sky-400" : "text-pink-300"} size={24} />
                       </div>
                     ) : (
                       <Lock className="text-white/80" size={32} />
@@ -1201,14 +1209,16 @@ ${recentMemories}
                   <h1 className={cn(
                     "text-6xl font-light text-white tracking-tighter",
                     settings.themeId === 'rainy-cat' && "font-serif italic opacity-60",
-                    settings.themeId === 'pink-cat' && "text-[#ff85a2]"
+                    settings.themeId === 'pink-cat' && "text-[#ff85a2]",
+                    settings.themeId === 'ocean-blue' && "text-sky-600"
                   )}>
                     {time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
                   </h1>
                   <p className={cn(
                     "text-lg font-medium",
                     settings.themeId === 'rainy-cat' ? "text-white/30 tracking-[0.2em]" : 
-                    settings.themeId === 'pink-cat' ? "text-[#ff85a2]/80" : "text-white/80"
+                    settings.themeId === 'pink-cat' ? "text-[#ff85a2]/80" : 
+                    settings.themeId === 'ocean-blue' ? "text-sky-600/80" : "text-white/80"
                   )}>
                     {time.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric', weekday: 'long' })}
                   </p>
@@ -1927,7 +1937,7 @@ function PhoneApp({ settings, onBack, onStartCall }: { settings: any, onBack: ()
     }
   };
 
-  const isRainy = (settings.themeId === 'rainy-cat' || settings.themeId === 'pink-cat');
+  const isRainy = (settings.themeId === 'rainy-cat' || settings.themeId === 'pink-cat' || settings.themeId === 'ocean-blue');
 
   return (
     <div className={cn(

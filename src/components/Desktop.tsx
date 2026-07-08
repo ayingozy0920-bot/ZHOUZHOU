@@ -981,6 +981,56 @@ function WidgetRenderer({ widget, settings, currentTime }: { widget: Widget; set
 
   const renderContent = () => {
     switch (widget.type) {
+      case 'custom-generator': {
+        const d = widget.data || {};
+        const bgAlpha = d.bgAlpha !== undefined ? d.bgAlpha : 0.3;
+        const blur = d.blur !== undefined ? d.blur : 10;
+        const radius = d.radius !== undefined ? d.radius : 20;
+        const bgColor = d.bgColor || '#ffffff';
+        const textColor = d.textColor || '#000000';
+        const title = d.title || '在你的盲点里寸步不移';
+        const sub = d.sub || '今度会う時に花を送ってくれません';
+        const curTime = d.curTime || '3:26';
+        const totalTime = d.totalTime || '4:50';
+        const progress = d.progress !== undefined ? d.progress : 35;
+
+        let bgStyle = bgColor;
+        if (bgColor.startsWith('#')) {
+          const r = parseInt(bgColor.slice(1,3), 16);
+          const g = parseInt(bgColor.slice(3,5), 16);
+          const b = parseInt(bgColor.slice(5,7), 16);
+          bgStyle = `rgba(${isNaN(r)?255:r}, ${isNaN(g)?255:g}, ${isNaN(b)?255:b}, ${bgAlpha})`;
+        }
+
+        const isCircle = d.sizeType === 'size-circle';
+        const isVertical = d.sizeType === 'size-2x4';
+
+        return (
+          <div 
+            className={cn(
+              "w-full h-full flex justify-center gap-1.5 p-4 z-10 overflow-hidden relative shadow-md",
+              isVertical ? "flex-col-reverse justify-end" : "flex-col justify-center"
+            )}
+            style={{
+              backgroundColor: bgStyle,
+              backdropFilter: `blur(${blur}px)`,
+              WebkitBackdropFilter: `blur(${blur}px)`,
+              borderRadius: isCircle ? '999px' : `${radius}px`,
+              color: textColor,
+            }}
+          >
+            <div className="font-bold text-sm tracking-tight truncate" style={{ color: textColor }}>{title}</div>
+            <div className="text-[11px] opacity-80 truncate" style={{ color: textColor }}>{sub}</div>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-[10px] opacity-70" style={{ color: textColor }}>{curTime}</span>
+              <div className="flex-1 h-1 bg-black/10 rounded-full overflow-hidden">
+                <div className="h-full rounded-full transition-all" style={{ width: `${progress}%`, backgroundColor: textColor }} />
+              </div>
+              <span className="text-[10px] opacity-70" style={{ color: textColor }}>{totalTime}</span>
+            </div>
+          </div>
+        );
+      }
       case 'dynamic-cat':
         return (
           <div className="flex-1 flex flex-col items-center justify-center z-10">
@@ -1967,6 +2017,166 @@ function WidgetRenderer({ widget, settings, currentTime }: { widget: Widget; set
 }
 
 function WidgetGallery({ onAdd, onClose, settings, currentTime }: { onAdd: (w: Widget) => void; onClose: () => void; settings: AppSettings, currentTime: Date }) {
+  const [activeTab, setActiveTab] = useState<'library' | 'generator'>('library');
+
+  // Custom Generator state
+  const STORAGE_KEY = "custom_widgets_list";
+  const [sizeType, setSizeType] = useState('size-4x2');
+  const [radius, setRadius] = useState(20);
+  const [bgAlpha, setBgAlpha] = useState(0.3);
+  const [blur, setBlur] = useState(10);
+  const [bgColor, setBgColor] = useState('#ffffff');
+  const [textColor, setTextColor] = useState('#000000');
+  const [title, setTitle] = useState('在你的盲点里寸步不移');
+  const [sub, setSub] = useState('今度会う時に花を送ってくれません');
+  const [curTime, setCurTime] = useState('3:26');
+  const [totalTime, setTotalTime] = useState('4:50');
+  const [progress, setProgress] = useState(35);
+  
+  const [savedList, setSavedList] = useState<any[]>(() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const getCurrentWidgetData = () => ({
+    sizeType, radius, bgAlpha, blur, bgColor, textColor, title, sub, curTime, totalTime, progress
+  });
+
+  const getCustomWidgetObject = (cfg?: any): Widget => {
+    const data = cfg || getCurrentWidgetData();
+    const size: Widget['size'] = data.sizeType === 'size-circle' ? 'circle' :
+                                 data.sizeType === 'size-2x4' ? '2x4' :
+                                 data.sizeType === 'size-2x2' ? '2x2' : '4x2';
+    return {
+      id: `custom-${Date.now()}`,
+      type: 'custom-generator' as const,
+      size,
+      category: 'Custom Generator',
+      data
+    };
+  };
+
+  const handleSaveToLocalStorage = () => {
+    const cfg = {
+      id: Date.now().toString(),
+      ...getCurrentWidgetData()
+    };
+    const updated = [...savedList, cfg];
+    setSavedList(updated);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    alert("组件保存成功！");
+  };
+
+  const handleAddCustomToDesktop = (cfg?: any) => {
+    const w = getCustomWidgetObject(cfg);
+    onAdd(w);
+  };
+
+  const handleLoadConfig = (item: any) => {
+    setSizeType(item.sizeType || 'size-4x2');
+    setRadius(item.radius !== undefined ? item.radius : 20);
+    setBgAlpha(item.bgAlpha !== undefined ? item.bgAlpha : 0.3);
+    setBlur(item.blur !== undefined ? item.blur : 10);
+    setBgColor(item.bgColor || '#ffffff');
+    setTextColor(item.textColor || '#000000');
+    setTitle(item.title || '');
+    setSub(item.sub || '');
+    setCurTime(item.curTime || '3:26');
+    setTotalTime(item.totalTime || '4:50');
+    setProgress(item.progress !== undefined ? item.progress : 35);
+  };
+
+  const handleDeleteSaved = (id: string) => {
+    const updated = savedList.filter(item => item.id !== id);
+    setSavedList(updated);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+  };
+
+  const [importCodeText, setImportCodeText] = useState('');
+
+  const cleanWordText = (text: string) => {
+    return text
+      .replace(/&lt;/g, "<")
+      .replace(/&gt;/g, ">")
+      .replace(/&amp;/g, "&")
+      .replace(/\s+/g, " ")
+      .trim();
+  };
+
+  const parseHtmlWidget = (rawCode: string) => {
+    const html = cleanWordText(rawCode);
+    const cfg = {
+      sizeType: "size-4x2",
+      radius: 20,
+      bgAlpha: 0.3,
+      blur: 10,
+      bgColor: "#ffffff",
+      textColor: "#000000",
+      title: "",
+      sub: "",
+      curTime: "",
+      totalTime: "",
+      progress: 0
+    };
+
+    const titleMatch = html.match(/<div class="title">([\s\S]*?)<\/div>/);
+    if (titleMatch) cfg.title = titleMatch[1].trim();
+
+    const subMatch = html.match(/<div class="sub">([\s\S]*?)<\/div>/);
+    if (subMatch) cfg.sub = subMatch[1].trim();
+
+    const spanArr = html.match(/<span>(.*?)<\/span>/g) || [];
+    const timeList = spanArr.map(s => s.replace(/<\/?span>/g, "").trim());
+    if (timeList.length >= 2) {
+      cfg.curTime = timeList[0];
+      cfg.totalTime = timeList[1];
+    }
+
+    const proMatch = html.match(/width:\s*(\d+)%/);
+    if (proMatch) cfg.progress = Number(proMatch[1]);
+
+    const radiusMatch = html.match(/border-radius:\s*(\d+)/);
+    if (radiusMatch) cfg.radius = Number(radiusMatch[1]);
+
+    const blurMatch = html.match(/blur\((\d+px)/);
+    if (blurMatch) cfg.blur = Number(blurMatch[1].replace("px", ""));
+
+    const rgbaMatch = html.match(/rgba\([\d, ]+,\s*([0-9.]+)\)/);
+    if (rgbaMatch) cfg.bgAlpha = Number(rgbaMatch[1]);
+
+    return cfg;
+  };
+
+  const handleImportHtml = () => {
+    const code = importCodeText.trim();
+    if (!code) return alert("请粘贴组件HTML代码！");
+    try {
+      const config = parseHtmlWidget(code);
+      handleLoadConfig(config);
+      alert("HTML组件解析完成，已自动加载配置！");
+    } catch (e) {
+      alert("解析失败，请检查代码格式是否为标准widget组件代码");
+      console.error(e);
+    }
+  };
+
+  const handleImportJson = () => {
+    const text = importCodeText.trim();
+    if (!text) return alert("请粘贴JSON配置文本！");
+    try {
+      const cfg = JSON.parse(text);
+      handleLoadConfig(cfg);
+      alert("JSON配置导入成功！");
+    } catch (e) {
+      alert("JSON格式错误，无法解析");
+      console.error(e);
+    }
+  };
+
   const widgets: Widget[] = [
     { id: 'w2', type: 'weather', size: '2x1' },
     { id: 'w29', type: 'ins-split-v2', size: '5x2' },
@@ -1990,54 +2200,249 @@ function WidgetGallery({ onAdd, onClose, settings, currentTime }: { onAdd: (w: W
       initial={{ opacity: 0, y: 100 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 100 }}
-      className="absolute inset-0 z-50 bg-pink-50/50 backdrop-blur-2xl flex flex-col"
+      className="absolute inset-0 z-50 bg-pink-50/90 backdrop-blur-2xl flex flex-col"
     >
       <div className="p-6 flex items-center justify-between border-b border-white/50">
-        <h3 className="text-slate-800 font-bold text-lg">添加小组件</h3>
+        <div className="flex items-center gap-4">
+          <h3 className="text-slate-800 font-bold text-lg">添加小组件</h3>
+          <div className="flex bg-slate-200/60 p-1 rounded-xl">
+            <button
+              onClick={() => setActiveTab('library')}
+              className={cn("px-4 py-1.5 rounded-lg text-xs font-bold transition-all", activeTab === 'library' ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-800")}
+            >
+              精选组件库
+            </button>
+            <button
+              onClick={() => setActiveTab('generator')}
+              className={cn("px-4 py-1.5 rounded-lg text-xs font-bold transition-all", activeTab === 'generator' ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-800")}
+            >
+              🎨 自定义生成器
+            </button>
+          </div>
+        </div>
         <button onClick={onClose} className="text-slate-400 hover:text-slate-800 transition-colors">
           <X size={24} />
         </button>
       </div>
       
-      <div className="flex-1 overflow-y-auto p-6 space-y-10">
-        {categories.map(category => groupedWidgets[category] && (
-          <div key={category} className="space-y-4">
-            <h4 className="text-slate-400 text-xs font-black uppercase tracking-[0.3em] px-2">{category}</h4>
-            <div className="flex overflow-x-auto gap-6 pb-4 scrollbar-hide px-2">
-              {groupedWidgets[category].map(w => (
-                <div key={w.id} className="flex-shrink-0 space-y-3">
-                  <div 
-                    className={cn(
-                      "rounded-[32px] overflow-hidden border-2 border-white/60 hover:border-pink-400 transition-all cursor-pointer group relative shadow-2xl shadow-pink-900/5",
-                      w.size === '1x1' ? 'w-[120px] h-[120px]' :
-                      w.size === '2x1' ? 'w-[260px] h-[120px]' :
-                      w.size === '2x2' ? 'w-[260px] h-[260px]' :
-                      w.size === '4x4' ? 'w-[320px] h-[320px]' :
-                      w.size === '4x2' ? 'w-[320px] h-[160px]' :
-                      w.size === '5x2' ? 'w-[400px] h-[160px]' :
-                      w.size === '6x2' ? 'w-[480px] h-[160px]' : 'w-[120px] h-[120px]'
-                    )}
-                    onClick={() => onAdd(w)}
-                  >
-                    <div className="absolute inset-0 bg-white/20 group-hover:bg-white/40 transition-colors" />
-                    <div className="w-full h-full">
-                      <WidgetRenderer widget={w} settings={settings} currentTime={currentTime} />
-                    </div>
-                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/5 backdrop-blur-sm">
-                      <div className="bg-pink-400 text-white p-3 rounded-full shadow-xl scale-110">
-                        <Plus size={24} />
+      {activeTab === 'library' ? (
+        <div className="flex-1 overflow-y-auto p-6 space-y-10">
+          {categories.map(category => groupedWidgets[category] && (
+            <div key={category} className="space-y-4">
+              <h4 className="text-slate-400 text-xs font-black uppercase tracking-[0.3em] px-2">{category}</h4>
+              <div className="flex overflow-x-auto gap-6 pb-4 scrollbar-hide px-2">
+                {groupedWidgets[category].map(w => (
+                  <div key={w.id} className="flex-shrink-0 space-y-3">
+                    <div 
+                      className={cn(
+                        "rounded-[32px] overflow-hidden border-2 border-white/60 hover:border-pink-400 transition-all cursor-pointer group relative shadow-2xl shadow-pink-900/5",
+                        w.size === '1x1' ? 'w-[120px] h-[120px]' :
+                        w.size === '2x1' ? 'w-[260px] h-[120px]' :
+                        w.size === '2x2' ? 'w-[260px] h-[260px]' :
+                        w.size === '4x4' ? 'w-[320px] h-[320px]' :
+                        w.size === '4x2' ? 'w-[320px] h-[160px]' :
+                        w.size === '5x2' ? 'w-[400px] h-[160px]' :
+                        w.size === '6x2' ? 'w-[480px] h-[160px]' : 'w-[120px] h-[120px]'
+                      )}
+                      onClick={() => onAdd(w)}
+                    >
+                      <div className="absolute inset-0 bg-white/20 group-hover:bg-white/40 transition-colors" />
+                      <div className="w-full h-full">
+                        <WidgetRenderer widget={w} settings={settings} currentTime={currentTime} />
+                      </div>
+                      <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-black/5 backdrop-blur-sm">
+                        <div className="bg-pink-400 text-white p-3 rounded-full shadow-xl scale-110">
+                          <Plus size={24} />
+                        </div>
                       </div>
                     </div>
+                    <div className="px-2">
+                      <span className="text-[10px] font-black text-slate-400/80 uppercase tracking-widest">{w.type}</span>
+                    </div>
                   </div>
-                  <div className="px-2">
-                    <span className="text-[10px] font-black text-slate-400/80 uppercase tracking-widest">{w.type}</span>
-                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
+          {/* Left: Editor Panel */}
+          <div className="bg-white/90 backdrop-blur-xl p-6 rounded-3xl border border-white/60 shadow-xl space-y-4">
+            <h4 className="text-slate-800 font-extrabold text-sm border-b pb-2">自定义小组件配置</h4>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-bold text-slate-600 block mb-1">组件版型</label>
+                <select value={sizeType} onChange={e => setSizeType(e.target.value)} className="w-full p-2.5 bg-slate-100 rounded-xl text-xs font-bold border border-slate-200">
+                  <option value="size-4x2">横版4×2</option>
+                  <option value="size-2x4">竖版2×4</option>
+                  <option value="size-2x2">方形2×2</option>
+                  <option value="size-circle">圆形</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-600 block mb-1">圆角大小 (px)</label>
+                <input type="number" value={radius} onChange={e => setRadius(Number(e.target.value))} className="w-full p-2.5 bg-slate-100 rounded-xl text-xs font-bold border border-slate-200" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-bold text-slate-600 block mb-1">背景透明度 (0~1)</label>
+                <input type="number" step="0.05" min="0" max="1" value={bgAlpha} onChange={e => setBgAlpha(Number(e.target.value))} className="w-full p-2.5 bg-slate-100 rounded-xl text-xs font-bold border border-slate-200" />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-600 block mb-1">毛玻璃强度 (Blur)</label>
+                <input type="number" value={blur} onChange={e => setBlur(Number(e.target.value))} className="w-full p-2.5 bg-slate-100 rounded-xl text-xs font-bold border border-slate-200" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-bold text-slate-600 block mb-1">背景色</label>
+                <div className="flex items-center gap-2">
+                  <input type="color" value={bgColor} onChange={e => setBgColor(e.target.value)} className="w-10 h-10 rounded-lg cursor-pointer border-0" />
+                  <input type="text" value={bgColor} onChange={e => setBgColor(e.target.value)} className="flex-1 p-2 bg-slate-100 rounded-xl text-xs font-bold" />
                 </div>
-              ))}
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-600 block mb-1">文字颜色</label>
+                <div className="flex items-center gap-2">
+                  <input type="color" value={textColor} onChange={e => setTextColor(e.target.value)} className="w-10 h-10 rounded-lg cursor-pointer border-0" />
+                  <input type="text" value={textColor} onChange={e => setTextColor(e.target.value)} className="flex-1 p-2 bg-slate-100 rounded-xl text-xs font-bold" />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-bold text-slate-600 block mb-1">主标题文字</label>
+                <input type="text" value={title} onChange={e => setTitle(e.target.value)} className="w-full p-2.5 bg-slate-100 rounded-xl text-xs font-bold border border-slate-200" />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-600 block mb-1">副标题文字</label>
+                <input type="text" value={sub} onChange={e => setSub(e.target.value)} className="w-full p-2.5 bg-slate-100 rounded-xl text-xs font-bold border border-slate-200" />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              <div>
+                <label className="text-xs font-bold text-slate-600 block mb-1">当前时长</label>
+                <input type="text" value={curTime} onChange={e => setCurTime(e.target.value)} className="w-full p-2.5 bg-slate-100 rounded-xl text-xs font-bold border border-slate-200" />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-600 block mb-1">总时长</label>
+                <input type="text" value={totalTime} onChange={e => setTotalTime(e.target.value)} className="w-full p-2.5 bg-slate-100 rounded-xl text-xs font-bold border border-slate-200" />
+              </div>
+              <div>
+                <label className="text-xs font-bold text-slate-600 block mb-1">进度百分比</label>
+                <input type="number" min="0" max="100" value={progress} onChange={e => setProgress(Number(e.target.value))} className="w-full p-2.5 bg-slate-100 rounded-xl text-xs font-bold border border-slate-200" />
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-4 border-t">
+              <button
+                onClick={handleSaveToLocalStorage}
+                className="flex-1 py-3 bg-pink-100 text-pink-700 rounded-xl text-xs font-bold hover:bg-pink-200 transition-colors shadow-sm"
+              >
+                保存到本地列表
+              </button>
+              <button
+                onClick={() => handleAddCustomToDesktop()}
+                className="flex-1 py-3 bg-pink-100 text-pink-700 rounded-xl text-xs font-bold hover:bg-pink-200 transition-colors shadow-sm"
+              >
+                直接添加至桌面
+              </button>
+            </div>
+
+            {/* Import Module */}
+            <div className="mt-4 p-4 border-2 border-dashed border-slate-200 rounded-2xl space-y-3 bg-slate-50/50">
+              <h5 className="text-xs font-extrabold text-slate-700">导入组件代码 / JSON配置</h5>
+              <div>
+                <label className="text-[11px] font-bold text-slate-500 block mb-1">粘贴HTML代码 / JSON文本（支持Word复制内容）</label>
+                <textarea 
+                  value={importCodeText} 
+                  onChange={e => setImportCodeText(e.target.value)} 
+                  placeholder="粘贴docx内的widget完整HTML代码，或本地导出的JSON配置"
+                  className="w-full p-2.5 bg-white rounded-xl text-xs font-medium border border-slate-200 min-h-[90px] resize-vertical"
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleImportHtml}
+                  className="flex-1 py-2 bg-pink-100 text-pink-700 rounded-xl text-xs font-bold hover:bg-pink-200 transition-colors shadow-sm"
+                >
+                  解析HTML小组件
+                </button>
+                <button
+                  type="button"
+                  onClick={handleImportJson}
+                  className="flex-1 py-2 bg-pink-100 text-pink-700 rounded-xl text-xs font-bold hover:bg-pink-200 transition-colors shadow-sm"
+                >
+                  解析JSON存档
+                </button>
+              </div>
             </div>
           </div>
-        ))}
-      </div>
+
+          {/* Right: Live Preview & Saved List */}
+          <div className="space-y-6">
+            <div className="bg-white/90 backdrop-blur-xl p-6 rounded-3xl border border-white/60 shadow-xl space-y-4">
+              <h4 className="text-slate-800 font-extrabold text-sm border-b pb-2">实时效果预览</h4>
+              <div className="flex justify-center items-center py-6 bg-slate-100/50 rounded-2xl min-h-[220px]">
+                <div className={cn(
+                  "shadow-2xl overflow-hidden transition-all",
+                  sizeType === 'size-circle' ? 'w-[160px] h-[160px]' :
+                  sizeType === 'size-2x4' ? 'w-[152px] h-[320px]' :
+                  sizeType === 'size-2x2' ? 'w-[152px] h-[152px]' : 'w-[320px] h-[152px]'
+                )}>
+                  <WidgetRenderer widget={getCustomWidgetObject()} settings={settings} currentTime={currentTime} />
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-white/90 backdrop-blur-xl p-6 rounded-3xl border border-white/60 shadow-xl space-y-3">
+              <h4 className="text-slate-800 font-extrabold text-sm border-b pb-2">已保存的自定义小组件 ({savedList.length})</h4>
+              <div className="space-y-2 max-h-[200px] overflow-y-auto pr-1">
+                {savedList.length === 0 ? (
+                  <p className="text-xs text-slate-400 py-4 text-center">暂无保存的小组件，点击“保存到本地列表”即可查看</p>
+                ) : (
+                  savedList.map((item) => (
+                    <div key={item.id} className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between gap-2">
+                      <div className="truncate flex-1">
+                        <p className="text-xs font-bold text-slate-800 truncate">【{item.title || '无标题'}】</p>
+                        <p className="text-[10px] text-slate-400">版型: {item.sizeType} | 透明度: {item.bgAlpha}</p>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => handleLoadConfig(item)}
+                          className="px-2.5 py-1 bg-pink-100 text-pink-700 hover:bg-pink-200 rounded-lg text-[10px] font-bold"
+                        >
+                          加载
+                        </button>
+                        <button
+                          onClick={() => handleAddCustomToDesktop(item)}
+                          className="px-2.5 py-1 bg-pink-100 text-pink-700 hover:bg-pink-200 rounded-lg text-[10px] font-bold"
+                        >
+                          添加
+                        </button>
+                        <button
+                          onClick={() => handleDeleteSaved(item.id)}
+                          className="p-1 text-red-400 hover:text-red-600 rounded-lg"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </motion.div>
   );
 }

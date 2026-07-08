@@ -1,7 +1,7 @@
 export interface Widget {
   id: string;
-  type: 'time' | 'weather' | 'music' | 'photo' | 'quote' | 'battery' | 'calendar' | 'todo' | 'countdown' | 'contact' | 'together' | 'schedule' | 'memo' | 'step' | 'mood' | 'healing-battery' | 'ins-split' | 'ticket' | 'collage' | 'ins-split-v2' | 'manga-blink' | 'film-frame' | 'ticket-v2' | 'polaroid-stack' | 'dynamic-cat' | 'live-weather' | 'ins-large-v1' | 'ins-large-v2' | 'ins-weather-calendar' | 'ins-photo-square' | 'ins-profile-card' | 'ins-circle-widget' | 'ins-music-circle-widget' | 'ins-photo-wall-v1' | 'ins-photo-wall-v2' | 'ins-signature-v1' | 'ins-signature-v2' | 'ins-large-calendar' | 'ins-love-music';
-  size: '1x1' | '2x2' | '2x1' | '4x2' | '5x2' | '4x4' | '6x2';
+  type: 'time' | 'weather' | 'music' | 'photo' | 'quote' | 'battery' | 'calendar' | 'todo' | 'countdown' | 'contact' | 'together' | 'schedule' | 'memo' | 'step' | 'mood' | 'healing-battery' | 'ins-split' | 'ticket' | 'collage' | 'ins-split-v2' | 'manga-blink' | 'film-frame' | 'ticket-v2' | 'polaroid-stack' | 'dynamic-cat' | 'live-weather' | 'ins-large-v1' | 'ins-large-v2' | 'ins-weather-calendar' | 'ins-photo-square' | 'ins-profile-card' | 'ins-circle-widget' | 'ins-music-circle-widget' | 'ins-photo-wall-v1' | 'ins-photo-wall-v2' | 'ins-signature-v1' | 'ins-signature-v2' | 'ins-large-calendar' | 'ins-love-music' | 'custom-generator';
+  size: '1x1' | '2x2' | '2x1' | '4x2' | '5x2' | '4x4' | '6x2' | '2x4' | 'circle';
   category?: string;
   data?: any;
 }
@@ -139,8 +139,9 @@ export interface AppSettings {
   hideStatusBar?: boolean;
   fullScreenMode?: boolean;
   customFontUrl?: string;
+  fontPresets?: { id: string; name: string; url: string }[];
   homePages?: string[][]; // Array of pages, each page is an array of app IDs
-  themeId?: 'default' | 'rainy-cat' | 'pink-cat' | 'normal';
+  themeId?: 'default' | 'rainy-cat' | 'pink-cat' | 'ocean-blue' | 'normal';
   desktopLayout?: DesktopItem[];
   timeAwarenessEnabled?: boolean;
   minimaxApiKey?: string;

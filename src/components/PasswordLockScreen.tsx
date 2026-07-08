@@ -76,7 +76,7 @@ export default function PasswordLockScreen({
     >
       {wallpaperUrl && <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" />}
       <button onClick={onClose} className="absolute top-8 right-8 p-2 z-10"><X size={24} /></button>
-      <h2 className={cn("text-xl mb-8 z-10", themeId === 'pink-cat' && "text-[#ff85a2]")}>
+      <h2 className={cn("text-xl mb-8 z-10", (themeId === 'pink-cat' || themeId === 'ocean-blue') && (themeId === 'pink-cat' ? "text-[#ff85a2]" : "text-sky-300"))}>
         {isSettingMode ? (isConfirming ? '请再次确认密码' : '设置4位锁屏密码') : '请输入锁屏密码'}
       </h2>
       <div className="flex gap-4 mb-12 z-10">
@@ -90,12 +90,12 @@ export default function PasswordLockScreen({
       </div>
       <div className="grid grid-cols-3 gap-6 z-10">
         {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(d => (
-          <button key={d} onClick={() => handleDigit(d.toString())} className={cn("w-20 h-20 rounded-full bg-white/10 text-2xl font-light hover:bg-white/20 transition-all", themeId === 'pink-cat' && "bg-pink-100/30 text-[#ff85a2]")}>
+          <button key={d} onClick={() => handleDigit(d.toString())} className={cn("w-20 h-20 rounded-full bg-white/10 text-2xl font-light hover:bg-white/20 transition-all", (themeId === 'pink-cat' || themeId === 'ocean-blue') && (themeId === 'pink-cat' ? "bg-pink-100/30 text-[#ff85a2]" : "bg-sky-100/30 text-sky-200"))}>
             {d}
           </button>
         ))}
         <div />
-        <button onClick={() => handleDigit('0')} className={cn("w-20 h-20 rounded-full bg-white/10 text-2xl font-light hover:bg-white/20 transition-all", themeId === 'pink-cat' && "bg-pink-100/30 text-[#ff85a2]")}>0</button>
+        <button onClick={() => handleDigit('0')} className={cn("w-20 h-20 rounded-full bg-white/10 text-2xl font-light hover:bg-white/20 transition-all", (themeId === 'pink-cat' || themeId === 'ocean-blue') && (themeId === 'pink-cat' ? "bg-pink-100/30 text-[#ff85a2]" : "bg-sky-100/30 text-sky-200"))}>0</button>
         <button onClick={backspace} className="text-sm text-white/50">删除</button>
       </div>
     </motion.div>

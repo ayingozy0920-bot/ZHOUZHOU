@@ -493,7 +493,7 @@ export default function CalendarApp({
   return (
     <div className={cn(
       "h-full w-full flex flex-col relative overflow-hidden font-sans transition-all duration-500",
-      settings.themeId === 'pink-cat' ? "bg-transparent" : "bg-[#FFF5F7]"
+      (settings.themeId === 'pink-cat' || settings.themeId === 'ocean-blue') ? "bg-transparent" : "bg-[#FFF5F7]"
     )}>
       <AnimatePresence>
         {selectedFriend && renderFriendSchedule(selectedFriend)}
@@ -509,7 +509,9 @@ export default function CalendarApp({
             onClick={() => setActiveTab('calendar')}
             className={cn(
               "flex-1 py-4 rounded-full font-black text-lg transition-all flex items-center justify-center gap-2",
-              activeTab === 'calendar' ? "bg-pink-400 text-white shadow-lg" : "text-pink-300"
+              activeTab === 'calendar' 
+                ? (settings.themeId === 'ocean-blue' ? "bg-sky-500 text-white shadow-lg" : "bg-pink-400 text-white shadow-lg") 
+                : (settings.themeId === 'ocean-blue' ? "text-sky-400" : "text-pink-300")
             )}
           >
             <CalendarIcon size={20} /> 日历
@@ -518,7 +520,9 @@ export default function CalendarApp({
             onClick={() => setActiveTab('schedule')}
             className={cn(
               "flex-1 py-4 rounded-full font-black text-lg transition-all flex items-center justify-center gap-2",
-              activeTab === 'schedule' ? "bg-pink-400 text-white shadow-lg" : "text-pink-300"
+              activeTab === 'schedule' 
+                ? (settings.themeId === 'ocean-blue' ? "bg-sky-500 text-white shadow-lg" : "bg-pink-400 text-white shadow-lg") 
+                : (settings.themeId === 'ocean-blue' ? "text-sky-400" : "text-pink-300")
             )}
           >
             <ListTodo size={20} /> 日程
