@@ -121,50 +121,74 @@ function Desktop({ settings, onUpdateLayout, apps, iconMap, onOpenApp, currentTi
     const x = info.point.x - rect.left;
     const y = info.point.y - rect.top;
 
-    // Calculate grid position
-    const col = Math.floor(x / (CELL_WIDTH + GAP_X));
-    const row = Math.floor(y / (CELL_HEIGHT + GAP_Y));
+    const sourceItem = layout.find(i => i.id === id);
+    if (!sourceItem) return;
 
-    if (col >= 0 && col < GRID_COLS && row >= 0 && row < GRID_ROWS) {
-      // Ensure the icon bottom (including label) doesn't overlap the dock
-      // The container height already accounts for the dock via pb-[108px]
-      // pb-[108px] ends 4px above the dock (which is at 104px from bottom)
-      const itemY = row * (CELL_HEIGHT + GAP_Y);
-      if (itemY + CELL_HEIGHT > rect.height) { 
+    // Get item spans
+    let colSpan = 1;
+    let rowSpan = 1;
+    if (sourceItem.type === 'widget' && sourceItem.widget) {
+      const size = sourceItem.widget.size;
+      if (size === '5x2' || size === '4x4' || size === '4x2') {
+        colSpan = 4;
+        rowSpan = size === '4x4' ? 4 : 2;
+      } else if (size === '2x2' || size === '2x1') {
+        colSpan = 2;
+        rowSpan = size === '2x2' ? 2 : 1;
+      }
+    }
+
+    // Calculate grid position
+    let col = Math.floor(x / (CELL_WIDTH + GAP_X));
+    let row = Math.floor(y / (CELL_HEIGHT + GAP_Y));
+
+    // Clamp col and row to ensure the widget stays inside the grid boundaries
+    if (col < 0) col = 0;
+    if (col + colSpan > GRID_COLS) {
+      col = GRID_COLS - colSpan;
+    }
+    if (row < 0) row = 0;
+    if (row + rowSpan > GRID_ROWS) {
+      row = GRID_ROWS - rowSpan;
+    }
+
+    // Ensure the widget bottom doesn't overlap the dock or exceed container height
+    const itemHeight = rowSpan * CELL_HEIGHT + (rowSpan - 1) * GAP_Y;
+    let maxAllowedRow = row;
+    while (maxAllowedRow > 0 && (maxAllowedRow * (CELL_HEIGHT + GAP_Y) + itemHeight > rect.height)) {
+      maxAllowedRow--;
+    }
+    row = maxAllowedRow;
+
+    const targetItem = layout.find(item => 
+      item.position.x === col && 
+      item.position.y === row && 
+      item.position.page === currentPage &&
+      item.id !== id
+    );
+
+    // Folder creation logic
+    if (targetItem && targetItem.type === 'app') {
+      if (sourceItem && sourceItem.type === 'app') {
+        const newFolder: DesktopItem = {
+          id: `folder-${Date.now()}`,
+          type: 'folder',
+          position: { x: col, y: row, page: currentPage },
+          folderItems: [targetItem.appId!, sourceItem.appId!]
+        };
+        saveToHistory(layout.filter(i => i.id !== id && i.id !== targetItem.id).concat(newFolder));
         return;
       }
-
-      const targetItem = layout.find(item => 
-        item.position.x === col && 
-        item.position.y === row && 
-        item.position.page === currentPage &&
-        item.id !== id
-      );
-
-      // Folder creation logic
-      if (targetItem && targetItem.type === 'app') {
-        const sourceItem = layout.find(i => i.id === id);
-        if (sourceItem && sourceItem.type === 'app') {
-          const newFolder: DesktopItem = {
-            id: `folder-${Date.now()}`,
-            type: 'folder',
-            position: { x: col, y: row, page: currentPage },
-            folderItems: [targetItem.appId!, sourceItem.appId!]
-          };
-          saveToHistory(layout.filter(i => i.id !== id && i.id !== targetItem.id).concat(newFolder));
-          return;
-        }
-      }
-
-      // Normal move
-      const newLayout = layout.map(item => {
-        if (item.id === id) {
-          return { ...item, position: { x: col, y: row, page: currentPage } };
-        }
-        return item;
-      });
-      saveToHistory(newLayout);
     }
+
+    // Normal move
+    const newLayout = layout.map(item => {
+      if (item.id === id) {
+        return { ...item, position: { x: col, y: row, page: currentPage } };
+      }
+      return item;
+    });
+    saveToHistory(newLayout);
   };
 
   const removeItem = (id: string) => {
@@ -239,7 +263,7 @@ function Desktop({ settings, onUpdateLayout, apps, iconMap, onOpenApp, currentTi
             transition={{ type: 'spring', damping: 30, stiffness: 300 }}
             className="absolute inset-0 flex justify-center"
           >
-            <div className="relative w-[320px] h-full" ref={containerRef}>
+            <div className={cn("relative w-[320px] h-full", !draggedItem && "overflow-hidden")} ref={containerRef}>
               {layout
                 .filter(item => item.position.page === currentPage && !(item.type === 'widget' && item.widget?.size === '1x1'))
                 .map(item => (
