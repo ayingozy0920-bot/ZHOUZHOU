@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { 
   MessageSquare, 
   Users, 
@@ -2544,6 +2544,14 @@ function ChatWindow({
   const [pendingStickerFile, setPendingStickerFile] = useState<string | null>(null);
   const stickerFileInputRef = useRef<HTMLInputElement>(null);
 
+  const suggestedStickers = useMemo(() => {
+    if (!input.trim() || isVoiceMode) return [];
+    const search = input.trim().toLowerCase();
+    return (settings.customStickers || [])
+      .filter(s => s.description && s.description.toLowerCase().includes(search))
+      .slice(0, 10);
+  }, [input, settings.customStickers, isVoiceMode]);
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recordingInterval = useRef<any>(null);
@@ -4624,7 +4632,10 @@ ${context}`;
       
       if (match) {
         const url = match[1];
-        const description = line.replace(url, '').trim() || '批量导入的表情包';
+        // Remove the URL, then remove common separators like colons or dashes from the remaining text
+        let description = line.replace(url, '').trim();
+        description = description.replace(/^[:：\-\s]+|[:：\-\s]+$/g, '').trim() || '批量导入的表情包';
+        
         return {
           id: Math.random().toString(36).substr(2, 9),
           url,
@@ -6304,6 +6315,46 @@ ${context}`;
           "border-t p-3 pb-6 relative transition-all duration-300 chat-window-footer",
           settings.themeId === 'rainy-cat' ? "bg-white/5 backdrop-blur-xl border-white/10" : (settings.activeChatThemeId ? "bg-transparent border-transparent" : (settings.appBackgroundUrl ? "bg-white/10 backdrop-blur-md border-slate-200/20" : "bg-[#f7f7f7] border-slate-200"))
         )} style={settings.appBackgroundUrl && !settings.activeChatThemeId ? { backgroundColor: `rgba(255, 255, 255, ${Math.max(0, (settings.chatWallpaperOpacity ?? 0.8) * 0.2)})` } : {}}>
+        {/* Sticker Suggestions */}
+        <AnimatePresence>
+          {suggestedStickers.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 10, scale: 0.95 }}
+              animate={{ opacity: 1, y: -8, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.95 }}
+              className={cn(
+                "absolute left-3 right-3 bottom-full mb-1 flex gap-2 p-2 rounded-xl overflow-x-auto no-scrollbar shadow-lg border",
+                settings.themeId === 'rainy-cat' ? "bg-black/60 backdrop-blur-xl border-white/20" : "bg-white/90 backdrop-blur-md border-slate-100"
+              )}
+              style={{ zIndex: 100 }}
+            >
+              {suggestedStickers.map((sticker) => (
+                <button
+                  key={sticker.id}
+                  onClick={() => {
+                    handleSendSticker(sticker);
+                    setInput('');
+                  }}
+                  className={cn(
+                    "flex-shrink-0 flex flex-col items-center gap-1 p-1 rounded-lg transition-all active:scale-90",
+                    settings.themeId === 'rainy-cat' ? "hover:bg-white/10" : "hover:bg-slate-50"
+                  )}
+                >
+                  <div className="w-14 h-14 rounded-lg overflow-hidden border border-slate-100 shadow-sm bg-white">
+                    <img src={sticker.url} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                  </div>
+                  <span className={cn(
+                    "text-[9px] truncate max-w-[56px] font-medium",
+                    settings.themeId === 'rainy-cat' ? "text-white/80" : "text-slate-600"
+                  )}>
+                    {sticker.description}
+                  </span>
+                </button>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {isRecording && (
           <div className="absolute bottom-20 left-1/2 -translate-x-1/2 bg-black/60 backdrop-blur-md text-white px-6 py-4 rounded-2xl flex flex-col items-center gap-2 z-50">
             <Mic size={40} className="animate-pulse text-green-400" />
@@ -6627,7 +6678,7 @@ ${context}`;
                         <Plus size={24} />
                       </button>
                       {(settings.customStickers || []).map((sticker, idx) => (
-                        <div key={`${sticker.id}-${idx}`} className="relative group aspect-square">
+                        <div key={`${sticker.id}-${idx}`} className="relative group flex flex-col gap-1">
                           <button
                             onClick={() => {
                               if (stickerDeleteMode) {
@@ -6639,12 +6690,20 @@ ${context}`;
                               }
                             }}
                             className={cn(
-                              "w-full h-full rounded-xl overflow-hidden border-2 transition-all",
+                              "w-full aspect-square rounded-xl overflow-hidden border-2 transition-all",
                               selectedStickers.includes(sticker.id) ? "border-red-500 scale-95" : "border-transparent"
                             )}
                           >
                             <img src={sticker.url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                           </button>
+                          {!stickerDeleteMode && sticker.description && (
+                            <span className={cn(
+                              "text-[10px] truncate text-center px-1",
+                              settings.themeId === 'rainy-cat' ? "text-white/60" : "text-slate-500"
+                            )}>
+                              {sticker.description}
+                            </span>
+                          )}
                           {stickerDeleteMode && (
                             <div className="absolute top-1 right-1 w-4 h-4 rounded-full bg-white border border-slate-200 flex items-center justify-center">
                               {selectedStickers.includes(sticker.id) && <div className="w-2 h-2 rounded-full bg-red-500" />}

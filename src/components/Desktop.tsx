@@ -234,7 +234,7 @@ function Desktop({ settings, onUpdateLayout, apps, iconMap, onOpenApp, currentTi
 
   return (
     <motion.div 
-      className="h-full w-full relative flex flex-col pt-8 pb-[108px]"
+      className="h-full w-full relative flex flex-col pt-2 pb-[108px]"
       onContextMenu={(e) => {
         e.preventDefault();
         setIsEditMode(true);
@@ -263,7 +263,7 @@ function Desktop({ settings, onUpdateLayout, apps, iconMap, onOpenApp, currentTi
             transition={{ type: 'spring', damping: 30, stiffness: 300 }}
             className="absolute inset-0 flex justify-center"
           >
-            <div className={cn("relative w-[320px] h-full", !draggedItem && "overflow-hidden")} ref={containerRef}>
+            <div className={cn("relative w-[320px] h-full")} ref={containerRef}>
               {layout
                 .filter(item => item.position.page === currentPage && !(item.type === 'widget' && item.widget?.size === '1x1'))
                 .map(item => (
@@ -927,8 +927,8 @@ function WidgetCustomizer({ item, onUpdate, onClose }: { item: DesktopItem; onUp
                 <label className="text-xs font-bold text-slate-400 uppercase">图片 {i} 链接</label>
                 <div className="flex gap-2">
                   <input type="text" value={data[`url${i}`] || ''} onChange={(e) => setData({...data, [`url${i}`]: e.target.value})} placeholder="URL" className="flex-1 px-4 py-2 bg-slate-100 rounded-xl" />
-                  <button onClick={() => fileInputRef.current?.click()} className="p-2 bg-slate-100 rounded-xl"><Upload size={18} /></button>
-                  <input type="file" ref={fileInputRef} onChange={(e) => handleFileUpload(e, `url${i}`)} className="hidden" accept="image/*" />
+                  <button onClick={() => document.getElementById(`file-upload-${i}`)?.click()} className="p-2 bg-slate-100 rounded-xl"><Upload size={18} /></button>
+                  <input id={`file-upload-${i}`} type="file" onChange={(e) => handleFileUpload(e, `url${i}`)} className="hidden" accept="image/*" />
                 </div>
               </div>
             ))}
@@ -975,8 +975,8 @@ function WidgetCustomizer({ item, onUpdate, onClose }: { item: DesktopItem; onUp
                 <label className="text-xs font-bold text-slate-400 uppercase">拍立得图片 {i}</label>
                 <div className="flex gap-2">
                   <input type="text" value={data[`url${i}`] || ''} onChange={(e) => setData({...data, [`url${i}`]: e.target.value})} placeholder="URL" className="flex-1 px-4 py-2 bg-slate-100 rounded-xl" />
-                  <button onClick={() => fileInputRef.current?.click()} className="p-2 bg-slate-100 rounded-xl"><Upload size={18} /></button>
-                  <input type="file" ref={fileInputRef} onChange={(e) => handleFileUpload(e, `url${i}`)} className="hidden" accept="image/*" />
+                  <button onClick={() => document.getElementById(`polaroid-upload-${i}`)?.click()} className="p-2 bg-slate-100 rounded-xl"><Upload size={18} /></button>
+                  <input id={`polaroid-upload-${i}`} type="file" onChange={(e) => handleFileUpload(e, `url${i}`)} className="hidden" accept="image/*" />
                 </div>
               </div>
             ))}
@@ -1044,7 +1044,17 @@ function WidgetRenderer({ widget, settings, currentTime }: { widget: Widget; set
   const isLargeCalendar = widget.type === 'ins-large-calendar';
   const isLoveMusic = widget.type === 'ins-love-music';
   const isLoveProfile = widget.type === 'love-profile-card';
-  const isPurePhoto = widget.type === 'pure-photo-card' || widget.type === 'polaroid-triple';
+  const isPurePhoto = [
+    'pure-photo-card', 
+    'polaroid-triple', 
+    'ins-photo-square', 
+    'ins-photo-wall-v1', 
+    'ins-photo-wall-v2', 
+    'ins-large-calendar', 
+    'ins-love-music', 
+    'love-profile-card',
+    'custom-generator'
+  ].includes(widget.type);
   const customBlur = widget.data?.blur !== undefined ? widget.data.blur : 12;
   const customOpacity = widget.data?.opacity !== undefined ? widget.data.opacity : 15;
   
@@ -1103,7 +1113,7 @@ function WidgetRenderer({ widget, settings, currentTime }: { widget: Widget; set
         return (
           <div 
             className={cn(
-              "w-full h-full flex justify-center gap-1.5 p-4 z-10 overflow-hidden relative shadow-md",
+              "w-full h-full flex justify-center gap-1.5 p-6 z-10 overflow-hidden relative shadow-xl",
               isVertical ? "flex-col-reverse justify-end" : "flex-col justify-center"
             )}
             style={{
@@ -1903,7 +1913,7 @@ function WidgetRenderer({ widget, settings, currentTime }: { widget: Widget; set
         );
       case 'ins-photo-square':
         return (
-          <div className="h-full z-10 rounded-[32px] overflow-hidden border border-white/20 relative">
+          <div className="h-full z-10 rounded-[32px] overflow-hidden border border-white/20 relative shadow-lg">
             <img src={widget.data?.url || "https://picsum.photos/seed/photo/400/400"} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
           </div>
         );
@@ -1960,7 +1970,7 @@ function WidgetRenderer({ widget, settings, currentTime }: { widget: Widget; set
         for (let i = 1; i <= daysInMonth; i++) calendarDays.push(i);
 
         return (
-          <div className="flex h-full w-full z-10 p-4 gap-4 overflow-hidden items-center justify-center">
+          <div className="flex h-full w-full z-10 p-4 gap-4 overflow-hidden items-center justify-center bg-white/40 backdrop-blur-xl rounded-[28px] border border-white/20 shadow-sm">
             {/* Left Area */}
             <div className="w-[35%] flex flex-col items-center justify-center relative">
               <div className="text-center mb-1">
@@ -2014,7 +2024,7 @@ function WidgetRenderer({ widget, settings, currentTime }: { widget: Widget; set
         const loveSlogan = widget.data?.loveSlogan || "请靠近我和我的心 ๑°⌓°๑";
         
         return (
-          <div className="flex flex-col h-full w-full z-10 overflow-hidden font-sans">
+          <div className="flex flex-col h-full w-full z-10 overflow-hidden font-sans bg-white/40 backdrop-blur-xl rounded-[28px] border border-white/20 shadow-sm">
             {/* Top Section - Lovers */}
             <div className="flex-shrink-0 p-4 pb-2 flex flex-col items-center bg-white/10">
               <div className="text-[10px] text-black/40 font-black uppercase tracking-[0.2em] mb-3 px-3 py-1 bg-white/40 rounded-full">
