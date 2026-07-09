@@ -796,24 +796,24 @@ function WidgetCustomizer({ item, onUpdate, onClose }: { item: DesktopItem; onUp
               <label className="text-xs font-bold text-slate-400 uppercase">图片1</label>
               <div className="flex gap-2">
                 <input type="text" value={data.url1 || ''} onChange={(e) => setData({...data, url1: e.target.value})} placeholder="URL" className="flex-1 px-4 py-2 bg-slate-100 rounded-xl" />
-                <button onClick={() => fileInputRef.current?.click()} className="p-2 bg-slate-100 rounded-xl"><Upload size={18} /></button>
-                <input type="file" ref={fileInputRef} onChange={(e) => handleFileUpload(e, 'url1')} className="hidden" accept="image/*" />
+                <button onClick={() => document.getElementById(`polaroid-stack-upload-${item.id}-1`)?.click()} className="p-2 bg-slate-100 rounded-xl"><Upload size={18} /></button>
+                <input id={`polaroid-stack-upload-${item.id}-1`} type="file" onChange={(e) => handleFileUpload(e, 'url1')} className="hidden" accept="image/*" />
               </div>
             </div>
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase">图片2</label>
               <div className="flex gap-2">
                 <input type="text" value={data.url2 || ''} onChange={(e) => setData({...data, url2: e.target.value})} placeholder="URL" className="flex-1 px-4 py-2 bg-slate-100 rounded-xl" />
-                <button onClick={() => fileInputRef.current?.click()} className="p-2 bg-slate-100 rounded-xl"><Upload size={18} /></button>
-                <input type="file" ref={fileInputRef} onChange={(e) => handleFileUpload(e, 'url2')} className="hidden" accept="image/*" />
+                <button onClick={() => document.getElementById(`polaroid-stack-upload-${item.id}-2`)?.click()} className="p-2 bg-slate-100 rounded-xl"><Upload size={18} /></button>
+                <input id={`polaroid-stack-upload-${item.id}-2`} type="file" onChange={(e) => handleFileUpload(e, 'url2')} className="hidden" accept="image/*" />
               </div>
             </div>
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase">图片3</label>
               <div className="flex gap-2">
                 <input type="text" value={data.url3 || ''} onChange={(e) => setData({...data, url3: e.target.value})} placeholder="URL" className="flex-1 px-4 py-2 bg-slate-100 rounded-xl" />
-                <button onClick={() => fileInputRef.current?.click()} className="p-2 bg-slate-100 rounded-xl"><Upload size={18} /></button>
-                <input type="file" ref={fileInputRef} onChange={(e) => handleFileUpload(e, 'url3')} className="hidden" accept="image/*" />
+                <button onClick={() => document.getElementById(`polaroid-stack-upload-${item.id}-3`)?.click()} className="p-2 bg-slate-100 rounded-xl"><Upload size={18} /></button>
+                <input id={`polaroid-stack-upload-${item.id}-3`} type="file" onChange={(e) => handleFileUpload(e, 'url3')} className="hidden" accept="image/*" />
               </div>
             </div>
             <div className="space-y-2">
@@ -975,8 +975,8 @@ function WidgetCustomizer({ item, onUpdate, onClose }: { item: DesktopItem; onUp
                 <label className="text-xs font-bold text-slate-400 uppercase">拍立得图片 {i}</label>
                 <div className="flex gap-2">
                   <input type="text" value={data[`url${i}`] || ''} onChange={(e) => setData({...data, [`url${i}`]: e.target.value})} placeholder="URL" className="flex-1 px-4 py-2 bg-slate-100 rounded-xl" />
-                  <button onClick={() => document.getElementById(`polaroid-upload-${i}`)?.click()} className="p-2 bg-slate-100 rounded-xl"><Upload size={18} /></button>
-                  <input id={`polaroid-upload-${i}`} type="file" onChange={(e) => handleFileUpload(e, `url${i}`)} className="hidden" accept="image/*" />
+                  <button onClick={() => document.getElementById(`polaroid-upload-${item.id}-${i}`)?.click()} className="p-2 bg-slate-100 rounded-xl"><Upload size={18} /></button>
+                  <input id={`polaroid-upload-${item.id}-${i}`} type="file" onChange={(e) => handleFileUpload(e, `url${i}`)} className="hidden" accept="image/*" />
                 </div>
               </div>
             ))}
@@ -1047,28 +1047,38 @@ function WidgetRenderer({ widget, settings, currentTime }: { widget: Widget; set
   const isPurePhoto = [
     'pure-photo-card', 
     'polaroid-triple', 
+    'polaroid-stack',
     'ins-photo-square', 
     'ins-photo-wall-v1', 
     'ins-photo-wall-v2', 
     'ins-large-calendar', 
     'ins-love-music', 
     'love-profile-card',
-    'custom-generator'
+    'custom-generator',
+    'ins-split',
+    'ins-split-v2',
+    'collage',
+    'film-frame',
+    'ticket',
+    'ticket-v2'
   ].includes(widget.type);
   const customBlur = widget.data?.blur !== undefined ? widget.data.blur : 12;
   const customOpacity = widget.data?.opacity !== undefined ? widget.data.opacity : 15;
   
-  const baseClass = isPurePhoto ? "w-full h-full flex flex-col relative bg-transparent shadow-none border-0 p-0" : cn(
-    "w-full h-full rounded-[28px] overflow-hidden shadow-2xl flex flex-col relative ring-1 ring-white/20",
-    (!isLargeCalendar && !isLoveMusic && !isLoveProfile) && "transition-all duration-500 p-4",
-    (isLargeCalendar || isLoveMusic || isLoveProfile) ? "p-0" : "p-4",
-    (isLargeCalendar || isLoveMusic)
-      ? "border border-white/20"
-      : isLoveProfile
-        ? "bg-white border border-slate-100"
-        : isRainy 
-          ? "bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-2xl border border-white/20" 
-          : "bg-white shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-slate-100"
+  const baseClass = cn(
+    "w-full h-full flex flex-col relative",
+    (isPurePhoto || isLargeCalendar) ? "bg-transparent shadow-none border-0 p-0 rounded-[28px] overflow-hidden" : cn(
+      "rounded-[28px] overflow-hidden shadow-2xl ring-1 ring-white/20",
+      (!isLargeCalendar && !isLoveMusic && !isLoveProfile) && "transition-all duration-500 p-4",
+      (isLargeCalendar || isLoveMusic || isLoveProfile) ? "p-0" : "p-4",
+      isLoveMusic
+        ? "border border-white/20"
+        : isLoveProfile
+          ? "bg-white border border-slate-100"
+          : isRainy 
+            ? "bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-2xl border border-white/20" 
+            : "bg-white shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-slate-100"
+    )
   );
 
   const containerStyle = (isLargeCalendar || isLoveMusic) ? {
@@ -1079,8 +1089,7 @@ function WidgetRenderer({ widget, settings, currentTime }: { widget: Widget; set
 
   const customBg = widget.data?.url ? (
     <div className="absolute inset-0 z-0">
-      <img src={widget.data.url} className="w-full h-full object-cover opacity-60" referrerPolicy="no-referrer" />
-      <div className="absolute inset-0 bg-black/10" />
+      <img src={widget.data.url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
     </div>
   ) : null;
 
@@ -1913,7 +1922,7 @@ function WidgetRenderer({ widget, settings, currentTime }: { widget: Widget; set
         );
       case 'ins-photo-square':
         return (
-          <div className="h-full z-10 rounded-[32px] overflow-hidden border border-white/20 relative shadow-lg">
+          <div className="h-full z-10 rounded-[32px] overflow-hidden relative">
             <img src={widget.data?.url || "https://picsum.photos/seed/photo/400/400"} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
           </div>
         );
@@ -1970,7 +1979,10 @@ function WidgetRenderer({ widget, settings, currentTime }: { widget: Widget; set
         for (let i = 1; i <= daysInMonth; i++) calendarDays.push(i);
 
         return (
-          <div className="flex h-full w-full z-10 p-4 gap-4 overflow-hidden items-center justify-center bg-white/40 backdrop-blur-xl rounded-[28px] border border-white/20 shadow-sm">
+          <div className={cn(
+            "flex h-full w-full z-10 p-4 gap-4 overflow-hidden items-center justify-center rounded-[28px] border shadow-sm",
+            widget.data?.url ? "bg-transparent backdrop-blur-none border-transparent" : "bg-white/40 backdrop-blur-xl border-white/20"
+          )}>
             {/* Left Area */}
             <div className="w-[35%] flex flex-col items-center justify-center relative">
               <div className="text-center mb-1">
@@ -1985,7 +1997,7 @@ function WidgetRenderer({ widget, settings, currentTime }: { widget: Widget; set
 
             {/* Right Area */}
             <div className="flex-1 h-full min-h-0">
-              <div className="h-full bg-white/5 border-[1.2px] border-black/60 border-dashed rounded-[28px] p-2.5 relative flex flex-col justify-center overflow-hidden">
+              <div className="h-full bg-white/5 border-[1px] border-black/20 border-dashed rounded-[28px] p-2.5 relative flex flex-col justify-center overflow-hidden">
                 <div className="grid grid-cols-7 mb-1.5 px-1">
                   {headers.map(h => (
                     <span key={h} className="text-[9px] text-slate-400 font-medium text-center">{h}</span>

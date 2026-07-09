@@ -289,8 +289,9 @@ export default function App() {
       }
 
       if (!summaryText) {
-        console.error("API returned empty data object:", data);
-        throw new Error("API返回空总结。请检查[设置]中的【AI API配置】或专属【记忆/总结 API】是否配置正确并拥有额度。");
+        console.error("API returned empty data object or no content:", data);
+        const errorMsg = data.error ? (typeof data.error === 'string' ? data.error : JSON.stringify(data.error)) : "API返回内容为空";
+        throw new Error(`记忆总结失败: ${errorMsg}。请检查[设置]中的【AI API配置】或专属【记忆/总结 API】是否配置正确、拥有额度，或内容是否触发了安全过滤。`);
       }
 
       return type === 'offline' ? summaryText : roundTitle + summaryText;

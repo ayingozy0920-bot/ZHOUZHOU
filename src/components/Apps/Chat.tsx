@@ -171,6 +171,88 @@ export default function ChatApp({ settings, onBack, onStartCall, externalCallSta
   const isDark = settings.isDarkThemeEnabled;
   const isRabbit = settings.isCuteRabbitThemeEnabled;
 
+  useEffect(() => {
+    // Background scheduler for automatic Moment posting
+    const interval = setInterval(() => {
+      const now = new Date();
+      const currentH = now.getHours();
+      const currentM = now.getMinutes();
+      const currentTimeStr = `${currentH.toString().padStart(2, '0')}:${currentM.toString().padStart(2, '0')}`;
+      
+      const lastCheckKey = 'last_moment_check_time';
+      const lastCheck = localStorage.getItem(lastCheckKey);
+      if (lastCheck === currentTimeStr) return; // Already checked this minute
+      localStorage.setItem(lastCheckKey, currentTimeStr);
+
+      friends.forEach(f => {
+        if (!f.momentsSettings?.autoPostEnabled) return;
+        
+        const scheduledTimes = f.momentsSettings.scheduledTimes || [];
+        if (scheduledTimes.includes(currentTimeStr)) {
+          console.log(`[Scheduler] Triggering auto moment for ${f.name} at ${currentTimeStr}`);
+          handleAutoMoment(f.id);
+        }
+      });
+    }, 30000); // Check every 30 seconds
+
+    return () => clearInterval(interval);
+  }, [friends]);
+
+  const handleAutoMoment = async (friendId: string) => {
+    const friend = friends.find(f => f.id === friendId);
+    if (!friend) return;
+    
+    try {
+      const friendMsgs = chats[friendId] || [];
+      const recentMsgs = friendMsgs.slice(-30);
+      const context = recentMsgs.map(m => `${m.role === 'user' ? '我' : (friend?.name ?? '角色')}: ${m.content}`).join('\n') || '无近期聊天记录';
+      
+      const systemPrompt = `你现在是${friend?.name ?? '角色'}。请根据我们最近的聊天内容、你的人设以及你当前的生活状态，发一条朋友圈。
+要求：
+1. 必须符合你的人设（${friend?.persona ?? ''}）。
+2. 朋友圈内容要自然、生活化，像真人一样分享心情、吐槽生活或记录美好瞬间。
+3. 如果你们最近聊过天，请在朋友圈中含蓄地提及或受到其影响。
+4. 你需要配一张精美的照片描述。
+5. 格式要求：
+【文字内容】你的朋友圈文字
+【图片描述】你配的照片内容（用文字详细描写一张画面感极强的照片）
+
+最近的聊天背景：
+${context}`;
+      
+      const response = await callAI(systemPrompt, [{ role: 'user', content: '请根据当前心情和生活发一条朋友圈' } as ChatMessage], settings);
+      
+      const contentMatch = response.match(/【文字内容】([\s\S]*?)(?=【图片描述】|$)/);
+      const imageMatch = response.match(/【图片描述】([\s\S]*?)$/);
+      
+      const content = contentMatch ? contentMatch[1].trim() : response.trim();
+      const imageDesc = imageMatch ? imageMatch[1].trim() : '';
+
+      // Generate Image if description exists
+      let images: string[] = [];
+      if (imageDesc && (settings.imageGenApiKey || settings.apiKey)) {
+        try {
+          const { apiFetch } = await import('../../lib/apiHelper');
+          const imgData = await apiFetch({
+            endpoint: '/api/image-gen',
+            body: {
+              prompt: `A professional photography style shot: ${imageDesc}`,
+              settings: settings
+            }
+          });
+          if (imgData.url) images.push(imgData.url);
+        } catch (err) {
+          console.error("Auto moment image gen error:", err);
+        }
+      }
+      
+      addMoment(content, images, undefined, 'public', undefined, undefined, friend.id, false, imageDesc);
+      console.log(`[Scheduler] Auto moment posted for ${friend.name}`);
+    } catch (err) {
+      console.error("Auto moment error:", err);
+    }
+  };
+
   const allMoments = getAllMoments();
   const prevMomentsCount = useRef(allMoments.length);
 
@@ -2685,7 +2767,7 @@ function ChatWindow({
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [friend.id]);
+  }, [friend.id, showSettings]);
 
   useEffect(() => {
     // Only scroll to bottom if a new message was ADDED and NOT in edit mode
@@ -4457,15 +4539,22 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
 
     setIsLoading(true);
     try {
-      const systemPrompt = `你现在是一个文学创作者。
-任务：以${friend.name}的身份，用第一人称简短地写出一段内心的真实感受。
-情境：${friend.name}刚刚给用户发送了这样一句话：“${msg.content}”。
+      // Get last 30 messages for context
+      const recentMsgs = currentMessages.slice(0, index + 1).slice(-30);
+      const context = recentMsgs.map(m => `${m.role === 'user' ? '用户' : friend.name}: ${m.content}`).join('\n');
 
-要求：
-1. 风格：温柔、真实、感性。
-2. 视角：第一人称，符合角色人设（${friend.persona || '自然'}）。
-3. 篇幅：30字左右。
-4. 语言：${friend.language || '中文（普通话）'}。
+      const systemPrompt = `你现在是 ${friend.name}。
+【人设与生活】：${friend.persona || '自然'} ${friend.address ? `生活在${friend.address}` : ''}
+【任务】：请以第一人称简短地写出你此时此刻最真实的内心感受（心声日记）。
+【当前情境】：你刚刚发送了：“${msg.content}”。
+【最近互动上下文】：
+${context}
+
+【要求】：
+1. 风格：细腻、真实、感性，像私密日记一样。
+2. 深度结合：必须根据你们最近的 30 条互动（见上文）来产生情感波动。
+3. 包含双方：内容要提到你对“用户”的感觉，以及你自己的个人心境。
+4. 篇幅：60字左右。
 5. 只能输出内心感受内容。`;
 
       const heartfelt = await callAI(systemPrompt, [{ role: 'user', content: '这一刻你在想什么？' } as ChatMessage], settings);
@@ -4487,17 +4576,17 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
     if (isLoading && !skipLoadingCheck) return;
     if (!skipLoadingCheck) setIsLoading(true);
     try {
-      const recentMsgs = currentMessages.slice(-10);
+      const recentMsgs = currentMessages.slice(-30);
       const context = recentMsgs.map(m => `${m.role === 'user' ? '我' : friend.name}: ${m.content}`).join('\n');
       
-      const systemPrompt = `你现在是${friend.name}，请用一句话描述你现在的状态或心情。
+      const systemPrompt = `你现在是${friend.name}，请根据最近的互动上下文，用一句话描述你现在的状态或心情。
 要求：
-1. 简短有力，通常在10字以内。
+1. 简短有力，通常在15字以内。
 2. 符合人设（${friend.persona || '自然'}）。
 3. 只能输出状态内容。
 4. 使用语言：${friend.language || '中文（普通话）'}。
 
-背景：
+最近 30 条互动上下文：
 ${context}`;
       
       const newStatus = await callAI(systemPrompt, [{ role: 'user', content: '更新当前状态' } as ChatMessage], settings);
@@ -4519,21 +4608,21 @@ ${context}`;
   const handleOfflineHeartfelt = async () => {
     setIsLoading(true);
     try {
-      const recentMsgs = offlineMessages.slice(-10);
+      const recentMsgs = offlineMessages.slice(-30);
       const context = recentMsgs.map(m => `${m.role === 'user' ? '我' : friend.name}: ${m.content}`).join('\n');
       
-      const systemPrompt = `你现在是${friend.name}的线下真实想法生成器。
-任务：根据线下互动内容，生成一句你此时此刻最真实的内心想法。
-要求：
-1. 符合角色人设（${friend.persona || '无特定人设'}）。
-2. 真实反映当前互动情境。
-3. 只能输出心声内容，不加引号。
-4. 长度20-50字。
-5. 严禁包含违禁内容。
-6. 使用语言：${friend.language || '中文（普通话）'}。
+      const systemPrompt = `你现在是${friend.name}。
+【人设与生活】：${friend.persona || '无特定人设'} ${friend.address ? `生活在${friend.address}` : ''}
+【任务】：根据最近的互动内容，生成一段你此时此刻最真实的“心动日记”片段。
+【互动内容（最近30条）】：
+${context}
 
-互动内容：
-${context}`;
+【要求】：
+1. 必须包含对用户的感受和你个人的生活/心情。
+2. 风格真实感性，符合角色性格。
+3. 只能输出心声内容，不加引号。
+4. 长度 80-150 字。
+5. 使用语言：${friend.language || '中文（普通话）'}。`;
       
       const heartfelt = await callAI(systemPrompt, [{ role: 'user', content: '分析当前心声' } as ChatMessage], settings);
       setShowHeartfelt({ content: heartfelt });
@@ -4608,6 +4697,7 @@ ${context}`;
       role: 'user',
       content: `[发送了表情: ${sticker.description || '表情包'}]`,
       type: 'sticker',
+      stickerUrl: sticker.url,
       mediaUrl: sticker.url,
       description: sticker.description,
       timestamp: Date.now()
@@ -4618,6 +4708,7 @@ ${context}`;
       onSendMessage(msg);
     }
     setShowEmojiPicker(false);
+    setInput(''); // Clear input after sending sticker
   };
 
   const handleAddStickersByUrl = () => {
@@ -5211,7 +5302,7 @@ ${context}`;
           }
         }}
         className={cn(
-          "flex-1 overflow-y-auto overflow-x-hidden p-4 pb-[20px] space-y-4 transition-colors duration-300 relative chat-message-list",
+          "flex-1 overflow-y-auto overflow-x-hidden p-4 pb-[20px] space-y-4 transition-colors duration-300 relative chat-message-list z-0",
           settings.isDarkThemeEnabled ? "bg-black" : 
           (settings.isCuteRabbitThemeEnabled ? "bg-pink-50/30" : (settings.themeId === 'rainy-cat' ? "bg-transparent" : (isOfflineMode ? (offlineConfig.bgImage ? "bg-transparent" : "bg-[#e5e5e5]") : (friend.chatBackground || settings.chatWallpaperUrl ? "bg-transparent" : "bg-[#f5f5f5]"))))
         )}
@@ -5670,7 +5761,7 @@ ${context}`;
                       )}
                       {msg.type === 'sticker' && msg.mediaUrl && (
                         <div 
-                          className="px-1 py-1 cursor-pointer active:opacity-90 transition-all duration-300"
+                          className="px-1 py-1 cursor-pointer active:opacity-90 transition-all duration-300 flex flex-col items-center gap-1"
                           onClick={(e) => {
                             if (longPressTriggeredRef.current) {
                               e.stopPropagation();
@@ -5706,9 +5797,6 @@ ${context}`;
                           ) : (
                             <>
                               <img src={msg.mediaUrl} alt="sent" className="max-w-full rounded-md shadow-sm" referrerPolicy="no-referrer" />
-                              {msg.description && msg.content !== '[图片]' && (
-                                <div className="text-[10px] opacity-70 px-1">{msg.description}</div>
-                              )}
                               <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors rounded-md flex items-center justify-center opacity-0 group-hover:opacity-100">
                                 <Search className="text-white w-5 h-5" />
                               </div>
@@ -6312,7 +6400,7 @@ ${context}`;
       {/* Bottom Bar */}
       {!isMultiSelectMode && (
         <div className={cn(
-          "border-t p-3 pb-6 relative transition-all duration-300 chat-window-footer",
+          "border-t p-3 pb-6 relative transition-all duration-300 chat-window-footer z-[9999]",
           settings.themeId === 'rainy-cat' ? "bg-white/5 backdrop-blur-xl border-white/10" : (settings.activeChatThemeId ? "bg-transparent border-transparent" : (settings.appBackgroundUrl ? "bg-white/10 backdrop-blur-md border-slate-200/20" : "bg-[#f7f7f7] border-slate-200"))
         )} style={settings.appBackgroundUrl && !settings.activeChatThemeId ? { backgroundColor: `rgba(255, 255, 255, ${Math.max(0, (settings.chatWallpaperOpacity ?? 0.8) * 0.2)})` } : {}}>
         {/* Sticker Suggestions */}
@@ -6323,17 +6411,18 @@ ${context}`;
               animate={{ opacity: 1, y: -8, scale: 1 }}
               exit={{ opacity: 0, y: 10, scale: 0.95 }}
               className={cn(
-                "absolute left-3 right-3 bottom-full mb-1 flex gap-2 p-2 rounded-xl overflow-x-auto no-scrollbar shadow-lg border",
-                settings.themeId === 'rainy-cat' ? "bg-black/60 backdrop-blur-xl border-white/20" : "bg-white/90 backdrop-blur-md border-slate-100"
+                "absolute left-3 right-3 bottom-full mb-1 flex gap-2 p-2 rounded-xl overflow-x-auto no-scrollbar shadow-2xl border",
+                settings.themeId === 'rainy-cat' ? "bg-black/80 backdrop-blur-2xl border-white/20" : "bg-white border-slate-100"
               )}
-              style={{ zIndex: 100 }}
+              style={{ zIndex: 9999999 }}
             >
               {suggestedStickers.map((sticker) => (
                 <button
                   key={sticker.id}
-                  onClick={() => {
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
                     handleSendSticker(sticker);
-                    setInput('');
                   }}
                   className={cn(
                     "flex-shrink-0 flex flex-col items-center gap-1 p-1 rounded-lg transition-all active:scale-90",
@@ -8654,9 +8743,76 @@ function FriendMoments({
               <div className="flex-1">
                 <span className="font-bold text-sm block mb-1 text-blue-900">{friend?.alias || friend?.name || '角色'}</span>
                 <p className="text-sm mb-2 text-slate-800">{post.content}</p>
+                {post.images && post.images.length > 0 && (
+                  <div className={cn("grid gap-1 mb-2", post.images.length === 1 ? "grid-cols-1" : "grid-cols-3")}>
+                    {post.images.map((img, i) => (
+                      <img key={i} src={img} className={cn("rounded object-cover", post.images.length === 1 ? "max-h-48 w-auto" : "aspect-square w-full")} />
+                    ))}
+                  </div>
+                )}
                 <div className="flex justify-between items-center text-xs text-slate-400 mt-2">
                   <span>{new Date(post.timestamp).toLocaleString()}</span>
+                  <div className="flex items-center gap-3">
+                    <button 
+                      onClick={() => onToggleLike(post.id, friend.id)}
+                      className={cn("flex items-center gap-1 transition-colors", post.likes?.includes('user') ? "text-red-500" : "hover:text-red-400")}
+                    >
+                      <Heart size={14} fill={post.likes?.includes('user') ? "currentColor" : "none"} />
+                      <span>{post.likes?.length || 0}</span>
+                    </button>
+                    <button 
+                      onClick={() => setActiveCommentId(post.id)}
+                      className="flex items-center gap-1 hover:text-blue-500 transition-colors"
+                    >
+                      <MessageSquare size={14} />
+                      <span>{post.comments?.length || 0}</span>
+                    </button>
+                  </div>
                 </div>
+
+                {/* Likes list */}
+                {post.likes && post.likes.length > 0 && (
+                  <div className="mt-2 p-2 bg-slate-50 rounded text-xs text-blue-900 flex items-center gap-1">
+                    <Heart size={10} fill="currentColor" />
+                    {post.likes.map((id, i) => (
+                      <span key={id}>{i > 0 && '、'}{id === 'user' ? (user?.name || '我') : (friends.find(f => f.id === id)?.name || id)}</span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Comments list */}
+                {post.comments && post.comments.length > 0 && (
+                  <div className="mt-1 p-2 bg-slate-50 rounded divide-y divide-slate-100">
+                    {post.comments.map((c: any, i: number) => (
+                      <div key={i} className="py-1 text-xs">
+                        <span className="font-bold text-blue-900">{c.authorName}</span>
+                        {c.replyToName && <><span className="text-slate-400 mx-1">回复</span><span className="font-bold text-blue-900">{c.replyToName}</span></>}
+                        <span className="text-slate-800">: {c.content}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Comment Input */}
+                {activeCommentId === post.id && (
+                  <div className="mt-2 flex gap-2">
+                    <input 
+                      autoFocus
+                      type="text" 
+                      value={commentText}
+                      onChange={(e) => setCommentText(e.target.value)}
+                      placeholder={replyTo ? `回复 ${replyTo.name}...` : "评论..."}
+                      className="flex-1 px-2 py-1 bg-slate-100 rounded text-xs outline-none"
+                      onKeyDown={(e) => e.key === 'Enter' && handleSendComment(post.id, friend.id)}
+                    />
+                    <button 
+                      onClick={() => handleSendComment(post.id, friend.id)}
+                      className="px-3 py-1 bg-blue-500 text-white rounded text-xs font-bold"
+                    >
+                      发送
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )) : <div className="text-center py-20 text-slate-400">暂无动态</div>}
@@ -8713,10 +8869,73 @@ function DiscoverTab({
               <div className="flex-1">
                 <span className="font-bold text-sm block mb-1 text-blue-900">{moment.authorName}</span>
                 <p className="text-sm mb-2 text-slate-800">{moment.content}</p>
+                {moment.images && moment.images.length > 0 && (
+                  <div className={cn("grid gap-1 mb-2", moment.images.length === 1 ? "grid-cols-1" : "grid-cols-3")}>
+                    {moment.images.map((img: string, i: number) => (
+                      <img key={i} src={img} className={cn("rounded object-cover", moment.images.length === 1 ? "max-h-48 w-auto" : "aspect-square w-full")} />
+                    ))}
+                  </div>
+                )}
                 <div className="flex justify-between items-center text-[10px] text-slate-400 mt-2">
                   <span>{new Date(moment.timestamp).toLocaleString()}</span>
-                  <button onClick={() => setActiveCommentId(moment.id)} className="p-1 rounded bg-slate-100"><MessageSquare size={14} /></button>
+                  <div className="flex items-center gap-3">
+                    <button 
+                      onClick={() => onToggleLike(moment.id, moment.authorId)}
+                      className={cn("flex items-center gap-1 transition-colors", moment.likes?.includes('user') ? "text-red-500" : "hover:text-red-400")}
+                    >
+                      <Heart size={14} fill={moment.likes?.includes('user') ? "currentColor" : "none"} />
+                      <span>{moment.likes?.length || 0}</span>
+                    </button>
+                    <button onClick={() => setActiveCommentId(moment.id)} className="p-1 rounded bg-slate-100 flex items-center gap-1">
+                      <MessageSquare size={14} />
+                      <span>{moment.comments?.length || 0}</span>
+                    </button>
+                  </div>
                 </div>
+
+                {/* Likes list */}
+                {moment.likes && moment.likes.length > 0 && (
+                  <div className="mt-2 p-2 bg-slate-50 rounded text-[10px] text-blue-900 flex items-center gap-1">
+                    <Heart size={10} fill="currentColor" />
+                    {moment.likes.map((id: string, i: number) => (
+                      <span key={id}>{i > 0 && '、'}{id === 'user' ? (user?.name || '我') : (friends.find(f => f.id === id)?.name || id)}</span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Comments list */}
+                {moment.comments && moment.comments.length > 0 && (
+                  <div className="mt-1 p-2 bg-slate-50 rounded divide-y divide-slate-100">
+                    {moment.comments.map((c: any, i: number) => (
+                      <div key={i} className="py-1 text-[10px]">
+                        <span className="font-bold text-blue-900">{c.authorName}</span>
+                        {c.replyToName && <><span className="text-slate-400 mx-1">回复</span><span className="font-bold text-blue-900">{c.replyToName}</span></>}
+                        <span className="text-slate-800">: {c.content}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Comment Input */}
+                {activeCommentId === moment.id && (
+                  <div className="mt-2 flex gap-2">
+                    <input 
+                      autoFocus
+                      type="text" 
+                      value={commentText}
+                      onChange={(e) => setCommentText(e.target.value)}
+                      placeholder={replyTo ? `回复 ${replyTo.name}...` : "评论..."}
+                      className="flex-1 px-2 py-1 bg-slate-100 rounded text-[10px] outline-none"
+                      onKeyDown={(e) => e.key === 'Enter' && handleSendComment(moment.id, moment.authorId)}
+                    />
+                    <button 
+                      onClick={() => handleSendComment(moment.id, moment.authorId)}
+                      className="px-3 py-1 bg-blue-500 text-white rounded text-[10px] font-bold"
+                    >
+                      发送
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))}
@@ -11183,7 +11402,7 @@ function PostMomentModal({ user, friends, settings, onClose, onPost }: { user: a
       exit={{ opacity: 0, y: 100 }}
       className="fixed inset-0 z-[100] bg-white flex flex-col"
     >
-      <div className="px-4 py-3 flex justify-between items-center border-b">
+      <div className="px-4 pt-10 pb-3 flex justify-between items-center border-b">
         <button onClick={onClose} className="text-sm">取消</button>
         <button 
           disabled={!content.trim() && images.length === 0}

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   ChevronLeft, Send, Plus, Image as ImageIcon, Smile, Sparkles, 
@@ -486,7 +486,7 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
       messagesEndRef.current.scrollIntoView({ behavior: 'instant' });
     }
     lastMessagesLength.current = messages.length;
-  }, [messages.length, showEmojiPicker, showFeatures]);
+  }, [messages.length, showEmojiPicker, showFeatures, showSettings]);
 
   // Handle character auto-claiming red packets when a new one is sent
   useEffect(() => {
@@ -659,6 +659,30 @@ ${historyText}`;
     }
   };
 
+  const suggestedStickers = useMemo(() => {
+    if (!inputText.trim()) return [];
+    const search = inputText.trim().toLowerCase();
+    return (settings.customStickers || [])
+      .filter(s => s.description && s.description.toLowerCase().includes(search))
+      .slice(0, 10);
+  }, [inputText, settings.customStickers]);
+
+  const handleSendSticker = (sticker: Sticker) => {
+    const msg: ChatMessage = {
+      id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      role: 'user',
+      content: `[表情: ${sticker.description}]`,
+      type: 'sticker',
+      stickerUrl: sticker.url,
+      mediaUrl: sticker.url,
+      timestamp: Date.now(),
+      description: sticker.description
+    };
+    onSendMessage(msg);
+    setInputText('');
+    setShowEmojiPicker(false);
+  };
+
   const handleSend = () => {
     if (!inputText.trim()) return;
     const msg: ChatMessage = {
@@ -672,18 +696,6 @@ ${historyText}`;
     setQuotedMsg(null);
     setShowEmojiPicker(false);
     setShowFeatures(false);
-  };
-
-  const handleSendSticker = (sticker: Sticker) => {
-    const msg: ChatMessage = {
-      role: 'user',
-      content: `[表情: ${sticker.description}]`,
-      type: 'sticker',
-      stickerUrl: sticker.url,
-      timestamp: Date.now(),
-    };
-    onSendMessage(msg);
-    setShowEmojiPicker(false);
   };
 
   const handleAddStickersByUrl = () => {
@@ -1830,7 +1842,7 @@ ${historyText}`;
 
       {/* Messages List */}
       <div 
-        className="flex-1 overflow-y-auto p-4 space-y-4"
+        className="flex-1 overflow-y-auto p-4 space-y-4 relative z-0"
         onClick={() => {
           if (showEmojiPicker) setShowEmojiPicker(false);
           if (showFeatures) setShowFeatures(false);
@@ -2266,7 +2278,7 @@ ${historyText}`;
 
       {/* Bottom Input Bar - WeChat Style */}
       <div className={cn(
-        "p-2.5 border-t flex flex-col backdrop-blur-md overflow-x-hidden",
+        "p-2.5 border-t flex flex-col backdrop-blur-md relative z-[9999]",
         isRainy ? "bg-white/5 border-white/10" : "bg-[#f7f7f7] border-slate-200"
       )} style={settings.fullScreenMode ? { paddingBottom: 'env(safe-area-inset-bottom)' } : {}}>
         <div className="flex items-center gap-1.5">
@@ -2289,6 +2301,7 @@ ${historyText}`;
             onChange={(e) => setInputText(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
             placeholder="发送消息..."
+            autoComplete="off"
             className={cn(
               "flex-1 min-w-0 px-3 py-1.5 rounded-lg border text-sm outline-none transition-all",
               isRainy ? "bg-white/10 border-white/20 text-white placeholder-white/40" : "bg-white border-slate-200 text-slate-800"
@@ -2346,6 +2359,49 @@ ${historyText}`;
             </button>
           ) : null}
         </div>
+
+        {/* Sticker Suggestions */}
+        <AnimatePresence>
+          {suggestedStickers.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 10, scale: 0.95 }}
+              animate={{ opacity: 1, y: -8, scale: 1 }}
+              exit={{ opacity: 0, y: 10, scale: 0.95 }}
+              className={cn(
+                "absolute left-3 right-3 bottom-full mb-1 z-[9999999] flex gap-2 p-2 rounded-xl border shadow-2xl backdrop-blur-2xl overflow-x-auto no-scrollbar",
+                isRainy ? "bg-black/80 border-white/20" : "bg-white border-slate-200"
+              )}
+            >
+              {suggestedStickers.map((sticker) => (
+                <button
+                  key={sticker.id}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    handleSendSticker(sticker);
+                  }}
+                  className={cn(
+                    "flex-shrink-0 flex flex-col items-center gap-1 p-1.5 rounded-lg transition-all active:scale-95",
+                    isRainy ? "hover:bg-white/10" : "hover:bg-slate-100"
+                  )}
+                >
+                  <img 
+                    src={sticker.url} 
+                    alt={sticker.description} 
+                    className="w-12 h-12 object-contain rounded"
+                    referrerPolicy="no-referrer"
+                  />
+                  <span className={cn(
+                    "text-[8px] font-medium truncate max-w-[48px]",
+                    isRainy ? "text-white/60" : "text-slate-500"
+                  )}>
+                    {sticker.description}
+                  </span>
+                </button>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Emoji / Sticker Picker Panel */}
         <AnimatePresence>
@@ -2449,7 +2505,7 @@ ${historyText}`;
                         <Plus size={20} />
                       </button>
                       {(settings.customStickers || []).map((sticker, idx) => (
-                        <div key={`${sticker.id}-${idx}`} className="relative group aspect-square">
+                        <div key={`${sticker.id}-${idx}`} className="relative group flex flex-col gap-1">
                           <button
                             onClick={() => {
                               if (stickerDeleteMode) {
@@ -2461,12 +2517,20 @@ ${historyText}`;
                               }
                             }}
                             className={cn(
-                              "w-full h-full rounded-xl overflow-hidden border-2 transition-all",
+                              "w-full aspect-square rounded-xl overflow-hidden border-2 transition-all",
                               selectedStickers.includes(sticker.id) ? "border-red-500 scale-95" : "border-transparent"
                             )}
                           >
                             <img src={sticker.url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                           </button>
+                          {!stickerDeleteMode && sticker.description && (
+                            <span className={cn(
+                              "text-[10px] truncate text-center px-1",
+                              isRainy ? "text-white/60" : "text-slate-500"
+                            )}>
+                              {sticker.description}
+                            </span>
+                          )}
                           {stickerDeleteMode && (
                             <div className="absolute top-1 right-1 w-4 h-4 rounded-full bg-white border border-slate-200 flex items-center justify-center">
                               {selectedStickers.includes(sticker.id) && <div className="w-2 h-2 rounded-full bg-red-500" />}
