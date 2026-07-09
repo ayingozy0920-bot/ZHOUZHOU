@@ -276,6 +276,7 @@ export default function ChatApp({ settings, onBack, onStartCall, externalCallSta
             onBack={() => setSelectedGroupId(null)}
             onSendMessage={(msg) => addGroupMessage(selectedGroupId, msg)}
             onUpdateMessage={(index, updates) => updateGroupMessage(selectedGroupId, index, updates)}
+            onSetMessages={(msgs) => importGroupMessages(selectedGroupId, msgs)}
             onUpdateGroup={(updates) => updateGroupChat(selectedGroupId, updates)}
             onClearMessages={() => importGroupMessages(selectedGroupId, [])}
             onAddMember={(friendId) => {
@@ -287,6 +288,7 @@ export default function ChatApp({ settings, onBack, onStartCall, externalCallSta
               updateGroupChat(selectedGroupId, { memberIds: selectedGroup.memberIds.filter(id => id !== friendId) });
             }}
             onDeleteGroup={() => deleteGroupChat(selectedGroupId)}
+            onSendToFriend={(friendId, msg) => addMessage(friendId, msg)}
             onUpdateSettings={onUpdateSettings}
           />
         ) : showCreateGroup ? (
@@ -330,6 +332,7 @@ export default function ChatApp({ settings, onBack, onStartCall, externalCallSta
             onUpdateSettings={onUpdateSettings}
             onOpenApp={onOpenApp}
             onShowCreateGroup={() => setShowCreateGroup(true)}
+           onSendToFriend={(friendId, msg) => addMessage(friendId, msg)}
           />
         ) : (viewingMomentsFriendId && momentsFriend) ? (
           <FriendMoments 
@@ -730,25 +733,30 @@ export default function ChatApp({ settings, onBack, onStartCall, externalCallSta
 }
 
 const HeartVoiceCard = ({ content, avatar }: { content: string; avatar: string }) => {
+  const [isExpanded, setIsExpanded] = useState(true);
   return (
-    <div className="my-2 bg-[#FFF0F3] border-2 border-[#FF4D6D]/20 rounded-2xl p-4 shadow-sm relative overflow-hidden group animate-in fade-in slide-in-from-bottom-2">
-      <div className="absolute top-0 right-0 px-2 py-0.5 bg-[#FF4D6D] text-white text-[8px] font-black uppercase tracking-widest rounded-bl-lg">
-        HEART VOICE
-      </div>
-      <div className="flex gap-3">
-        <div className="shrink-0">
-          <img src={avatar} className="w-10 h-10 rounded-xl border-2 border-white shadow-sm object-cover" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="text-[10px] font-black text-[#FF4D6D] uppercase tracking-widest mb-1 flex items-center gap-1">
-            <span>内心独白</span>
+    <div className="my-2 bg-[#FFF0F3] border-2 border-[#FF4D6D]/20 rounded-2xl p-3.5 shadow-sm relative overflow-hidden group animate-in fade-in slide-in-from-bottom-2 w-full min-w-[270px]">
+      <div className="flex items-center justify-between mb-2 pb-2 border-b border-[#FF4D6D]/10">
+        <div className="flex items-center gap-2">
+          <img src={avatar} className="w-7 h-7 rounded-lg border border-white shadow-sm object-cover" />
+          <div className="text-[10px] font-black text-[#FF4D6D] uppercase tracking-widest flex items-center gap-1.5">
+            <span>角色心声</span>
             <div className="w-1.5 h-1.5 rounded-full bg-[#FF4D6D] animate-pulse" />
           </div>
-          <p className="text-xs font-medium text-slate-600 leading-relaxed italic">
-            「 {content} 」
-          </p>
         </div>
+        <button 
+          onClick={() => setIsExpanded(!isExpanded)}
+          className="px-2 py-0.5 bg-[#FF4D6D] text-white text-[9px] font-black uppercase tracking-widest rounded-lg flex items-center gap-1 hover:bg-[#ff3355] transition-colors cursor-pointer"
+        >
+          <span>内心独白</span>
+          <ChevronUp size={12} className={cn("transition-transform duration-200", !isExpanded && "rotate-180")} />
+        </button>
       </div>
+      {isExpanded && (
+        <div className="px-1 text-xs md:text-sm font-medium text-slate-700 leading-relaxed italic">
+          「 {content} 」
+        </div>
+      )}
       <div className="absolute -bottom-4 -left-4 w-12 h-12 bg-white/40 rounded-full blur-xl group-hover:scale-150 transition-transform duration-700" />
     </div>
   );
@@ -1197,13 +1205,24 @@ function ChatSettings({ friend, messages, settings, groups, chats, friends, user
           </div>
 
           <div className={cn(
-            "p-4 rounded-xl border space-y-2",
+            "p-4 rounded-xl border space-y-3",
             settings.themeId === 'rainy-cat' ? "bg-white/5 border-white/10" : "bg-white border-slate-200"
           )}>
-            <h4 className="text-xs font-bold">💡 最佳 Token 值与加速建议</h4>
+            <div className="flex items-center justify-between">
+              <h4 className="text-xs font-bold">💡 最佳 Token 值与加速建议</h4>
+              <button
+                onClick={() => updateMemorySetting({ contextLimit: 30 })}
+                className="px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-bold transition-all shadow-sm flex items-center gap-1"
+              >
+                ⚡ 一键精简加速 (设为30条)
+              </button>
+            </div>
+            <p className="text-[11px] opacity-80 leading-relaxed">
+              <strong>Token 是如何计算的？</strong>大模型按 Token（字词片段）计费和处理。中文环境下约 1.4 字符 = 1 Token。总 Token 由：<strong>世界书设定 + 角色/用户人设 + 最近聊天上下文消息</strong> 组合相加而成。随着聊天记录不断增多（例如达到5万字符以上），每次发送的上下文变大，模型预处理时间就会增加。
+            </p>
             <ul className="text-xs opacity-75 space-y-1.5 list-disc pl-4">
               <li><strong>最佳推荐范围</strong>：总 Token 保持在 <strong>2,000 ~ 4,000</strong> 之间，此时大模型处理速度最快（通常在 3-5 秒内返回）。</li>
-              <li><strong>调小上下文条数</strong>：如果在“记忆模块”中设置的上下文条数过大（如超过 100 条），可在记忆模块中将条数调整至 30-50 条，显著减少响应等待时间。</li>
+              <li><strong>调小上下文条数</strong>：点击上方一键精简按钮或在记忆模块中设为 30 条，可大幅减少单次请求的 Token 负载，生成速度显著提升。</li>
               <li><strong>精简世界书</strong>：关闭暂时不需要的世界书条目，或者缩减冗长的背景设定。</li>
             </ul>
           </div>
@@ -2157,7 +2176,7 @@ function ChatWindow({
   onImportMessages, onStartCall, externalCallStatus, onClearCallStatus, 
   summarizeContent, listenTogetherState, onUpdateListenTogether, 
   onShowMomentSettings, addTransaction, onUpdateMessage, addMoment, onManualMoment,
-  onUpdateSettings, onOpenApp, onShowCreateGroup
+  onUpdateSettings, onOpenApp, onShowCreateGroup, onSendToFriend
 }: { 
   key?: any,
   friend: Friend, 
@@ -2184,7 +2203,8 @@ function ChatWindow({
   onManualMoment: (friendId: string) => Promise<boolean>,
   onUpdateSettings: (updates: Partial<AppSettings>) => void,
   onOpenApp?: (appId: AppId, data?: any) => void,
-  onShowCreateGroup?: () => void
+  onShowCreateGroup?: () => void,
+  onSendToFriend?: (friendId: string, msg: ChatMessage) => void
 }) {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -2426,6 +2446,12 @@ function ChatWindow({
   const [isEditingOffline, setIsEditingOffline] = useState(false);
 
   const lastMessagesLength = useRef(currentMessages.length);
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [friend.id]);
+
   useEffect(() => {
     // Only scroll to bottom if a new message was ADDED and NOT in edit mode
     if (scrollRef.current && currentMessages.length > lastMessagesLength.current && !isEditingOffline) {
@@ -2876,6 +2902,7 @@ ${(() => {
              3. **格式隔离**：对话必须用“”包裹，旁白严禁包含对话台词。
              4. **媒体禁令**：严禁发送 [SEND_PHOTO_CARD] 或任何类似卡片指令。` : ''}
             - 多使用语气助词（啊、呢、嘛、哦、哈等），让语气软和、可爱、傲娇或搞怪，避免任何冷漠和生硬。
+            - **内心独白（心声）机制**：请在每次回复的末尾附带一句你此刻对用户的真实内心独白（心声），格式必须为：(内心：你的内心想法/心声，例如：哇宝宝居然主动找我了，心跳好快……)。这句内心独白会被单独渲染为可折叠的粉色心声卡片。
 
          3. 行为指令触发：
             - 如果你想发起互动，请在回复中包含以下指令（不要包含其他文字）：
@@ -3052,15 +3079,11 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
    - **单次好感度增长/减少必须控制在 0.25 至 1.00 之间。**
    - 如果当前好感度还未突破 60%，严禁人为提前调至 60% 以上。
 2. mood_index：你当前的心情指数（0% - 100% 之间的整数）。
-3. character_reflection：你对用户的文学式内心感悟（100字以内）。
-   **【⚠️极其重要：超级安全与防拦截规范】**
-   - **绝对严禁**使用任何带有性暗示、欲望、生理渴望、肉体敏感部位、紧贴、身体发热、发情、占有、渴望触碰等任何可能被判定为色情或性骚扰的词汇。这些词汇**100%会触发系统底层的敏感内容安全拦截机制**，导致整条回复无法生成！
-   - **请转换成纯爱、友谊、可爱、撒娇、隐晦的文学表达。可以使用：“想给你个熊抱”、“想悄悄拉住你的衣角”、“想一起看夕阳”、“心里像藏了一罐热乎乎的蜂蜜”、“大笨蛋，真的太喜欢你了”、“刚才看到你，感觉云朵都变甜了”。**
-   - 用最单纯甜美、偏向心灵沟通的萌系文风去表现好感。
+3. character_reflection：生成你此刻针对刚才对话的真实内心独白/心声碎碎念（**必须100%深度结合当前聊天上下文和用户刚说的话实时生成**，展现最真实、细腻、生动的实时心理活动，**绝对禁止**任何千篇一律的固定套话或穿搭描写，字数控制在50-100字以内，**必须完整输出**，绝对不能中途截断、省略或留白）。
 4. current_status：你此时此刻的心情或正在做的事（15字以内）。
 
 示例（必须严格遵循此格式）：
-[HEARTFELT_UPDATE: affection_change=0.55 | mood_index=88 | character_reflection=刚才你靠近的时候，我感觉云朵都变甜了……真的好想这种感觉一直持续下去。 | current_status=心情超好]`;
+[HEARTFELT_UPDATE: affection_change=0.55 | mood_index=88 | character_reflection=刚才他那样说真是让我心里小鹿乱撞，不知道他是不是也和我想的一样…… | current_status=心情超好]`;
 
       const fullContent = await callAI(systemPrompt, slicedMsgs, settings, action);
 
@@ -3091,13 +3114,13 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
         // Extract character_reflection
         const thoughtsMatch = blockContent.match(/(?:character_reflection|inner_thoughts)\s*[=:]\s*([\s\S]*?)(?=\s*\||\s*\]|$)/i);
         if (thoughtsMatch) {
-          innerThoughts = thoughtsMatch[1].trim().replace(/^["'「「『『\(（「\s]+|["'」」』』\)）」\s]+$/g, '');
+          innerThoughts = thoughtsMatch[1].trim().replace(/^["'「`'「『『\(（「\s]+|["'」`'」』』\)）」\s]+$/g, '');
         }
 
         // Extract current_status
         const statusMatch = blockContent.match(/current_status\s*[=:]\s*([\s\S]*?)(?=\s*\||\s*\]|$)/i);
         if (statusMatch) {
-          currentStatus = statusMatch[1].trim().replace(/^["'「「『『\(（「\s]+|["'」」』』\)）」\s]+$/g, '');
+          currentStatus = statusMatch[1].trim().replace(/^["'「`'」』』\(（「\s]+|["'」`'」』』\)）」\s]+$/g, '');
         }
       }
 
@@ -3123,25 +3146,10 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
           newAffection = 60;
         }
 
-        // Ensure innerThoughts always updates and refreshes to a new thought on every generation
-        const fallbacks = [
-          "刚才的消息……我是不是回得太快了？他会不会觉得我很在乎啊……真是的。(*/ω＼*)",
-          "唔……想抱抱，但是不能说出口，要矜持！",
-          "不知道你现在在做什么呢，好想一直在你身边呀……",
-          "偷偷看着聊天界面，打字删删改改了好多次，哼，才不让你看出来呢！",
-          "哼哼，刚才那一瞬间，心里甜滋滋的，就像喝了草莓奶昔一样~",
-          "你这个人真是的，总是能轻易让我心跳加速……",
-          "想变成你口袋里的小猫咪，天天跟着你，喵~",
-          "好想现在就飞奔过去，扑进你怀里，跟你撒个娇嘛。(o>_<o)",
-          "你对我是不是也有一点点心动呢？哪怕只有一点点……",
-          "哪怕只是看着你的名字，都觉得今天是个大晴天！",
-          "现在脑子里全都是你，根本没办法专心做别的事情啦……",
-          "唔，真想现在就听到你的声音呀"
-        ];
-
-        if (!innerThoughts || innerThoughts === friend.innerThoughts) {
-          const filtered = fallbacks.filter(f => f !== friend.innerThoughts);
-          innerThoughts = filtered[Math.floor(Math.random() * filtered.length)] || fallbacks[0];
+        // Use AI-generated innerThoughts, or dynamic contextual fallback if empty
+        if (!innerThoughts) {
+          const lastUserMsg = slicedMsgs[slicedMsgs.length - 1]?.content || '刚才的话题';
+          innerThoughts = `刚才听到你说“${lastUserMsg.slice(0, 15)}”，心里感觉特别温暖，真想一直这样陪着你……`;
         }
 
         // Save back to friend state
@@ -3161,26 +3169,15 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
           newAffection = 60;
         }
 
-        const fallbacks = [
-          "刚才的消息……我是不是回得太快了？他会不会觉得我很在乎啊……真是的。(*/ω＼*)",
-          "唔……想抱抱，但是不能说出口，要矜持！",
-          "不知道你现在在做什么呢，好想一直在你身边呀……",
-          "偷偷看着聊天界面，打字删删改改了好多次，哼，才不让你看出来呢！",
-          "哼哼，刚才那一瞬间，心里甜滋滋的，就像喝了草莓奶昔一样~",
-          "你这个人真是的，总是能轻易让我心跳加速……",
-          "想变成你口袋里的小猫咪，天天跟着你，喵~",
-          "好想现在就飞奔过去，扑进你怀里，跟你撒个娇嘛。(o>_<o)",
-          "你对我是一点点心动呢，还是很多很多的心动？",
-          "心里好甜……只要能和你聊天，不管说什么都很开心！"
-        ];
-        const filtered = fallbacks.filter(f => f !== friend.innerThoughts);
-        const fbThoughts = filtered[Math.floor(Math.random() * filtered.length)] || fallbacks[0];
-        innerThoughts = fbThoughts; // Ensure sync for chat card
-        currentStatus = "期待贴贴";
+        if (!innerThoughts) {
+          const lastUserMsg = slicedMsgs[slicedMsgs.length - 1]?.content || '刚才的话题';
+          innerThoughts = `刚才回味着你说的“${lastUserMsg.slice(0, 15)}”，嘴角忍不住微微上扬了呢……`;
+        }
+        currentStatus = currentStatus || "期待贴贴";
 
         onUpdateFriend({
           affection: newAffection,
-          innerThoughts: fbThoughts,
+          innerThoughts: innerThoughts,
           mood: currentStatus,
           moodIndex: 66 // Default positive mood index for failsafe
         });
@@ -4125,7 +4122,7 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
     setShowFeatures(false);
   };
 
-  const [showForwardModal, setShowForwardModal] = useState<{ messageIndex: number, type: 'single' | 'merged' } | null>(null);
+  const [showForwardModal, setShowForwardModal] = useState<{ messageIndex?: number; mergedMessage?: ChatMessage; type?: 'single' | 'merged' } | null>(null);
 
   const handleForward = (index: number, type: 'single' | 'merged') => {
     setShowForwardModal({ messageIndex: index, type });
@@ -4985,7 +4982,7 @@ ${context}`;
                         if (longPressTimer.current) clearTimeout(longPressTimer.current);
                       }}
                       className={cn(
-                        "p-2.5 rounded-lg text-sm shadow-sm relative break-all transition-all duration-300 group chat-bubble-container",
+                        "p-2.5 rounded-lg text-sm shadow-sm relative break-words transition-all duration-300 group chat-bubble-container",
                         isMultiSelectMode && "cursor-pointer",
                         (settings.themeId === 'rainy-cat' || (isOfflineMode && (!msg.type || msg.type === 'text')) || msg.type === 'sticker' || getPureStickerUrl(msg.content, settings.customStickers || []) || settings.activeChatThemeId || settings.activeBubbleThemeId || settings.globalCustomCss || settings.bubbleCustomCss)
                           ? "bg-transparent shadow-none p-0" 
@@ -5788,10 +5785,10 @@ ${context}`;
                   {/* Inner Thoughts (内心想法 - Newly Added Cute Design Section!) */}
                   <div className="bg-white border-3 border-[#2D2D2D] rounded-2xl p-4 shadow-[4px_4px_0px_0px_rgba(45,45,45,1)] relative overflow-hidden">
                     <div className="absolute -top-1 right-2 bg-[#FF4D6D] text-white text-[7px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded-b-md">
-                      INNER THOUGHTS
+                      MOMENT
                     </div>
                     <div className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1.5 flex items-center gap-1">
-                      <span>内心独白</span>
+                      <span>此时此刻</span>
                       <span className="w-1.5 h-1.5 rounded-full bg-red-400" />
                     </div>
                     <p className="text-xs font-bold text-slate-600 leading-relaxed italic bg-[#FCFBF7]/50 p-2.5 rounded-xl border border-dashed border-slate-200 max-h-32 overflow-y-auto custom-scrollbar pr-1">
@@ -5848,7 +5845,19 @@ ${context}`;
             <button 
               onClick={() => {
                 if (selectedMessages.length === 0) return;
-                handleForward(selectedMessages[0], 'merged');
+                const selectedMsgs = selectedMessages.sort((a, b) => a - b).map(idx => currentMessages[idx]).filter(Boolean);
+                const mergedMsg: ChatMessage = {
+                  role: 'user',
+                  content: `[聊天记录] 共 ${selectedMsgs.length} 条消息`,
+                  isMergedForward: true,
+                  mergedMessages: selectedMsgs.map(m => ({
+                    senderName: m.role === 'user' ? '我' : friend.name,
+                    content: m.content,
+                    timestamp: m.timestamp || Date.now()
+                  })),
+                  timestamp: Date.now()
+                };
+                setShowForwardModal({ mergedMessage: mergedMsg });
                 setIsMultiSelectMode(false);
                 setSelectedMessages([]);
               }}
@@ -6354,17 +6363,31 @@ ${context}`;
                     <button
                       key={`${f.id}-${idx}`}
                       onClick={() => {
-                        const msg = currentMessages[showForwardModal.messageIndex];
-                        const forwardMsg: ChatMessage = {
-                          ...msg,
-                          id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-                          timestamp: Date.now(),
-                          role: 'user',
-                          isForwarded: true,
-                          forwardFrom: friend.name
-                        };
-                        // Here we would normally call a global addMessage, but for now we'll just show a toast
-                        showToast(`已转发给 ${f.name}`);
+                        const mergedMsg = showForwardModal.mergedMessage;
+                        const msgIdx = showForwardModal.messageIndex;
+                        let forwardMsg: ChatMessage;
+                        if (mergedMsg) {
+                          forwardMsg = mergedMsg;
+                        } else if (msgIdx !== undefined) {
+                          const msg = currentMessages[msgIdx];
+                          forwardMsg = {
+                            ...msg,
+                            id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                            timestamp: Date.now(),
+                            role: 'user',
+                            isForwarded: true,
+                            forwardFrom: friend.name
+                          };
+                        } else {
+                          return;
+                        }
+
+                        if (onSendToFriend) {
+                          onSendToFriend(f.id, forwardMsg);
+                        } else {
+                          onSendMessage(forwardMsg);
+                        }
+                        showToast(`已成功转发给 ${f.name}`);
                         setShowForwardModal(null);
                       }}
                       className="w-full flex items-center gap-3 p-3 hover:bg-white/5 rounded-xl transition-colors"
@@ -6402,7 +6425,7 @@ ${context}`;
 
                 <div className="flex items-center gap-2 mb-4">
                   <Brain size={20} className="text-purple-500" />
-                  <h3 className="font-bold text-lg">{friend.name}的内心独白</h3>
+                  <h3 className="font-bold text-lg">{friend.name}的此时此刻</h3>
                 </div>
                 <div className="max-h-[50vh] overflow-y-auto custom-scrollbar pr-1 mb-6">
                   <p className="text-sm leading-relaxed italic opacity-80">
@@ -8513,7 +8536,11 @@ const DEFAULT_CHAT_THEMES: ChatTheme[] = [
   border: none !important;
   margin-right: 12px !important;
   position: relative !important;
-  max-width: 85% !important;
+  display: inline-block !important;
+  width: fit-content !important;
+  max-width: 80% !important;
+  word-break: normal !important;
+  overflow-wrap: break-word !important;
   font-size: 15px !important;
   line-height: 1.4 !important;
   isolation: isolate !important;
@@ -8663,6 +8690,43 @@ const DEFAULT_CHAT_THEMES: ChatTheme[] = [
 ];
 
 const DEFAULT_BUBBLE_THEMES: ChatTheme[] = [
+  {
+    id: 'bubble-imessage',
+    name: '🔵 iMessage 极简气泡',
+    css: `/* 【iMessage 极简气泡模板】 */
+.message-bubble-user { 
+  background-color: #52a2f5 !important; 
+  color: #ffffff !important; 
+  border-radius: 18px !important;
+  padding: 8px 14px !important;
+  border: none !important;
+  margin-right: 12px !important;
+  position: relative !important;
+  display: inline-block !important;
+  width: fit-content !important;
+  max-width: 80% !important;
+  word-break: normal !important;
+  overflow-wrap: break-word !important;
+  font-size: 15px !important;
+  line-height: 1.4 !important;
+}
+.message-bubble-assistant { 
+  background-color: #e9e9eb !important; 
+  color: #000000 !important; 
+  border-radius: 18px !important;
+  padding: 8px 14px !important;
+  border: none !important;
+  margin-left: 12px !important;
+  position: relative !important;
+  display: inline-block !important;
+  width: fit-content !important;
+  max-width: 80% !important;
+  word-break: normal !important;
+  overflow-wrap: break-word !important;
+  font-size: 15px !important;
+  line-height: 1.4 !important;
+}`
+  },
   {
     id: 'bubble-wechat-v3',
     name: '🍏 微信经典',

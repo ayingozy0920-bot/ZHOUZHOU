@@ -156,8 +156,8 @@ async function handleDirectFetch(endpoint: string, body: any): Promise<any> {
         body: JSON.stringify({
           model: settings.modelName || settings.model || 'gpt-3.5-turbo',
           messages: openaiMessages,
-          temperature: settings.temperature || 0.7,
-          max_tokens: settings.maxTokens || 2000
+          temperature: settings.temperature !== undefined ? settings.temperature : 0.7,
+          max_tokens: settings.maxTokens || 8192
         })
       });
 
@@ -198,8 +198,8 @@ async function handleDirectFetch(endpoint: string, body: any): Promise<any> {
           parts: [{ text: system_prompt }]
         },
         generationConfig: {
-          temperature: settings.temperature || 0.7,
-          maxOutputTokens: settings.maxTokens || 2000
+          temperature: settings.temperature !== undefined ? settings.temperature : 0.7,
+          maxOutputTokens: settings.maxTokens || 8192
         },
         safetySettings
       })

@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   ChevronLeft, Send, Plus, Image as ImageIcon, Smile, Sparkles, 
   MoreHorizontal, Users, Trash2, Camera, Palette, Globe, Type, Mic, Heart, X, Award, Gift, CircleDollarSign,
-  Cpu, BookOpen, Check, RefreshCw, Bell, Crown, Code
+  Cpu, BookOpen, Check, RefreshCw, Bell, Crown, Code, Quote, Edit3, RotateCcw, CheckSquare, Copy, Loader2, Share2
 } from 'lucide-react';
 import { GroupChat, Friend, ChatMessage, UserProfile, AppSettings, Sticker } from '../../types';
 import { apiFetch } from '../../lib/apiHelper';
@@ -104,6 +104,8 @@ interface GroupChatWindowProps {
   onRemoveMember: (friendId: string) => void;
   onDeleteGroup?: () => void;
   onUpdateSettings?: (updates: Partial<AppSettings>) => void;
+  onSetMessages?: (messages: ChatMessage[]) => void;
+  onSendToFriend?: (friendId: string, msg: ChatMessage) => void;
 }
 
 const EMOJIS = ['😊', '😂', '🥹', '😍', '🥰', '😘', '😋', '😎', '🤩', '🥳', '😏', '😒', '😞', '😔', '😢', '😭', '❤️', '👍', '🔥', '✨', '🎉', '💩', '👻', '🐱', '🌹', '☕', '🍻'];
@@ -119,61 +121,174 @@ const TITLE_COLORS = [
   { name: '灰', value: '#64748b' },
 ];
 
-const renderMessageContent = (content: string, customStickers: Sticker[] = []) => {
+const parseHtmlCardContent = (content: string): string => {
+  if (!content) return content;
+  let text = content.replace(/\\n/g, '\n');
+
+  const unescapeHtml = (str: string) => {
+    return str
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&amp;/g, '&');
+  };
+
+  if (text.includes('===HTML_CARD_START===') || text.includes('[HTML_CARD_START]')) {
+    return text.replace(/(?:===HTML_CARD_START===|\[HTML_CARD_START\])\s*([\s\S]+?)\s*(?:===HTML_CARD_END===|\[HTML_CARD_END\])/g, (match, inner) => {
+      return `===HTML_CARD_START===\n${unescapeHtml(inner)}\n===HTML_CARD_END===`;
+    });
+  }
+
+  const unescaped = unescapeHtml(text);
+
+  const codeBlockMatch = unescaped.match(/```(?:html)?\s*([\s\S]*?)```/);
+  if (codeBlockMatch) {
+    const htmlInner = codeBlockMatch[1].trim();
+    if (htmlInner.includes('<') && htmlInner.includes('>')) {
+      return `===HTML_CARD_START===\n${htmlInner}\n===HTML_CARD_END===`;
+    }
+  }
+
+  if (/<(div|table|section|article|span|header|footer|main|aside)\b[^>]*>/i.test(unescaped)) {
+    const htmlStartIdx = unescaped.search(/<(div|table|section|article|span|header|footer|main|aside)\b/i);
+    if (htmlStartIdx !== -1) {
+      const before = unescaped.substring(0, htmlStartIdx).trim();
+      const htmlPart = unescaped.substring(htmlStartIdx).trim();
+      let res = '';
+      if (before) res += before + '\n';
+      res += `===HTML_CARD_START===\n${htmlPart}\n===HTML_CARD_END===`;
+      return res;
+    }
+  }
+
+  if (unescaped.includes('<') && unescaped.includes('>')) {
+    return `===HTML_CARD_START===\n${unescaped}\n===HTML_CARD_END===`;
+  }
+
+  return text;
+};
+
+const renderMessageBlocks = (
+  content: string, 
+  customStickers: Sticker[] = [], 
+  isUser: boolean = false, 
+  isRainy: boolean = false,
+  avatarSrc: string = '',
+  description?: string,
+  memberTitle?: any,
+  quote?: any,
+  userName: string = '用户'
+) => {
   if (!content) return null;
 
+  const preprocessed = parseHtmlCardContent(content);
+
   // 1. Handle HTML cards first
-  const htmlReg = /===HTML_CARD_START===\s*([\s\S]+?)\s*===HTML_CARD_END===/g;
+  const htmlReg = /(?:===HTML_CARD_START===|\[HTML_CARD_START\])\s*([\s\S]+?)\s*(?:===HTML_CARD_END===|\[HTML_CARD_END\])/g;
   const sections: { type: 'text' | 'html', content: string }[] = [];
   let lastIndex = 0;
   let match;
   
-  while ((match = htmlReg.exec(content)) !== null) {
+  while ((match = htmlReg.exec(preprocessed)) !== null) {
     if (match.index > lastIndex) {
-      sections.push({ type: 'text', content: content.substring(lastIndex, match.index) });
+      sections.push({ type: 'text', content: preprocessed.substring(lastIndex, match.index) });
     }
     sections.push({ type: 'html', content: match[1] });
     lastIndex = htmlReg.lastIndex;
   }
   
-  if (lastIndex < content.length) {
-    sections.push({ type: 'text', content: content.substring(lastIndex) });
+  if (lastIndex < preprocessed.length) {
+    sections.push({ type: 'text', content: preprocessed.substring(lastIndex) });
   }
 
   if (sections.length === 0) {
-    sections.push({ type: 'text', content });
+    sections.push({ type: 'text', content: preprocessed });
   }
 
-  return sections.map((sec, idx) => {
+  return sections.map((sec, secIdx) => {
     if (sec.type === 'html') {
       return (
-        <div 
-          key={idx} 
-          className="my-3 flex justify-center w-full overflow-x-auto custom-scrollbar" 
-        >
+        <div key={secIdx} className="my-3 w-full flex justify-center">
           <div 
-            className="shrink-0 shadow-xl"
-            style={{ width: '320px' }}
+            className="inline-block max-w-full overflow-auto custom-scrollbar bg-transparent shadow-none border-0 p-0"
             dangerouslySetInnerHTML={{ __html: sec.content }} 
           />
         </div>
       );
     }
 
-    // 2. Original logic for text and stickers
-    const parts = sec.content.split(/(\[表情:\s*.*?\])/g);
-    return parts.map((part, i) => {
-      const matchEmoji = part.match(/\[表情:\s*(.*?)\]/);
-      if (matchEmoji) {
-        const desc = matchEmoji[1];
-        const foundSticker = customStickers.find(s => s.description.includes(desc) || desc.includes(s.description));
-        if (foundSticker) {
-           return <img key={`${idx}-${i}`} src={foundSticker.url} alt={desc} className="inline-block h-24 w-auto rounded-lg object-cover mx-1 bg-transparent" />;
-        }
-        return <span key={`${idx}-${i}`} className="inline-block bg-slate-100 dark:bg-slate-800 text-slate-500 text-xs px-2 py-1 rounded-md mx-1">[{desc}]</span>;
-      }
-      return <span key={`${idx}-${i}`} className="whitespace-pre-wrap break-words">{part}</span>;
-    });
+    // 2. Logic for text and standalone stickers
+    const parts = sec.content.split(/(\[(?:表情|发送了表情):\s*.*?\])/g);
+    const validParts = parts.filter(p => p && p.trim());
+    if (validParts.length === 0) return null;
+
+    return (
+      <div key={secIdx} className={cn("flex gap-2.5 my-1.5 w-full", isUser ? "flex-row-reverse" : "flex-row")}>
+        <img 
+          src={avatarSrc} 
+          className="w-10 h-10 rounded-lg object-cover bg-slate-200 shrink-0" 
+          alt="avatar"
+        />
+        <div className={cn("max-w-[70%] flex flex-col", isUser ? "items-end" : "items-start")}>
+          {((!isUser && description) || (isUser && memberTitle)) && (
+            <div className={cn("flex items-center gap-1.5 mb-0.5", isUser ? "flex-row-reverse mr-1" : "flex-row ml-1")}>
+              {!isUser && <span className="text-[10px] opacity-60">{description}</span>}
+              {memberTitle && (
+                <span 
+                  className="px-1.5 py-0.2 rounded text-[8px] font-bold text-white shadow-sm"
+                  style={{ backgroundColor: memberTitle.color }}
+                >
+                  {memberTitle.title}
+                </span>
+              )}
+            </div>
+          )}
+          {parts.map((part, partIdx) => {
+            const matchEmoji = part.match(/\[(?:表情|发送了表情):\s*(.*?)\]/);
+            if (matchEmoji) {
+              const desc = matchEmoji[1];
+              const foundSticker = customStickers.find(s => s.description.includes(desc) || desc.includes(s.description));
+              if (foundSticker) {
+                 return (
+                   <div key={`${secIdx}-${partIdx}`} className="max-w-[140px] my-1.5 rounded-xl overflow-hidden bg-transparent">
+                     <img src={foundSticker.url} alt={desc} className="w-full object-cover" referrerPolicy="no-referrer" />
+                   </div>
+                 );
+              }
+              return (
+                <div key={`${secIdx}-${partIdx}`} className="my-1.5">
+                  <span className="inline-block bg-slate-100 dark:bg-slate-800 text-slate-500 text-xs px-2 py-1 rounded-md">[{desc}]</span>
+                </div>
+              );
+            }
+
+            const trimmedText = part.trim();
+            if (!trimmedText) return null;
+
+            return (
+              <div 
+                key={`${secIdx}-${partIdx}`}
+                className={cn(
+                  "px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed shadow-sm break-all my-1",
+                  isUser 
+                    ? "bg-[#95ec69] text-black rounded-tr-none" 
+                    : (isRainy ? "bg-white/10 text-white rounded-tl-none backdrop-blur-md" : "bg-white text-slate-800 rounded-tl-none")
+                )}
+              >
+                <span className="whitespace-pre-wrap break-words">{part}</span>
+              </div>
+            );
+          })}
+          {quote && (
+            <div className={cn("text-[10px] text-slate-400 dark:text-slate-400 px-1 py-0.5 mt-1 truncate max-w-full flex items-center gap-1", isUser ? "justify-end" : "justify-start")}>
+              <Quote size={10} className="text-[#07c160]" />
+              <span>引用 @{quote.description || (quote.role === 'user' ? userName : '成员')}: {quote.content}</span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
   });
 };
 
@@ -245,6 +360,8 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
   onRemoveMember,
   onDeleteGroup,
   onUpdateSettings,
+  onSetMessages,
+  onSendToFriend,
 }) => {
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -273,6 +390,72 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
   const [redPacketMessage, setRedPacketMessage] = useState<string>('恭喜发财，大吉大利');
   const [redPacketTargetId, setRedPacketTargetId] = useState<string>('');
   const [selectedRedPacketMsg, setSelectedRedPacketMsg] = useState<ChatMessage | null>(null);
+
+  // Context menu, edit, quote, multi-select states
+  const [activeContextMenu, setActiveContextMenu] = useState<{ msg: ChatMessage; index: number; x: number; y: number } | null>(null);
+  const [editingMsgIndex, setEditingMsgIndex] = useState<number | null>(null);
+  const [editText, setEditText] = useState('');
+  const [quotedMsg, setQuotedMsg] = useState<ChatMessage | null>(null);
+  const [isMultiSelectMode, setIsMultiSelectMode] = useState(false);
+  const [selectedMessageIds, setSelectedMessageIds] = useState<string[]>([]);
+  const [showForwardModal, setShowForwardModal] = useState(false);
+  const [flippedMessageIds, setFlippedMessageIds] = useState<Set<string>>(new Set());
+  const [showFullMergedModal, setShowFullMergedModal] = useState<Array<{ senderName: string; content: string; timestamp: number }> | null>(null);
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  const [isParsingCard, setIsParsingCard] = useState(false);
+  const [parseStatusMessage, setParseStatusMessage] = useState<string | null>(null);
+
+  const handleParseCardWithAI = async (msg: ChatMessage, index: number) => {
+    setActiveContextMenu(null);
+    setIsParsingCard(true);
+    setParseStatusMessage('HTML代码正在解析中...');
+    try {
+      const response = await apiFetch({
+        endpoint: '/api/chat',
+        body: {
+          system_prompt: `你是一个资深的HTML/CSS前端专家。用户发来了一段来自群聊角色的可能不完整、被截断或含有残缺HTML/CSS代码的卡片消息。请帮用户分析、修复、补全并完善这段HTML/CSS卡片代码。
+要求：
+1. 修复所有未闭合的标签、CSS语法错误或截断。
+2. 确保整体结构完整美观。
+3. 必须输出完整的卡片代码，并严格使用 ===HTML_CARD_START=== 和 ===HTML_CARD_END=== 包裹修复后的HTML代码。
+4. 不要返回多余的解释性废话，直接输出包裹在 ===HTML_CARD_START=== 与 ===HTML_CARD_END=== 之间的完整代码。`,
+          messages: [{ role: 'user', parts: [{ text: msg.content }] }],
+          settings: {
+            baseUrl: settings.baseUrl,
+            apiKey: settings.apiKey,
+            modelName: settings.modelName,
+            maxTokens: 8192
+          }
+        }
+      });
+
+      let rawText = '';
+      if (response && typeof response === 'object') {
+        rawText = response.text || response.response || response.content || JSON.stringify(response);
+      } else if (typeof response === 'string') {
+        rawText = response;
+      }
+
+      if (!rawText.includes('===HTML_CARD_START===')) {
+        const codeBlockMatch = rawText.match(/```(?:html)?\s*([\s\S]*?)```/);
+        const htmlCode = codeBlockMatch ? codeBlockMatch[1] : rawText;
+        rawText = `===HTML_CARD_START===\n${htmlCode.trim()}\n===HTML_CARD_END===`;
+      }
+
+      if (onUpdateMessage) {
+        onUpdateMessage(index, { content: rawText });
+      }
+      setParseStatusMessage(null);
+      setIsParsingCard(false);
+      alert('HTML卡片解析成功！已自动修复并渲染。');
+    } catch (error: any) {
+      console.error("Parse card error:", error);
+      setParseStatusMessage(null);
+      setIsParsingCard(false);
+      alert(`HTML卡片解析失败: ${error.message || '未知错误'}`);
+    }
+  };
 
   // Delete group confirmation modal state
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -482,9 +665,11 @@ ${historyText}`;
       role: 'user',
       content: inputText.trim(),
       timestamp: Date.now(),
+      quote: quotedMsg ? quotedMsg : undefined,
     };
     onSendMessage(msg);
     setInputText('');
+    setQuotedMsg(null);
     setShowEmojiPicker(false);
     setShowFeatures(false);
   };
@@ -583,6 +768,30 @@ ${historyText}`;
   };
 
   // Generate multi-character replies for group chat (2-4 messages at once)
+  const handleRegenerate = async () => {
+    setShowFeatures(false);
+    if (isLoading || messages.length === 0) return;
+
+    let lastUserIdx = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') {
+        lastUserIdx = i;
+        break;
+      }
+    }
+
+    const cutoff = lastUserIdx !== -1 ? lastUserIdx + 1 : 0;
+    const keptMessages = messages.slice(0, cutoff);
+
+    if (onSetMessages) {
+      onSetMessages(keptMessages);
+    }
+
+    setTimeout(() => {
+      handleGenerateGroupReplies();
+    }, 200);
+  };
+
   const handleGenerateGroupReplies = async () => {
     if (isLoading || groupMembers.length === 0) return;
     setIsLoading(true);
@@ -678,7 +887,7 @@ ${historyText}`;
         });
       }
 
-      const recentMsgs = messages.slice(-30);
+      const recentMsgs = messages.filter(m => !m.isRecalled).slice(-30);
       const historyText = recentMsgs.map(m => {
         if (m.type === 'opening-card' && m.openingData) return `[开场白 - ${m.openingData.title}]: ${m.openingData.content}`;
         if (m.isNarration) return `${m.description || '群成员'} (旁白): ${m.content}`;
@@ -724,7 +933,7 @@ ${historyText}`;
 卡片创作要求：
 ① 优先自制手机微信聊天截图、手机锁屏、备忘录、消息弹窗、纸质信件、工作单据这类界面卡片，自由发挥，没有固定模板。
 ② 所有CSS全部写在标签style属性里，保证代码能直接渲染。
-③ 卡片宽度固定320px，外层可以加上黑色圆角手机外壳边框，贴合手机截图效果。
+③ 卡片尺寸与比例完全自定义：可以是正方形、长方形、圆形或任意比例大小，宽高完全由你的CSS代码决定，不限制固定大小或模板。
 ④ 普通口语文字可以放在卡片前后，文字和卡片穿插在一起，不要通篇全是代码。
 ⑤ 把卡片当成“截图分享”：就像现实里聊天随手截一张手机聊天记录、电脑弹窗发给对方。情绪到位、剧情有画面的时候再甩出截图卡片，平淡闲聊只用纯文字。
 ⑥ 严禁生成包含敏感话题、人身攻击或任何违反安全准则的内容。
@@ -807,7 +1016,7 @@ ${historyText}`;
             role: 'assistant',
             content: isRedPacket ? `[红包] ${rep.redPacketData.message}` : (isSticker ? '[表情]' : rep.content),
             description: member.name,
-            mediaUrl: member.avatar,
+            avatar: member.avatar,
             stickerUrl: isSticker ? rep.mediaUrl : undefined,
             isNarration: rep.messageType === 'narration',
             type: isRedPacket ? 'red-packet' : (isSticker ? 'sticker' : 'text'),
@@ -983,7 +1192,7 @@ ${historyText}`;
       const personaChars = personaText.length;
       const personaTokens = Math.round(personaChars * 1.4);
 
-      const recentMsgs = messages.slice(-30);
+      const recentMsgs = messages.filter(m => !m.isRecalled).slice(-30);
       const contextText = recentMsgs.map(m => `${m.description || m.role}: ${m.content}`).join('\n');
       const contextChars = contextText.length;
       const contextTokens = Math.round(contextChars * 1.4);
@@ -1596,6 +1805,12 @@ ${historyText}`;
       backgroundSize: 'cover',
       backgroundPosition: 'center'
     } : {}}>
+      {isParsingCard && (
+        <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black/50 backdrop-blur-sm text-white gap-3 animate-in fade-in duration-200">
+          <Loader2 className="w-8 h-8 animate-spin text-emerald-400" />
+          <p className="text-sm font-medium">{parseStatusMessage || 'HTML代码正在解析中...'}</p>
+        </div>
+      )}
       {/* Top Bar with Centered Group Name */}
       <div className={cn(
         "px-3 py-2 flex items-center justify-between border-b sticky top-0 z-10 backdrop-blur-md",
@@ -1631,16 +1846,172 @@ ${historyText}`;
         ) : (
           messages.map((msg, idx) => {
             const isUser = msg.role === 'user';
-            const matchedMember = groupMembers.find(m => m.name === msg.description || m.id === msg.description);
+            const matchedMember = groupMembers.find(m => m.name === msg.description || m.id === msg.description || (msg.description && m.name.includes(msg.description)));
+            const avatarSrc = isUser 
+              ? user.avatar 
+              : (msg.avatar || matchedMember?.avatar || (msg.description ? groupMembers.find(m => m.name === msg.description)?.avatar : undefined) || group.avatar);
             const userTitle = group.memberTitles?.['user'];
             const charTitle = matchedMember && group.memberTitles?.[matchedMember.id];
             const memberTitle = isUser ? userTitle : charTitle;
             const prevMsg = idx > 0 ? messages[idx - 1] : undefined;
 
+            const msgId = msg.id || String(idx);
+            const isSelected = selectedMessageIds.includes(msgId);
+
             return (
-              <div key={msg.id || idx} className="w-full">
-                {renderMessageTimestamp(msg, prevMsg)}
-                {msg.isSystemNotification ? (
+              <div 
+                key={msgId} 
+                className={cn("w-full flex items-center gap-2", isMultiSelectMode && "cursor-pointer")}
+                onClick={() => {
+                  if (isMultiSelectMode) {
+                    setSelectedMessageIds(prev => 
+                      prev.includes(msgId) ? prev.filter(id => id !== msgId) : [...prev, msgId]
+                    );
+                  }
+                }}
+                onMouseDown={() => {
+                  if (isMultiSelectMode) return;
+                  longPressTimerRef.current = setTimeout(() => {
+                    setActiveContextMenu({ msg, index: idx, x: window.innerWidth / 2, y: window.innerHeight / 2 });
+                  }, 500);
+                }}
+                onMouseUp={() => {
+                  if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+                }}
+                onMouseLeave={() => {
+                  if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+                }}
+                onTouchStart={(e) => {
+                  if (isMultiSelectMode) return;
+                  const touch = e.touches[0];
+                  longPressTimerRef.current = setTimeout(() => {
+                    setActiveContextMenu({ msg, index: idx, x: touch.clientX, y: touch.clientY });
+                  }, 500);
+                }}
+                onTouchEnd={() => {
+                  if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  if (isMultiSelectMode) return;
+                  setActiveContextMenu({ msg, index: idx, x: e.clientX, y: e.clientY });
+                }}
+              >
+                {isMultiSelectMode && (
+                  <div className="shrink-0 pl-1">
+                    <div className={cn(
+                      "w-5 h-5 rounded-full border flex items-center justify-center transition-all",
+                      isSelected ? "bg-[#07c160] border-[#07c160] text-white" : "border-slate-300 bg-white"
+                    )}>
+                      {isSelected && <Check size={12} strokeWidth={3} />}
+                    </div>
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  {renderMessageTimestamp(msg, prevMsg)}
+                  {msg.isRecalled ? (() => {
+                    const isFlipped = flippedMessageIds.has(msgId);
+                    const senderDisplayName = msg.role === 'user' ? user.name : (msg.description || '成员');
+                    return (
+                      <div className="w-full text-center my-3">
+                        {isFlipped ? (
+                          <div 
+                            onClick={() => {
+                              setFlippedMessageIds(prev => {
+                                const next = new Set(prev);
+                                next.delete(msgId);
+                                return next;
+                              });
+                            }}
+                            className="inline-block max-w-xs mx-auto p-3 bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 text-left text-xs cursor-pointer animate-in zoom-in-95 duration-200"
+                          >
+                            <div className="flex justify-between items-center mb-1 text-[10px] text-slate-400 font-bold">
+                              <span>【撤回前的内容 - 点击收起】</span>
+                              <span>{senderDisplayName}</span>
+                            </div>
+                            <p className="text-slate-800 dark:text-slate-200 whitespace-pre-wrap">{msg.recalledContent || msg.content}</p>
+                          </div>
+                        ) : (
+                          <span 
+                            onClick={() => {
+                              setFlippedMessageIds(prev => {
+                                const next = new Set(prev);
+                                next.add(msgId);
+                                return next;
+                              });
+                            }}
+                            className="inline-block px-3 py-1 bg-black/10 dark:bg-white/10 text-slate-500 dark:text-slate-400 text-[10px] rounded-full cursor-pointer hover:underline"
+                          >
+                            {senderDisplayName === user.name ? '你' : senderDisplayName} 撤回了一条消息 (点击查看)
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })() : msg.isMergedForward && msg.mergedMessages ? (
+                    <div className={cn("flex gap-2.5 my-2 w-full", isUser ? "flex-row-reverse" : "flex-row")}>
+                      <img src={avatarSrc} className="w-10 h-10 rounded-lg object-cover bg-slate-200 shrink-0" alt="avatar" />
+                      <div className={cn("max-w-[70%] flex flex-col", isUser ? "items-end" : "items-start")}>
+                        {((!isUser && msg.description) || (isUser && memberTitle)) && (
+                          <div className={cn("flex items-center gap-1.5 mb-0.5", isUser ? "flex-row-reverse mr-1" : "flex-row ml-1")}>
+                            {!isUser && <span className="text-[10px] opacity-60">{msg.description}</span>}
+                            {memberTitle && (
+                              <span className="px-1.5 py-0.2 rounded text-[8px] font-bold text-white shadow-sm" style={{ backgroundColor: memberTitle.color }}>
+                                {memberTitle.title}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                        <div 
+                          onClick={() => setShowFullMergedModal(msg.mergedMessages || null)}
+                          className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-3 shadow-md max-w-xs cursor-pointer hover:shadow-lg transition-all"
+                        >
+                          <div className="font-bold text-xs text-slate-800 dark:text-slate-200 border-b border-slate-100 dark:border-slate-700/60 pb-1.5 mb-2 flex items-center justify-between">
+                            <span>【群聊聊天记录】</span>
+                            <span className="text-[10px] text-slate-400">{msg.mergedMessages.length}条消息</span>
+                          </div>
+                          <div className="space-y-1 text-[11px] text-slate-600 dark:text-slate-300">
+                            {msg.mergedMessages.slice(0, 3).map((item, mIdx) => (
+                              <div key={mIdx} className="truncate">
+                                <span className="font-semibold text-slate-700 dark:text-slate-200">{item.senderName}: </span>
+                                <span>{item.content}</span>
+                              </div>
+                            ))}
+                            {msg.mergedMessages.length > 3 && (
+                              <div className="text-[10px] text-slate-400 italic pt-0.5">等共 {msg.mergedMessages.length} 条消息...</div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ) : editingMsgIndex === idx ? (
+                    <div className="bg-white dark:bg-slate-800 p-3 rounded-2xl shadow-md border border-slate-200 dark:border-slate-700 space-y-2 my-2">
+                      <textarea
+                        value={editText}
+                        onChange={(e) => setEditText(e.target.value)}
+                        className="w-full bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-white text-xs p-2 rounded-xl outline-none resize-none"
+                        rows={3}
+                      />
+                      <div className="flex justify-end gap-2">
+                        <button
+                          onClick={() => setEditingMsgIndex(null)}
+                          className="px-3 py-1 bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs rounded-lg font-medium"
+                        >
+                          取消
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (onUpdateMessage) {
+                              onUpdateMessage(idx, { content: editText });
+                            }
+                            setEditingMsgIndex(null);
+                          }}
+                          className="px-3 py-1 bg-[#07c160] text-white text-xs rounded-lg font-medium shadow-sm"
+                        >
+                          保存
+                        </button>
+                      </div>
+                    </div>
+                  ) : msg.isSystemNotification ? (
                   <div className="w-full text-center my-2">
                     <span className="inline-block px-3 py-1 bg-black/10 dark:bg-white/10 text-slate-500 dark:text-slate-400 text-[10px] rounded-full">
                       {msg.content}
@@ -1762,38 +2133,82 @@ ${historyText}`;
                     </div>
                   </div>
                 ) : (
-                  <div className={cn("flex gap-2.5", isUser ? "flex-row-reverse" : "flex-row")}>
-                    <img 
-                      src={isUser ? user.avatar : (msg.mediaUrl || group.avatar)} 
-                      className="w-10 h-10 rounded-lg object-cover bg-slate-200 shrink-0" 
-                      alt="avatar"
-                    />
-                    <div className={cn("max-w-[70%] flex flex-col", isUser ? "items-end" : "items-start")}>
-                      {((!isUser && msg.description) || (isUser && memberTitle)) && (
-                        <div className={cn("flex items-center gap-1.5 mb-0.5", isUser ? "flex-row-reverse mr-1" : "flex-row ml-1")}>
-                          {!isUser && <span className="text-[10px] opacity-60">{msg.description}</span>}
-                          {memberTitle && (
-                            <span 
-                              className="px-1.5 py-0.2 rounded text-[8px] font-bold text-white shadow-sm"
-                              style={{ backgroundColor: memberTitle.color }}
-                            >
-                              {memberTitle.title}
-                            </span>
+                  getPureStickerUrl(msg.content, settings.customStickers || []) ? (() => {
+                    const stickerInfo = getPureStickerUrl(msg.content, settings.customStickers || []);
+                    return (
+                      <div className={cn("flex gap-2.5", isUser ? "flex-row-reverse" : "flex-row")}>
+                        <img 
+                          src={avatarSrc} 
+                          className="w-10 h-10 rounded-lg object-cover bg-slate-200 shrink-0" 
+                          alt="avatar"
+                        />
+                        <div className={cn("max-w-[70%] flex flex-col", isUser ? "items-end" : "items-start")}>
+                          {((!isUser && msg.description) || (isUser && memberTitle)) && (
+                            <div className={cn("flex items-center gap-1.5 mb-0.5", isUser ? "flex-row-reverse mr-1" : "flex-row ml-1")}>
+                              {!isUser && <span className="text-[10px] opacity-60">{msg.description}</span>}
+                              {memberTitle && (
+                                <span 
+                                  className="px-1.5 py-0.2 rounded text-[8px] font-bold text-white shadow-sm"
+                                  style={{ backgroundColor: memberTitle.color }}
+                                >
+                                  {memberTitle.title}
+                                </span>
+                              )}
+                            </div>
                           )}
-                        </div>
-                      )}
-                      {getPureStickerUrl(msg.content, settings.customStickers || []) ? (() => {
-                        const stickerInfo = getPureStickerUrl(msg.content, settings.customStickers || []);
-                        return (
                           <div className="max-w-[140px] rounded-xl overflow-hidden bg-transparent">
                             <img src={stickerInfo!.url} className="w-full object-cover" referrerPolicy="no-referrer" />
                           </div>
-                        );
-                      })() : msg.type === 'sticker' && (msg.stickerUrl || msg.mediaUrl) ? (
+                        </div>
+                      </div>
+                    );
+                  })() : msg.type === 'sticker' && (msg.stickerUrl || msg.mediaUrl) ? (
+                    <div className={cn("flex gap-2.5", isUser ? "flex-row-reverse" : "flex-row")}>
+                      <img 
+                        src={avatarSrc} 
+                        className="w-10 h-10 rounded-lg object-cover bg-slate-200 shrink-0" 
+                        alt="avatar"
+                      />
+                      <div className={cn("max-w-[70%] flex flex-col", isUser ? "items-end" : "items-start")}>
+                        {((!isUser && msg.description) || (isUser && memberTitle)) && (
+                          <div className={cn("flex items-center gap-1.5 mb-0.5", isUser ? "flex-row-reverse mr-1" : "flex-row ml-1")}>
+                            {!isUser && <span className="text-[10px] opacity-60">{msg.description}</span>}
+                            {memberTitle && (
+                              <span 
+                                className="px-1.5 py-0.2 rounded text-[8px] font-bold text-white shadow-sm"
+                                style={{ backgroundColor: memberTitle.color }}
+                              >
+                                {memberTitle.title}
+                              </span>
+                            )}
+                          </div>
+                        )}
                         <div className="max-w-[140px] rounded-xl overflow-hidden shadow-sm bg-transparent">
                           <img src={msg.stickerUrl || msg.mediaUrl} className="w-full object-cover" referrerPolicy="no-referrer" />
                         </div>
-                      ) : msg.type === 'red-packet' && msg.redPacketData ? (
+                      </div>
+                    </div>
+                  ) : msg.type === 'red-packet' && msg.redPacketData ? (
+                    <div className={cn("flex gap-2.5", isUser ? "flex-row-reverse" : "flex-row")}>
+                      <img 
+                        src={avatarSrc} 
+                        className="w-10 h-10 rounded-lg object-cover bg-slate-200 shrink-0" 
+                        alt="avatar"
+                      />
+                      <div className={cn("max-w-[70%] flex flex-col", isUser ? "items-end" : "items-start")}>
+                        {((!isUser && msg.description) || (isUser && memberTitle)) && (
+                          <div className={cn("flex items-center gap-1.5 mb-0.5", isUser ? "flex-row-reverse mr-1" : "flex-row ml-1")}>
+                            {!isUser && <span className="text-[10px] opacity-60">{msg.description}</span>}
+                            {memberTitle && (
+                              <span 
+                                className="px-1.5 py-0.2 rounded text-[8px] font-bold text-white shadow-sm"
+                                style={{ backgroundColor: memberTitle.color }}
+                              >
+                                {memberTitle.title}
+                              </span>
+                            )}
+                          </div>
+                        )}
                         <div 
                           onClick={() => setSelectedRedPacketMsg(msg)}
                           className="w-60 h-24 relative cursor-pointer overflow-hidden rounded-lg shadow-md hover:brightness-95 transition-all"
@@ -1821,25 +2236,33 @@ ${historyText}`;
                             </div>
                           </div>
                         </div>
-                      ) : (
-                        <div className={cn(
-                          "px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed shadow-sm break-all",
-                          isUser 
-                            ? "bg-[#95ec69] text-black rounded-tr-none" 
-                            : (isRainy ? "bg-white/10 text-white rounded-tl-none backdrop-blur-md" : "bg-white text-slate-800 rounded-tl-none")
-                        )}>
-                          {renderMessageContent(msg.content, settings.customStickers || [])}
-                        </div>
-                      )}
+                      </div>
                     </div>
-                  </div>
+                  ) : (
+                    renderMessageBlocks(msg.content, settings.customStickers || [], isUser, isRainy, avatarSrc, msg.description, memberTitle, msg.quote, user.name)
+                  )
                 )}
+                </div>
               </div>
             );
           })
         )}
         <div ref={messagesEndRef} />
       </div>
+
+      {/* Quote Preview Bar */}
+      {quotedMsg && (
+        <div className="px-4 py-2 bg-slate-200/80 dark:bg-slate-800/90 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between text-xs">
+          <div className="flex items-center gap-2 truncate text-slate-700 dark:text-slate-200">
+            <Quote size={14} className="text-[#07c160] shrink-0" />
+            <span className="font-bold">引用回复:</span>
+            <span className="truncate max-w-[260px] opacity-80">{quotedMsg.content}</span>
+          </div>
+          <button onClick={() => setQuotedMsg(null)} className="p-1 rounded-full hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-500">
+            <X size={14} />
+          </button>
+        </div>
+      )}
 
       {/* Bottom Input Bar - WeChat Style */}
       <div className={cn(
@@ -2129,6 +2552,18 @@ ${historyText}`;
                     <Code size={22} className={group.isHtmlCardEnabled === false ? "text-slate-400" : "text-[#007aff]"} />
                   </div>
                   <span className="text-[10px] opacity-70">HTML卡片</span>
+                </button>
+                <button
+                  onClick={handleRegenerate}
+                  className="flex flex-col items-center gap-1 group"
+                >
+                  <div className={cn(
+                    "w-12 h-12 rounded-2xl flex items-center justify-center shadow-sm",
+                    isRainy ? "bg-white/10" : "bg-white"
+                  )}>
+                    <RefreshCw size={22} className="text-[#07c160]" />
+                  </div>
+                  <span className="text-[10px] opacity-70">重回</span>
                 </button>
               </div>
             </motion.div>
@@ -2681,6 +3116,294 @@ ${historyText}`;
                     </div>
                   );
                 })()}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* WeChat Style Long-Press Context Menu */}
+      {activeContextMenu && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 backdrop-blur-[2px] animate-in fade-in duration-200"
+          onClick={() => setActiveContextMenu(null)}
+        >
+          <div 
+            className="bg-white dark:bg-slate-800 border border-slate-200/90 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-xl shadow-2xl p-1.5 w-52 flex flex-col gap-0.5 animate-in zoom-in-95 duration-200"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="px-3 py-1.5 text-[11px] font-bold text-slate-400 dark:text-slate-400 border-b border-slate-100 dark:border-slate-700/60 truncate">
+              {activeContextMenu.msg.description || (activeContextMenu.msg.role === 'user' ? user.name : '成员')} 的消息
+            </div>
+
+            <button
+              onClick={() => {
+                navigator.clipboard.writeText(activeContextMenu.msg.content);
+                alert('已复制到剪贴板');
+                setActiveContextMenu(null);
+              }}
+              onTouchEnd={(e) => {
+                e.stopPropagation();
+                navigator.clipboard.writeText(activeContextMenu.msg.content);
+                alert('已复制到剪贴板');
+                setActiveContextMenu(null);
+              }}
+              className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700/60 text-xs font-medium transition-colors text-left text-slate-800 dark:text-slate-100 w-full"
+            >
+              <Copy size={16} className="text-slate-600 dark:text-slate-300" />
+              复制
+            </button>
+
+            <button
+              onClick={() => {
+                setQuotedMsg(activeContextMenu.msg);
+                setActiveContextMenu(null);
+              }}
+              onTouchEnd={(e) => {
+                e.stopPropagation();
+                setQuotedMsg(activeContextMenu.msg);
+                setActiveContextMenu(null);
+              }}
+              className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700/60 text-xs font-medium transition-colors text-left text-slate-800 dark:text-slate-100 w-full"
+            >
+              <Quote size={16} className="text-slate-600 dark:text-slate-300" />
+              引用
+            </button>
+
+            <button
+              onClick={() => {
+                handleParseCardWithAI(activeContextMenu.msg, activeContextMenu.index);
+              }}
+              onTouchEnd={(e) => {
+                e.stopPropagation();
+                handleParseCardWithAI(activeContextMenu.msg, activeContextMenu.index);
+              }}
+              className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700/60 text-xs font-medium transition-colors text-left text-slate-800 dark:text-slate-100 w-full"
+            >
+              <Sparkles size={16} className="text-slate-600 dark:text-slate-300" />
+              解析卡片
+            </button>
+
+            {activeContextMenu.msg.role === 'user' && (
+              <button
+                onClick={() => {
+                  setEditingMsgIndex(activeContextMenu.index);
+                  setEditText(activeContextMenu.msg.content);
+                  setActiveContextMenu(null);
+                }}
+                onTouchEnd={(e) => {
+                  e.stopPropagation();
+                  setEditingMsgIndex(activeContextMenu.index);
+                  setEditText(activeContextMenu.msg.content);
+                  setActiveContextMenu(null);
+                }}
+                className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700/60 text-xs font-medium transition-colors text-left text-slate-800 dark:text-slate-100 w-full"
+              >
+                <Edit3 size={16} className="text-slate-600 dark:text-slate-300" />
+                编辑
+              </button>
+            )}
+
+            <button
+              onClick={() => {
+                if (onUpdateMessage) {
+                  onUpdateMessage(activeContextMenu.index, { 
+                    isRecalled: true, 
+                    recalledContent: activeContextMenu.msg.content 
+                  });
+                }
+                setActiveContextMenu(null);
+              }}
+              onTouchEnd={(e) => {
+                e.stopPropagation();
+                if (onUpdateMessage) {
+                  onUpdateMessage(activeContextMenu.index, { 
+                    isRecalled: true, 
+                    recalledContent: activeContextMenu.msg.content 
+                  });
+                }
+                setActiveContextMenu(null);
+              }}
+              className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700/60 text-xs font-medium transition-colors text-left text-slate-800 dark:text-slate-100 w-full"
+            >
+              <RotateCcw size={16} className="text-slate-600 dark:text-slate-300" />
+              撤回
+            </button>
+
+            <button
+              onClick={() => {
+                if (onSetMessages) {
+                  const newMsgs = messages.filter((_, idx) => idx !== activeContextMenu.index);
+                  onSetMessages(newMsgs);
+                }
+                setActiveContextMenu(null);
+              }}
+              onTouchEnd={(e) => {
+                e.stopPropagation();
+                if (onSetMessages) {
+                  const newMsgs = messages.filter((_, idx) => idx !== activeContextMenu.index);
+                  onSetMessages(newMsgs);
+                }
+                setActiveContextMenu(null);
+              }}
+              className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700/60 text-xs font-medium transition-colors text-left text-slate-800 dark:text-slate-100 w-full"
+            >
+              <Trash2 size={16} className="text-slate-600 dark:text-slate-300" />
+              删除
+            </button>
+
+            <button
+              onClick={() => {
+                setIsMultiSelectMode(true);
+                setSelectedMessageIds([activeContextMenu.msg.id || String(activeContextMenu.index)]);
+                setActiveContextMenu(null);
+              }}
+              onTouchEnd={(e) => {
+                e.stopPropagation();
+                setIsMultiSelectMode(true);
+                setSelectedMessageIds([activeContextMenu.msg.id || String(activeContextMenu.index)]);
+                setActiveContextMenu(null);
+              }}
+              className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700/60 text-xs font-medium transition-colors text-left text-slate-800 dark:text-slate-100 w-full"
+            >
+              <CheckSquare size={16} className="text-slate-600 dark:text-slate-300" />
+              多选
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Multi-Select Action Bar */}
+      {isMultiSelectMode && (
+        <div className="absolute bottom-0 left-0 right-0 z-40 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 p-4 flex items-center justify-between shadow-2xl animate-in slide-in-from-bottom duration-200">
+          <div className="text-xs font-medium text-slate-600 dark:text-slate-300">
+            已选择 <span className="font-bold text-[#07c160]">{selectedMessageIds.length}</span> 条消息
+          </div>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => {
+                if (selectedMessageIds.length === 0) return;
+                if (confirm(`确定要删除选中的 ${selectedMessageIds.length} 条消息吗？`)) {
+                  if (onSetMessages) {
+                    const newMsgs = messages.filter((m, idx) => !selectedMessageIds.includes(m.id || String(idx)));
+                    onSetMessages(newMsgs);
+                  }
+                  setIsMultiSelectMode(false);
+                  setSelectedMessageIds([]);
+                }
+              }}
+              disabled={selectedMessageIds.length === 0}
+              className="px-4 py-2 bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-colors shadow-sm flex items-center gap-1.5"
+            >
+              <Trash2 size={14} />
+              删除
+            </button>
+            <button
+              onClick={() => {
+                if (selectedMessageIds.length === 0) return;
+                setShowForwardModal(true);
+              }}
+              disabled={selectedMessageIds.length === 0}
+              className="px-4 py-2 bg-[#07c160] hover:bg-[#06ad56] disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-colors shadow-sm flex items-center gap-1.5"
+            >
+              <Share2 size={14} />
+              转发
+            </button>
+            <button
+              onClick={() => {
+                setIsMultiSelectMode(false);
+                setSelectedMessageIds([]);
+              }}
+              className="px-4 py-2 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-colors"
+            >
+              取消
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Forward Modal */}
+      <AnimatePresence>
+        {showForwardModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              className={cn(
+                "w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl border transition-all duration-300",
+                isRainy ? "bg-black/80 border-white/10 text-white" : "bg-white border-slate-200"
+              )}
+            >
+              <div className="p-4 border-b flex justify-between items-center">
+                <span className="font-bold text-sm">选择转发对象</span>
+                <button onClick={() => setShowForwardModal(false)}><X size={20} /></button>
+              </div>
+              <div className="max-h-64 overflow-y-auto p-2">
+                {friends.filter(f => !f.isBlocked).map((f, idx) => (
+                  <button
+                    key={`${f.id}-${idx}`}
+                    onClick={() => {
+                      const selectedMsgs = messages.filter((m, mIdx) => selectedMessageIds.includes(m.id || String(mIdx)));
+                      const mergedMsg: ChatMessage = {
+                        role: 'user',
+                        content: `[群聊聊天记录] 共 ${selectedMsgs.length} 条消息`,
+                        isMergedForward: true,
+                        mergedMessages: selectedMsgs.map(m => ({
+                          senderName: m.description || (m.role === 'user' ? user.name : '成员'),
+                          content: m.content,
+                          timestamp: m.timestamp
+                        })),
+                        timestamp: Date.now()
+                      };
+                      if (onSendToFriend) {
+                        onSendToFriend(f.id, mergedMsg);
+                      }
+                      alert(`已成功转发给 ${f.name}`);
+                      setShowForwardModal(false);
+                      setIsMultiSelectMode(false);
+                      setSelectedMessageIds([]);
+                    }}
+                    className="w-full flex items-center gap-3 p-3 hover:bg-slate-100 dark:hover:bg-white/5 rounded-xl transition-colors text-left"
+                  >
+                    <img src={f.avatar} className="w-10 h-10 rounded-lg object-cover" />
+                    <span className="font-medium text-xs">{f.name}</span>
+                  </button>
+                ))}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Full Merged Chat History Modal */}
+      <AnimatePresence>
+        {showFullMergedModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm" onClick={() => setShowFullMergedModal(null)}>
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.9 }}
+              onClick={e => e.stopPropagation()}
+              className={cn(
+                "w-full max-w-md max-h-[80vh] rounded-3xl overflow-hidden shadow-2xl border flex flex-col transition-all duration-300",
+                isRainy ? "bg-slate-900 border-white/10 text-white" : "bg-white border-slate-200"
+              )}
+            >
+              <div className="p-4 border-b flex justify-between items-center">
+                <span className="font-bold text-sm">群聊聊天记录</span>
+                <button onClick={() => setShowFullMergedModal(null)}><X size={20} /></button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                {showFullMergedModal.map((item, idx) => (
+                  <div key={idx} className="flex flex-col border-b border-slate-100 dark:border-slate-800 pb-2">
+                    <div className="flex justify-between items-center text-[10px] text-slate-400 mb-1">
+                      <span className="font-semibold text-slate-700 dark:text-slate-300">{item.senderName}</span>
+                      <span>{new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    </div>
+                    <p className="text-xs text-slate-800 dark:text-slate-200 whitespace-pre-wrap">{item.content}</p>
+                  </div>
+                ))}
               </div>
             </motion.div>
           </div>

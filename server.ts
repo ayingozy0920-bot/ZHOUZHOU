@@ -126,7 +126,7 @@ async function startServer() {
         safetySettings: safetySettings as any,
         generationConfig: {
           temperature: settings.temperature || 0.8,
-          maxOutputTokens: settings.maxTokens || 2048,
+          maxOutputTokens: settings.maxTokens || 8192,
           topP: 0.95,
           topK: 40
         }

@@ -614,7 +614,7 @@ function WidgetCustomizer({ item, onUpdate, onClose }: { item: DesktopItem; onUp
         return (
           <div className="space-y-6">
             <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-400 uppercase">左下角插画/动态图</label>
+              <label className="text-xs font-bold text-slate-400 uppercase">背景图片</label>
               <div className="flex gap-2">
                 <input type="text" value={data.url || ''} onChange={(e) => setData({...data, url: e.target.value})} placeholder="图片 URL" className="flex-1 px-4 py-2 bg-slate-100 rounded-xl" />
                 <button onClick={() => fileInputRef.current?.click()} className="p-2 bg-slate-100 rounded-xl"><Upload size={18} /></button>
@@ -704,6 +704,34 @@ function WidgetCustomizer({ item, onUpdate, onClose }: { item: DesktopItem; onUp
                 <input type="text" value={data.cover || ''} onChange={e => setData({...data, cover: e.target.value})} placeholder="封面 URL" className="flex-1 px-4 py-2 bg-slate-100 rounded-xl text-sm" />
                 <button onClick={() => fileInputRef.current?.click()} className="p-2 bg-slate-100 rounded-xl"><Upload size={18} /></button>
               </div>
+            </div>
+          </div>
+        );
+      case 'love-profile-card':
+        return (
+          <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase">头像</label>
+              <div className="flex gap-2">
+                <input type="text" value={data.avatarUrl || ''} onChange={e => setData({...data, avatarUrl: e.target.value})} placeholder="头像 URL" className="flex-1 px-4 py-2 bg-slate-100 rounded-xl text-sm" />
+                <button onClick={() => fileInputRef.current?.click()} className="p-2 bg-slate-100 rounded-xl"><Upload size={18} /></button>
+                <input type="file" ref={fileInputRef} onChange={(e) => handleFileUpload(e, 'avatarUrl')} className="hidden" accept="image/*" />
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase">用户名</label>
+              <input type="text" value={data.username || ''} onChange={e => setData({...data, username: e.target.value})} placeholder="用户名" className="w-full px-4 py-2 bg-slate-100 rounded-xl text-sm" />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase">个性签名</label>
+              <input type="text" value={data.sign || ''} onChange={e => setData({...data, sign: e.target.value})} placeholder="个性签名" className="w-full px-4 py-2 bg-slate-100 rounded-xl text-sm" />
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase">地理位置</label>
+              <input type="text" value={data.location || ''} onChange={e => setData({...data, location: e.target.value})} placeholder="例如: 📍 广东·深圳" className="w-full px-4 py-2 bg-slate-100 rounded-xl text-sm" />
             </div>
           </div>
         );
@@ -904,6 +932,32 @@ function WidgetCustomizer({ item, onUpdate, onClose }: { item: DesktopItem; onUp
             </div>
           </>
         );
+      case 'pure-photo-card':
+        return (
+          <div className="space-y-2">
+            <label className="text-xs font-bold text-slate-400 uppercase">照片链接</label>
+            <div className="flex gap-2">
+              <input type="text" value={data.url || ''} onChange={(e) => setData({...data, url: e.target.value})} placeholder="URL" className="flex-1 px-4 py-2 bg-slate-100 rounded-xl" />
+              <button onClick={() => fileInputRef.current?.click()} className="p-2 bg-slate-100 rounded-xl"><Upload size={18} /></button>
+              <input type="file" ref={fileInputRef} onChange={(e) => handleFileUpload(e, 'url')} className="hidden" accept="image/*" />
+            </div>
+          </div>
+        );
+      case 'polaroid-triple':
+        return (
+          <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="space-y-2">
+                <label className="text-xs font-bold text-slate-400 uppercase">拍立得图片 {i}</label>
+                <div className="flex gap-2">
+                  <input type="text" value={data[`url${i}`] || ''} onChange={(e) => setData({...data, [`url${i}`]: e.target.value})} placeholder="URL" className="flex-1 px-4 py-2 bg-slate-100 rounded-xl" />
+                  <button onClick={() => fileInputRef.current?.click()} className="p-2 bg-slate-100 rounded-xl"><Upload size={18} /></button>
+                  <input type="file" ref={fileInputRef} onChange={(e) => handleFileUpload(e, `url${i}`)} className="hidden" accept="image/*" />
+                </div>
+              </div>
+            ))}
+          </div>
+        );
       default:
         return (
           <div className="space-y-4">
@@ -963,20 +1017,24 @@ function WidgetCustomizer({ item, onUpdate, onClose }: { item: DesktopItem; onUp
 function WidgetRenderer({ widget, settings, currentTime }: { widget: Widget; settings: AppSettings; currentTime: Date }) {
   const isRainy = settings.themeId === 'rainy-cat';
   
-    const isLargeCalendar = widget.type === 'ins-large-calendar';
+  const isLargeCalendar = widget.type === 'ins-large-calendar';
   const isLoveMusic = widget.type === 'ins-love-music';
+  const isLoveProfile = widget.type === 'love-profile-card';
+  const isPurePhoto = widget.type === 'pure-photo-card' || widget.type === 'polaroid-triple';
   const customBlur = widget.data?.blur !== undefined ? widget.data.blur : 12;
   const customOpacity = widget.data?.opacity !== undefined ? widget.data.opacity : 15;
   
-  const baseClass = cn(
+  const baseClass = isPurePhoto ? "w-full h-full flex flex-col relative bg-transparent shadow-none border-0 p-0" : cn(
     "w-full h-full rounded-[28px] overflow-hidden shadow-2xl flex flex-col relative ring-1 ring-white/20",
-    (!isLargeCalendar && !isLoveMusic) && "transition-all duration-500 p-4",
-    (isLargeCalendar || isLoveMusic) ? "p-0" : "p-4",
+    (!isLargeCalendar && !isLoveMusic && !isLoveProfile) && "transition-all duration-500 p-4",
+    (isLargeCalendar || isLoveMusic || isLoveProfile) ? "p-0" : "p-4",
     (isLargeCalendar || isLoveMusic)
       ? "border border-white/20"
-      : isRainy 
-        ? "bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-2xl border border-white/20" 
-        : "bg-white shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-slate-100"
+      : isLoveProfile
+        ? "bg-white border border-slate-100"
+        : isRainy 
+          ? "bg-gradient-to-br from-white/10 to-white/5 backdrop-blur-2xl border border-white/20" 
+          : "bg-white shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-slate-100"
   );
 
   const containerStyle = (isLargeCalendar || isLoveMusic) ? {
@@ -1825,6 +1883,28 @@ function WidgetRenderer({ widget, settings, currentTime }: { widget: Widget; set
             <img src={widget.data?.url || "https://picsum.photos/seed/photo/400/400"} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
           </div>
         );
+      case 'pure-photo-card':
+        return (
+          <div className="w-full h-full rounded-[24px] overflow-hidden border border-white/60 backdrop-blur-[8px] bg-white/20 relative shadow-lg">
+            <img src={widget.data?.url || "https://picsum.photos/seed/purephoto/400/400"} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+          </div>
+        );
+      case 'polaroid-triple':
+        return (
+          <div className="relative w-full h-full flex items-center justify-center p-2 overflow-hidden z-10">
+            <div className="relative w-[92%] h-[92%] flex items-center justify-center">
+              <div className="absolute left-[3%] top-[10%] w-[42%] h-[82%] bg-white p-2 pb-6 rounded-md shadow-xl z-10 transform -rotate-6 border border-slate-100">
+                <img src={widget.data?.url1 || "https://picsum.photos/seed/p1/300/300"} className="w-full h-[78%] object-cover rounded-sm" referrerPolicy="no-referrer" />
+              </div>
+              <div className="absolute left-[29%] top-[2%] w-[42%] h-[82%] bg-white p-2 pb-6 rounded-md shadow-2xl z-20 border border-slate-100">
+                <img src={widget.data?.url2 || "https://picsum.photos/seed/p2/300/300"} className="w-full h-[78%] object-cover rounded-sm" referrerPolicy="no-referrer" />
+              </div>
+              <div className="absolute left-[55%] top-[10%] w-[42%] h-[82%] bg-white p-2 pb-6 rounded-md shadow-xl z-30 transform rotate-6 border border-slate-100">
+                <img src={widget.data?.url3 || "https://picsum.photos/seed/p3/300/300"} className="w-full h-[78%] object-cover rounded-sm" referrerPolicy="no-referrer" />
+              </div>
+            </div>
+          </div>
+        );
       case 'ins-profile-card':
         return (
           <div className="flex flex-col h-full z-10 bg-white/10 backdrop-blur-2xl rounded-[32px] border border-white/20 relative overflow-hidden">
@@ -1856,7 +1936,7 @@ function WidgetRenderer({ widget, settings, currentTime }: { widget: Widget; set
         for (let i = 1; i <= daysInMonth; i++) calendarDays.push(i);
 
         return (
-          <div className="flex h-full w-full z-10 p-4 gap-4 overflow-hidden">
+          <div className="flex h-full w-full z-10 p-4 gap-4 overflow-hidden items-center justify-center">
             {/* Left Area */}
             <div className="w-[35%] flex flex-col items-center justify-center relative">
               <div className="text-center mb-1">
@@ -1866,13 +1946,6 @@ function WidgetRenderer({ widget, settings, currentTime }: { widget: Widget; set
                 <p className="text-[10px] font-bold text-black opacity-80 whitespace-nowrap mt-1">
                   {dateStr} {weekday}
                 </p>
-              </div>
-              <div className="flex-1 w-full flex items-center justify-center min-h-0 overflow-hidden mt-1">
-                <img 
-                  src={widget.data?.url || "https://picsum.photos/seed/cutebear/400/400"} 
-                  className="max-w-full max-h-full object-contain"
-                  referrerPolicy="no-referrer"
-                />
               </div>
             </div>
 
@@ -2013,6 +2086,23 @@ function WidgetRenderer({ widget, settings, currentTime }: { widget: Widget; set
                 <button className="p-1.5 hover:bg-black/5 rounded-full transition-colors"><Play size={12} fill="currentColor" /></button>
                 <button className="p-1.5 hover:bg-black/5 rounded-full transition-colors"><X size={10} /></button>
               </div>
+            </div>
+          </div>
+        );
+      case 'love-profile-card':
+        const avatarUrl = widget.data?.avatarUrl || "https://p3-flow-image-sign.byteimg.com/tos-cn-i-a9rns2rl98/avatar_default.jpg";
+        const username = widget.data?.username || "用户名";
+        const sign = widget.data?.sign || "保持热爱，奔赴山海";
+        const location = widget.data?.location || "📍 广东·深圳";
+        return (
+          <div className="flex flex-col items-center justify-center h-full w-full z-10 p-6 bg-white rounded-[28px] text-center font-sans">
+            <div className="mb-4">
+              <img src={avatarUrl} alt="头像" className="w-[100px] h-[100px] rounded-full object-cover border-4 border-[#e8f0fe] shadow-md mx-auto" referrerPolicy="no-referrer" />
+            </div>
+            <div className="text-[22px] font-semibold text-[#222] mb-2">{username}</div>
+            <div className="text-[15px] text-[#666] mb-3">{sign}</div>
+            <div className="text-[14px] text-[#888] flex items-center justify-center gap-1">
+              {location}
             </div>
           </div>
         );
@@ -2195,8 +2285,11 @@ function WidgetGallery({ onAdd, onClose, settings, currentTime }: { onAdd: (w: W
     { id: 'w29', type: 'ins-split-v2', size: '5x2' },
     { id: 'w43', type: 'ins-photo-wall-v1', size: '5x2', category: 'Photo Wall' },
     { id: 'w44', type: 'ins-photo-wall-v2', size: '5x2', category: 'Photo Wall' },
+    { id: 'w53', type: 'pure-photo-card', size: '2x2', category: 'Photo Wall' },
+    { id: 'w54', type: 'polaroid-triple', size: '4x2', category: 'Photo Wall' },
     { id: 'w50', type: 'ins-large-calendar', size: '5x2', category: 'Calendar' },
     { id: 'w51', type: 'ins-love-music', size: '4x4', category: 'Love' },
+    { id: 'w52', type: 'love-profile-card', size: '4x4', category: 'Love' },
   ];
 
   const groupedWidgets = widgets.reduce((acc, w) => {

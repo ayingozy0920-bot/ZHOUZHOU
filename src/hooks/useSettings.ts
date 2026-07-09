@@ -8,6 +8,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   baseUrl: 'https://api.openai.com/v1',
   apiKey: '',
   modelName: 'gpt-3.5-turbo',
+  temperature: 0.7,
   autoSummaryThreshold: 10, // Default to 10 rounds
   callBackground: 'https://images.unsplash.com/photo-1516339901600-2e1a62dc0c45?auto=format&fit=crop&q=80&w=1920',
   isCallBackgroundEnabled: true,
@@ -105,6 +106,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   line-height: 1.4 !important;
   box-shadow: none !important;
   border: none !important;
+  display: inline-block !important;
+  width: fit-content !important;
+  max-width: 80% !important;
+  word-break: normal !important;
+  overflow-wrap: break-word !important;
 }
 
 /* Message Bubbles - Friend (Gray) */

@@ -69,6 +69,7 @@ import MoonShadowApp from './components/Apps/MoonShadowApp';
 import ParallelUniverseApp from './components/Apps/ParallelUniverseApp';
 import CalendarApp from './components/Apps/CalendarApp';
 import ListenTogether from './components/Apps/ListenTogether';
+import { RestRoomApp } from './components/Apps/RestRoomApp';
 import PasswordLockScreen from './components/PasswordLockScreen';
 import { DynamicEffects } from './components/Theme/DynamicEffects';
 import { CatBattery, CatTime, CatProgressBar, CatMusicPlayer } from './components/Theme/CatElements';
@@ -92,7 +93,7 @@ const APPS: AppInfo[] = [
   { id: 'chat', name: '聊天', icon: 'MessageCircle', color: 'bg-green-500' },
   { id: 'phone', name: '电话', icon: 'Phone', color: 'bg-green-600' },
   { id: 'world-book', name: '世界书', icon: 'Book', color: 'bg-indigo-500' },
-  { id: 'meituan', name: '休息室', icon: 'ShoppingBag', color: 'bg-yellow-400' },
+  { id: 'rest-room', name: '休息室', icon: 'BookOpen', color: 'bg-[#c89c94]' },
   { id: 'weibo', name: '微博', icon: 'Globe', color: 'bg-red-500' },
   { id: 'shopping', name: '购物', icon: 'ShoppingBag', color: 'bg-orange-500' },
   { id: 'parallel-universe', name: '平行时空', icon: 'Globe', color: 'bg-purple-600' },
@@ -967,8 +968,16 @@ ${recentMemories}
                   addTransaction={addTransaction}
                 />
               );
-            case 'meituan':
-              return <CharacterHomeApp settings={settings} friends={friends} onBack={() => setActiveApp('home')} />;
+            case 'rest-room':
+              return (
+                <RestRoomApp 
+                  settings={settings}
+                  onUpdateSettings={saveSettings}
+                  friends={friends}
+                  user={user}
+                  onBack={() => setActiveApp('home')}
+                />
+              );
             case 'dating':
               return (
                 <DatingApp 

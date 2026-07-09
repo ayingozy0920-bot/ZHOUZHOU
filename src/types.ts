@@ -8,7 +8,7 @@ export interface OpeningMemory {
 
 export interface Widget {
   id: string;
-  type: 'time' | 'weather' | 'music' | 'photo' | 'quote' | 'battery' | 'calendar' | 'todo' | 'countdown' | 'contact' | 'together' | 'schedule' | 'memo' | 'step' | 'mood' | 'healing-battery' | 'ins-split' | 'ticket' | 'collage' | 'ins-split-v2' | 'manga-blink' | 'film-frame' | 'ticket-v2' | 'polaroid-stack' | 'dynamic-cat' | 'live-weather' | 'ins-large-v1' | 'ins-large-v2' | 'ins-weather-calendar' | 'ins-photo-square' | 'ins-profile-card' | 'ins-circle-widget' | 'ins-music-circle-widget' | 'ins-photo-wall-v1' | 'ins-photo-wall-v2' | 'ins-signature-v1' | 'ins-signature-v2' | 'ins-large-calendar' | 'ins-love-music' | 'custom-generator';
+  type: 'time' | 'weather' | 'music' | 'photo' | 'quote' | 'battery' | 'calendar' | 'todo' | 'countdown' | 'contact' | 'together' | 'schedule' | 'memo' | 'step' | 'mood' | 'healing-battery' | 'ins-split' | 'ticket' | 'collage' | 'ins-split-v2' | 'manga-blink' | 'film-frame' | 'ticket-v2' | 'polaroid-stack' | 'dynamic-cat' | 'live-weather' | 'ins-large-v1' | 'ins-large-v2' | 'ins-weather-calendar' | 'ins-photo-square' | 'ins-profile-card' | 'ins-circle-widget' | 'ins-music-circle-widget' | 'ins-photo-wall-v1' | 'ins-photo-wall-v2' | 'ins-signature-v1' | 'ins-signature-v2' | 'ins-large-calendar' | 'ins-love-music' | 'love-profile-card' | 'pure-photo-card' | 'polaroid-triple' | 'custom-generator';
   size: '1x1' | '2x2' | '2x1' | '4x2' | '5x2' | '4x4' | '6x2' | '2x4' | 'circle';
   category?: string;
   data?: any;
@@ -130,6 +130,7 @@ export interface AppSettings {
   apiKey: string;
   userApiKey?: string;
   modelName: string;
+  temperature?: number;
   apiPresets: ApiPreset[];
   autoSummaryThreshold: number;
   callBackground?: string;
@@ -214,6 +215,34 @@ export interface AppSettings {
   bubbleThemes?: ChatTheme[];
   activeChatThemeId?: string;
   activeBubbleThemeId?: string;
+  restRoomBooks?: RestRoomBook[];
+  restRoomApiUrl?: string;
+  restRoomApiKey?: string;
+  restRoomModel?: string;
+  restRoomPosts?: RestRoomPost[];
+}
+
+export interface RestRoomBook {
+  id: string;
+  title: string;
+  author?: string;
+  coverUrl?: string;
+  content: string;
+  progress: number;
+  pageIndex?: number;
+  selectedCharacterId?: string;
+}
+
+export interface RestRoomPost {
+  id: string;
+  authorName: string;
+  authorAvatar: string;
+  title: string;
+  content: string;
+  timestamp: number;
+  likes: number;
+  commentsCount: number;
+  comments?: { id: string; authorName: string; content: string; timestamp: number }[];
 }
 
 export interface BankCard {
@@ -457,6 +486,7 @@ export interface ChatMessage {
   type?: 'text' | 'image' | 'video' | 'voice' | 'transfer' | 'location' | 'call' | 'memory' | 'sticker' | 'blindbox-gift' | 'dice' | 'offline-invitation' | 'photo_card' | 'date_summary' | 'shopping-receipt' | 'red-packet' | 'opening-card' | 'group-announcement';
   mediaUrl?: string;
   stickerUrl?: string;
+  avatar?: string;
   duration?: number; // for voice or call duration
   amount?: string; // for transfer
   transferStatus?: 'pending' | 'received' | 'refunded'; // for transfer
@@ -523,6 +553,10 @@ export interface ChatMessage {
     confirms?: string[]; // list of member IDs/names who confirmed
     declines?: string[]; // list of member IDs/names who declined
   };
+  isRecalled?: boolean;
+  recalledContent?: string;
+  isMergedForward?: boolean;
+  mergedMessages?: Array<{ senderName: string; content: string; timestamp: number }>;
 }
 
 export interface MovieReport {
@@ -566,7 +600,8 @@ export type AppId =
   | 'memory'
   | 'phone'
   | 'character-profile'
-  | 'moon-shadow';
+  | 'moon-shadow'
+  | 'rest-room';
 
 export interface MallProduct {
   id: string;

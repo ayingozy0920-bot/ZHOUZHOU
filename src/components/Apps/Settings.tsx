@@ -892,6 +892,31 @@ export default function SettingsApp({
                   />
                 )}
               </div>
+
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                    <Cpu size={14} /> 模型温度 (Temperature)
+                  </label>
+                  <span className="text-xs font-mono font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md">
+                    {form.temperature !== undefined ? form.temperature : 0.7}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="2"
+                  step="0.05"
+                  value={form.temperature !== undefined ? form.temperature : 0.7}
+                  onChange={(e) => setForm({ ...form, temperature: parseFloat(e.target.value) })}
+                  className="w-full accent-blue-600 cursor-pointer"
+                />
+                <div className="flex justify-between text-[10px] text-slate-400">
+                  <span>0.0 (严谨/确定)</span>
+                  <span>0.7 (平衡)</span>
+                  <span>2.0 (极具创意/随机)</span>
+                </div>
+              </div>
               
               <div className="flex gap-2">
                 <button 
