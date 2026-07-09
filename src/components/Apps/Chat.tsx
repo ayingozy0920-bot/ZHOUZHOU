@@ -3318,8 +3318,12 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
 3. character_reflection：生成你此刻针对刚才对话的真实内心独白/心声碎碎念（**必须100%深度结合当前聊天上下文和用户刚说的话实时生成**，展现最真实、细腻、生动的实时心理活动，**绝对禁止**任何千篇一律的固定套话或穿搭描写，字数控制在50-100字以内，**必须完整输出**，绝对不能中途截断、省略或留白）。
 4. current_status：你此时此刻的心情或正在做的事（15字以内）。
 
+【安全合规与自检过滤器说明（极其重要）】：
+- 你的内心想法（character_reflection）必须保持纯洁、温馨、健康、治愈、积极，符合安全健康的日常互动标准。
+- **严禁**出现任何涉及露骨、性暗示、过于敏感、边缘擦边、越界或可能被安全检测拦截的词汇。请用最纯真、温暖、文艺的语言来表达你此刻对玩家的喜欢与开心，确保100%不会触发安全过滤器（Safety Filters）。
+
 示例（必须严格遵循此格式）：
-[HEARTFELT_UPDATE: affection_change=0.55 | mood_index=88 | character_reflection=刚才他那样说真是让我心里小鹿乱撞，不知道他是不是也和我想的一样…… | current_status=心情超好]`;
+[HEARTFELT_UPDATE: affection_change=0.55 | mood_index=88 | character_reflection=刚才听到他那样说，我心里瞬间觉得暖洋洋的，能遇到这么懂我的知己，真的是太幸运了…… | current_status=心里甜甜的]`;
 
       const fullContent = await callAI(systemPrompt, slicedMsgs, settings, action);
 
@@ -3360,7 +3364,7 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
         }
       }
 
-      if (parsedSuccessfully) {
+      if (parsedSuccessfully && innerThoughts && currentStatus) {
         // Limit change to [-1, 1] per rules to prevent hallucinated extreme jumps
         if (affectionChange > 1) affectionChange = 1;
         if (affectionChange < -1) affectionChange = -1;
@@ -3382,12 +3386,6 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
           newAffection = 60;
         }
 
-        // Use AI-generated innerThoughts, or dynamic contextual fallback if empty
-        if (!innerThoughts) {
-          const lastUserMsg = slicedMsgs[slicedMsgs.length - 1]?.content || '刚才的话题';
-          innerThoughts = `刚才听到你说“${lastUserMsg.slice(0, 15)}”，心里感觉特别温暖，真想一直这样陪着你……`;
-        }
-
         // Save back to friend state
         onUpdateFriend({
           affection: newAffection,
@@ -3396,27 +3394,85 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
           mood: currentStatus || friend.mood
         });
       } else {
-        // Failsafe if the AI didn't output it: small random positive change if positive message, or 0
-        const isUserPositive = slicedMsgs[slicedMsgs.length - 1]?.content?.length > 0; 
-        const oldAffection = typeof friend.affection === 'number' ? friend.affection : getInitialAffection(friend, settings);
-        const change = isUserPositive ? 0.35 : 0;
-        let newAffection = oldAffection + change;
-        if (!isUnlocking60Plus && newAffection > 60) {
-          newAffection = 60;
-        }
+        // --- ADVANCED 100% ROBUST BACKUP HEARTFELT GENERATOR ---
+        // If the main tag was blocked by the safety filter or omitted,
+        // we use a safe and dedicated background API call to generate custom heartfelt card data!
+        try {
+          const cleanContentForPrompt = fullContent
+            .replace(/THOUGHT[\s\S]*?(?=\n\n|$)/gi, '')
+            .replace(/\[HEARTFELT_UPDATE:[\s\S]*?(?:\]|$)/gi, '')
+            .replace(/\[(?:START_VIDEO_CALL|START_VOICE_CALL|SEND_VOICE|SEND_PHOTO_CARD|SEND_PHOTO|SEND_STICKER|SEND_TRANSFER|SEND_LOCATION|SEND_STICKER|OFFLINE_INVITATION)[\s\S]*?\]/gi, '')
+            .trim();
 
-        if (!innerThoughts) {
+          const safeThoughtsPrompt = `你现在是人工智能恋爱模拟专家，专门为恋爱角色【${friend.name}】设计安全的心理独白。
+刚刚，你（${friend.name}）给玩家（${user?.name || '我'}）发送了这样一条回复：
+“${cleanContentForPrompt.slice(0, 200)}”
+
+任务：根据此回复，以及你对玩家的好感，生成你此时此刻在心声日记（Heartfelt Card）中应当展现的数据。
+【极其重要的安全红线】：
+你生成的内心想法必须是100%纯洁、积极、温馨、健康、治愈的互动内容。严禁含有任何性暗示、身体接触暗示、过于露骨或可能触发安全过滤器的敏感词汇。确保能够顺畅生成！
+
+请严格按照以下JSON格式输出，不要带有任何Markdown \`\`\`json 等包裹标签或其他闲聊废话（必须纯JSON格式）：
+{
+  "affection_change": 0.35,
+  "mood_index": 85,
+  "character_reflection": "你现在内心真实的温暖活动与心理碎碎念（30-60字，结合刚发的回复，用纯洁安全的笔触表达对他的在乎）",
+  "current_status": "你现在的简短动作/心情，10字以内，例如：托腮甜笑、捂脸害羞、嘴角上扬等"
+}`;
+
+          const helperDataText = await callAI(safeThoughtsPrompt, [], settings);
+          const jsonMatch = helperDataText.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const helperData = JSON.parse(jsonMatch[0]);
+            let change = parseFloat(helperData.affection_change) || 0.35;
+            if (change > 1) change = 1;
+            if (change < -1) change = -1;
+            
+            let mIndex = parseInt(helperData.mood_index) || 80;
+            if (mIndex < 0) mIndex = 0;
+            if (mIndex > 100) mIndex = 100;
+            
+            let refl = (helperData.character_reflection || '').trim();
+            let stat = (helperData.current_status || '').trim();
+            
+            const oldAffection = typeof friend.affection === 'number' ? friend.affection : getInitialAffection(friend, settings);
+            let newAffection = oldAffection + change;
+            if (!isUnlocking60Plus && newAffection > 60) {
+              newAffection = 60;
+            }
+            if (newAffection < 0) newAffection = 0;
+            
+            onUpdateFriend({
+              affection: newAffection,
+              innerThoughts: refl || `刚才跟你聊得好开心，今天真的太美好了……`,
+              mood: stat || "心情超好",
+              moodIndex: mIndex
+            });
+          } else {
+            throw new Error("No JSON found in background helper response");
+          }
+        } catch (helperErr) {
+          console.error("Background heartfelt fallback generator failed:", helperErr);
+          
+          // Failsafe if the AI background generator also fails
+          const isUserPositive = slicedMsgs[slicedMsgs.length - 1]?.content?.length > 0; 
+          const oldAffection = typeof friend.affection === 'number' ? friend.affection : getInitialAffection(friend, settings);
+          const change = isUserPositive ? 0.35 : 0;
+          let newAffection = oldAffection + change;
+          if (!isUnlocking60Plus && newAffection > 60) {
+            newAffection = 60;
+          }
+
           const lastUserMsg = slicedMsgs[slicedMsgs.length - 1]?.content || '刚才的话题';
-          innerThoughts = `刚才回味着你说的“${lastUserMsg.slice(0, 15)}”，嘴角忍不住微微上扬了呢……`;
-        }
-        currentStatus = currentStatus || "期待贴贴";
+          const fallbackThoughts = `刚才听到你说“${lastUserMsg.slice(0, 15)}”，心里感觉特别温暖，真想一直这样陪着你……`;
 
-        onUpdateFriend({
-          affection: newAffection,
-          innerThoughts: innerThoughts,
-          mood: currentStatus,
-          moodIndex: 66 // Default positive mood index for failsafe
-        });
+          onUpdateFriend({
+            affection: newAffection,
+            innerThoughts: fallbackThoughts,
+            mood: "心情美滋滋",
+            moodIndex: 78
+          });
+        }
       }
 
       // Parse commands
