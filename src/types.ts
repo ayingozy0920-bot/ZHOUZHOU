@@ -172,6 +172,10 @@ export interface AppSettings {
   imageGenNegativePrompt?: string;
   homeWallpaperUrl?: string;
   totalPages?: number;
+  // Memory Summary API
+  memoryApiUrl?: string;
+  memoryApiKey?: string;
+  memoryModel?: string;
   // New Theme System
   lockScreenDelay?: number;
   lockScreenPin?: string;
@@ -370,6 +374,7 @@ export interface Friend {
   lastTime?: string;
   chatBackground?: string;
   memoryCount?: number;
+  lastSummarizedIndex?: number;
   voiceId?: string;
   voiceType?: 'gemini' | 'minimax';
   voiceFrequency?: 'never' | 'always' | 'every_two' | 'random' | 'one_per_round';
@@ -601,7 +606,8 @@ export type AppId =
   | 'phone'
   | 'character-profile'
   | 'moon-shadow'
-  | 'rest-room';
+  | 'rest-room'
+  | 'text-adventure';
 
 export interface MallProduct {
   id: string;

@@ -773,7 +773,11 @@ function NavButton({ active, icon: Icon, label, onClick, themeColor, isDark }: {
   );
 }
 
-function ChatSettings({ friend, messages, settings, groups, chats, friends, user, onBack, onUpdateFriend, onImportMessages, summarizeContent, onShowMomentSettings, activeModal, setActiveModal, onShowCreateGroup }: { 
+function ChatSettings({ 
+  friend, messages, settings, groups, chats, friends, user, onBack, onUpdateFriend, 
+  onImportMessages, summarizeContent, onShowMomentSettings, activeModal, setActiveModal, 
+  onShowCreateGroup, isOfflineMode, showToast
+}: { 
   friend: Friend, 
   messages: ChatMessage[], 
   settings: AppSettings,
@@ -788,18 +792,23 @@ function ChatSettings({ friend, messages, settings, groups, chats, friends, user
   onShowMomentSettings: (id: string) => void,
   activeModal: string | null,
   setActiveModal: (modal: any) => void,
-  onShowCreateGroup?: () => void
+  onShowCreateGroup?: () => void,
+  isOfflineMode?: boolean,
+  showToast?: (msg: string) => void
 }) {
-  const { addOnlineMemory, getFriendMemory } = useMemory();
+  const { addOnlineMemory, addOfflinePlot, getFriendMemory } = useMemory();
   const [activeView, setActiveView] = useState<'main' | 'search' | 'memory' | 'shared-group-memory' | 'tokens-panel'>('main');
   const [searchQuery, setSearchQuery] = useState('');
   const [tempPrompt, setTempPrompt] = useState(friend.memorySettings?.summaryPrompt || '');
+  const [isBatchSummarizing, setIsBatchSummarizing] = useState(false);
+  const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0 });
+  const [showBatchConfirmModal, setShowBatchConfirmModal] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const importInputRef = useRef<HTMLInputElement>(null);
 
   const memorySettings = friend.memorySettings || {
     contextLimit: 50,
-    summaryThreshold: 100,
+    summaryThreshold: 20,
     summaryBuffer: 20,
     autoSummaryEnabled: true,
     silentSummaryMode: true,
@@ -815,6 +824,75 @@ function ChatSettings({ friend, messages, settings, groups, chats, friends, user
   const filteredMessages = messages.filter(m => 
     (m.content || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  const handleBatchSummarize = () => {
+    const msgs = messages.filter(m => m.role !== 'system');
+    if (msgs.length === 0) {
+      if (showToast) {
+        showToast('当前没有需要总结的聊天记录');
+      } else {
+        alert('当前没有需要总结的聊天记录');
+      }
+      return;
+    }
+    setShowBatchConfirmModal(true);
+  };
+
+  const executeBatchSummarize = async () => {
+    setIsBatchSummarizing(true);
+    try {
+      const msgs = messages.filter(m => m.role !== 'system');
+      if (msgs.length === 0) {
+        if (showToast) {
+          showToast('当前没有需要总结的聊天记录');
+        } else {
+          alert('当前没有需要总结的聊天记录');
+        }
+        return;
+      }
+      const batchSize = 20;
+      const totalBatches = Math.ceil(msgs.length / batchSize);
+      setBatchProgress({ current: 0, total: totalBatches });
+
+      for (let i = 0; i < totalBatches; i++) {
+        const start = i * batchSize;
+        const end = start + batchSize;
+        const batchMsgs = msgs.slice(start, end);
+        
+        if (batchMsgs.length > 0) {
+          const summary = await summarizeContent(friend, batchMsgs, isOfflineMode ? 'offline' : 'chat', memorySettings.summaryPrompt, { start: start + 1, end: Math.min(end, msgs.length) });
+          if (summary) {
+            if (isOfflineMode) {
+              let plotTitle = `历史剧情第 ${start + 1}-${Math.min(end, msgs.length)} 轮`;
+              const titleMatch = summary.match(/【剧情标题[：:]\s*([^】\n]+)】/);
+              if (titleMatch && titleMatch[1]) {
+                plotTitle = titleMatch[1].trim();
+              }
+              addOfflinePlot(friend.id, plotTitle, batchMsgs, summary);
+            } else {
+              addOnlineMemory(friend.id, summary, 'manual');
+            }
+          }
+        }
+        setBatchProgress({ current: i + 1, total: totalBatches });
+      }
+      if (showToast) {
+        showToast('记忆总结已经保存在角色专属记忆库！');
+      } else {
+        alert('记忆总结已经保存在角色专属记忆库！');
+      }
+    } catch (error: any) {
+      console.error('Batch summarize error:', error);
+      if (showToast) {
+        showToast(`总结失败: ${error?.message || '请重试'}`);
+      } else {
+        alert('总结过程中出现错误，请重试');
+      }
+    } finally {
+      setIsBatchSummarizing(false);
+      setBatchProgress({ current: 0, total: 0 });
+    }
+  };
 
   const handleExport = () => {
     const data = JSON.stringify(messages, null, 2);
@@ -836,12 +914,24 @@ function ChatSettings({ friend, messages, settings, groups, chats, friends, user
           const msgs = JSON.parse(event.target?.result as string);
           if (Array.isArray(msgs)) {
             onImportMessages(msgs);
-            alert('导入成功！');
+            if (showToast) {
+              showToast('导入成功！');
+            } else {
+              alert('导入成功！');
+            }
           } else {
-            alert('文件格式错误');
+            if (showToast) {
+              showToast('文件格式错误');
+            } else {
+              alert('文件格式错误');
+            }
           }
         } catch (error) {
-          alert('解析失败');
+          if (showToast) {
+            showToast('解析失败');
+          } else {
+            alert('解析失败');
+          }
         }
       };
       reader.readAsText(file);
@@ -1399,7 +1489,11 @@ function ChatSettings({ friend, messages, settings, groups, chats, friends, user
                 <button 
                   onClick={() => {
                     updateMemorySetting({ summaryPrompt: tempPrompt });
-                    alert('总结提示词已保存');
+                    if (showToast) {
+                      showToast('总结提示词已保存');
+                    } else {
+                      alert('总结提示词已保存');
+                    }
                   }}
                   className="text-[10px] px-2 py-1 bg-green-500 text-white rounded-lg active:scale-95 transition-all"
                 >
@@ -1416,21 +1510,153 @@ function ChatSettings({ friend, messages, settings, groups, chats, friends, user
                   settings.themeId === 'rainy-cat' ? "bg-white/10 text-white border border-white/10" : "bg-white text-slate-800 border border-slate-200"
                 )}
               />
+              {tempPrompt.trim() === '' && (
+                <p className="text-[10px] text-emerald-500 font-medium">✨ 当前已自动启用系统内置的高精度结构化总结模版（包含剧情流水账、人设性格复盘与不可遗忘要点）。</p>
+              )}
             </div>
 
-            <div className="pt-4">
+            <div className="pt-4 space-y-3">
               <button 
                 onClick={() => setActiveModal('manual-summary')}
                 className={cn(
                   "w-full py-3 rounded-xl font-bold text-sm active:scale-95 transition-all flex items-center justify-center gap-2",
-                  settings.themeId === 'rainy-cat' ? "bg-white/10 text-white" : "bg-slate-800 text-white"
+                  settings.themeId === 'rainy-cat' ? "bg-pink-950/40 text-pink-200 border border-pink-500/20 hover:bg-pink-900/40" : "bg-pink-100 text-pink-700 hover:bg-pink-200"
                 )}
               >
                 <History size={16} /> 手动总结当前记忆
               </button>
+              
+              <button 
+                onClick={handleBatchSummarize}
+                disabled={isBatchSummarizing}
+                className={cn(
+                  "w-full py-3 rounded-xl font-bold text-sm active:scale-95 transition-all flex items-center justify-center gap-2",
+                  settings.themeId === 'rainy-cat' ? "bg-pink-950/40 text-pink-200 border border-pink-500/20 hover:bg-pink-900/40" : "bg-pink-100 text-pink-700 hover:bg-pink-200",
+                  isBatchSummarizing ? "opacity-50 cursor-not-allowed" : ""
+                )}
+              >
+                {isBatchSummarizing ? (
+                  <>
+                    <RefreshCw size={16} className="animate-spin" />
+                    正在总结 ({batchProgress.current}/{batchProgress.total})
+                  </>
+                ) : (
+                  <>
+                    <History size={16} /> 检索历史记忆并总结
+                  </>
+                )}
+              </button>
             </div>
           </div>
         </div>
+
+        {/* Batch Confirm Modal */}
+        {showBatchConfirmModal && (
+          <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              className={cn(
+                "w-full max-w-sm rounded-2xl p-6 shadow-2xl border flex flex-col gap-4",
+                settings.themeId === 'rainy-cat' 
+                  ? "bg-[#181216]/95 border-pink-500/20 text-pink-100" 
+                  : "bg-white border-slate-100 text-slate-800"
+              )}
+            >
+              <div className="flex items-center gap-3">
+                <div className={cn(
+                  "p-2 rounded-full",
+                  settings.themeId === 'rainy-cat' ? "bg-pink-500/10 text-pink-400" : "bg-blue-50 text-blue-500"
+                )}>
+                  <Brain size={24} />
+                </div>
+                <h3 className="text-base font-bold">确认检索并分批总结？</h3>
+              </div>
+              
+              <p className="text-xs leading-relaxed opacity-80">
+                系统将把当前 <strong>{messages.filter(m => m.role !== 'system').length}</strong> 条聊天记录，以每 <strong>20</strong> 条为一章分批进行高精度深度总结，并存入角色的长期记忆库中。
+              </p>
+              
+              <div className="text-[10px] p-3 rounded-xl flex flex-col gap-1 opacity-70 bg-black/5 dark:bg-white/5 border border-black/5 dark:border-white/5">
+                <span>💡 温馨提示：</span>
+                <span>• 这需要消耗一些时间，请耐心等待。</span>
+                <span>• 总结会根据每批次生成独立的记忆篇章。</span>
+                <span>• 如果配置了专属记忆API，会优先使用专属API。</span>
+              </div>
+
+              <div className="flex gap-3 mt-2">
+                <button
+                  onClick={() => setShowBatchConfirmModal(false)}
+                  className={cn(
+                    "flex-1 py-3 rounded-xl font-bold text-xs transition-all active:scale-95",
+                    settings.themeId === 'rainy-cat'
+                      ? "bg-white/5 hover:bg-white/10 text-pink-200 border border-white/5"
+                      : "bg-slate-100 hover:bg-slate-200 text-slate-600"
+                  )}
+                >
+                  取消
+                </button>
+                <button
+                  onClick={async () => {
+                    setShowBatchConfirmModal(false);
+                    await executeBatchSummarize();
+                  }}
+                  className={cn(
+                    "flex-1 py-3 rounded-xl font-bold text-xs text-white transition-all active:scale-95",
+                    settings.themeId === 'rainy-cat'
+                      ? "bg-gradient-to-r from-pink-600 to-rose-600 hover:opacity-90"
+                      : "bg-blue-500 hover:bg-blue-600 shadow-sm"
+                  )}
+                >
+                  确认总结
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+
+        {/* Batch Progress Modal */}
+        {isBatchSummarizing && (
+          <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+            <div className={cn(
+              "w-full max-w-sm rounded-2xl p-6 shadow-2xl border flex flex-col items-center text-center gap-4",
+              settings.themeId === 'rainy-cat' 
+                ? "bg-[#181216]/95 border-pink-500/20 text-pink-100" 
+                : "bg-white border-slate-100 text-slate-800"
+            )}>
+              <div className="relative flex items-center justify-center w-16 h-16">
+                <Loader2 className="absolute animate-spin text-pink-500" size={60} strokeWidth={2} />
+                <Brain className={cn(
+                  "text-pink-500",
+                  settings.themeId === 'rainy-cat' ? "text-pink-400" : "text-blue-500"
+                )} size={28} />
+              </div>
+              
+              <div className="space-y-1">
+                <h3 className="text-sm font-bold">正在进行深度记忆总结</h3>
+                <p className="text-xs opacity-60">请勿关闭本页面，这可能需要几十秒至一分钟左右...</p>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="w-full space-y-2">
+                <div className="flex justify-between text-[11px] font-bold">
+                  <span className="opacity-75">进度: {batchProgress.current} / {batchProgress.total} 章节</span>
+                  <span className="text-pink-500">{batchProgress.total > 0 ? Math.round((batchProgress.current / batchProgress.total) * 100) : 0}%</span>
+                </div>
+                <div className="w-full h-2 bg-slate-100 dark:bg-white/10 rounded-full overflow-hidden">
+                  <div 
+                    className="h-full bg-gradient-to-r from-pink-500 to-rose-500 transition-all duration-300"
+                    style={{ width: `${batchProgress.total > 0 ? (batchProgress.current / batchProgress.total) * 100 : 0}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="text-[10px] opacity-40 leading-relaxed max-w-[250px]">
+                正在将当前批次的消息（第 {Math.min((batchProgress.current) * 20 + 1, messages.length)} 条起）打包发送至 AI，提取核心约定、情节、情感发展及世界观标签...
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -2377,13 +2603,14 @@ function ChatWindow({
         carriedOfflineMessages: carriedMessages
       });
       addOfflinePlot(friend.id, plotTitle, [...offlineMessages], summaryContent);
-    } catch (error) {
-      console.error('Failed to summarize offline mode:', error);
-    } finally {
-      // Clear history and exit regardless of success
+      
       setOfflineMessages([]);
       setIsOfflineMode(false);
       setActiveModal(null);
+      setIsEndingOffline(false);
+    } catch (error) {
+      console.error('Failed to summarize offline mode:', error);
+      showToast('总结线下剧情失败，请检查网络或API配置后重试。');
       setIsEndingOffline(false);
     }
   };
@@ -2488,17 +2715,26 @@ function ChatWindow({
       onSendMessage(userMsg);
       
       // Auto-summarize check
-      const newCount = (friend.memoryCount || 0) + 1;
-      if (newCount >= settings.autoSummaryThreshold) {
-        const recentMsgs = [...messages, userMsg].slice(-settings.autoSummaryThreshold * 2);
-        summarizeContent(friend, recentMsgs, isOfflineMode ? 'offline' : 'chat').then(summary => {
-          if (summary) {
-            addOnlineMemory(friend.id, summary, 'auto', 'chat');
-          }
-        }).catch(err => console.error("Auto-summarize error:", err));
-        onUpdateFriend({ memoryCount: 0 });
-      } else {
-        onUpdateFriend({ memoryCount: newCount });
+      const isAutoEnabled = friend.memorySettings?.autoSummaryEnabled !== false;
+      if (isAutoEnabled && !isOfflineMode) {
+        const threshold = friend.memorySettings?.summaryThreshold || settings.autoSummaryThreshold || 20;
+        const lastIdx = friend.lastSummarizedIndex || 0;
+        const totalMsgs = messages.length + 1;
+        if (totalMsgs - lastIdx >= threshold) {
+          const start = lastIdx + 1;
+          const end = lastIdx + threshold;
+          const recentMsgs = [...messages, userMsg].slice(start - 1, end);
+          summarizeContent(friend, recentMsgs, 'chat', friend.memorySettings?.summaryPrompt, { start, end }).then(summary => {
+            if (summary) {
+              addOnlineMemory(friend.id, summary, 'auto', 'chat');
+              showToast('达到设定轮数，自动记忆总结已存入专属记忆库');
+            }
+          }).catch(err => {
+            console.error("Auto-summarize error:", err);
+            showToast('自动记忆总结失败，请检查API配置或网络状态');
+          });
+          onUpdateFriend({ lastSummarizedIndex: end });
+        }
       }
     }
     setInput('');
@@ -3650,16 +3886,26 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
           }
           
           // Auto-summarize check for assistant messages
-          const summaryThreshold = friend.memorySettings?.summaryThreshold || settings.autoSummaryThreshold || 100;
-          const newCount = (friend.memoryCount || 0) + 1;
-          if (newCount >= summaryThreshold) {
-            const recentMsgs = [...messages, assistantMsg].slice(-summaryThreshold * 2);
-            summarizeContent(friend, recentMsgs, isOfflineMode ? 'offline' : 'chat', friend.memorySettings?.summaryPrompt).then(summary => {
-              if (summary) addOnlineMemory(friend.id, summary, 'auto');
-            }).catch(err => console.error("Auto-summarize error:", err));
-            onUpdateFriend({ memoryCount: 0 });
-          } else {
-            onUpdateFriend({ memoryCount: newCount });
+          const isAutoEnabled = friend.memorySettings?.autoSummaryEnabled !== false;
+          if (isAutoEnabled && !isOfflineMode) {
+            const threshold = friend.memorySettings?.summaryThreshold || settings.autoSummaryThreshold || 20;
+            const lastIdx = friend.lastSummarizedIndex || 0;
+            const totalMsgs = messages.length + 1;
+            if (totalMsgs - lastIdx >= threshold) {
+              const start = lastIdx + 1;
+              const end = lastIdx + threshold;
+              const recentMsgs = [...messages, assistantMsg].slice(start - 1, end);
+              summarizeContent(friend, recentMsgs, 'chat', friend.memorySettings?.summaryPrompt, { start, end }).then(summary => {
+                if (summary) {
+                  addOnlineMemory(friend.id, summary, 'auto', 'chat');
+                  showToast('达到设定轮数，自动记忆总结已存入专属记忆库');
+                }
+              }).catch(err => {
+                console.error("Auto-summarize error:", err);
+                showToast('自动记忆总结失败，请检查API配置或网络状态');
+              });
+              onUpdateFriend({ lastSummarizedIndex: end });
+            }
           }
         }
 
@@ -4463,12 +4709,116 @@ ${context}`;
     setOfflineMessages(newMsgs);
   };
 
+  const renderManualSummaryModal = () => {
+    if (activeModal !== 'manual-summary') return null;
+    return (
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[2000] flex items-end sm:items-center justify-center p-4">
+        <motion.div 
+          initial={{ y: 100, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          className={cn(
+            "rounded-[32px] w-full max-w-md p-6 space-y-6 overflow-hidden",
+            settings.themeId === 'rainy-cat' ? "bg-black/60 backdrop-blur-xl border border-white/10 text-white" : "bg-white"
+          )}
+        >
+          <div className="flex items-center justify-between">
+            <h3 className={cn("text-lg font-bold", settings.themeId === 'rainy-cat' ? "text-white" : "text-slate-800")}>手动生成记忆总结</h3>
+            <button onClick={() => setActiveModal(null)} className={cn("p-2 rounded-full", settings.themeId === 'rainy-cat' ? "hover:bg-white/10" : "hover:bg-slate-100")}>
+              <X size={20} className={settings.themeId === 'rainy-cat' ? "text-white/60" : "text-slate-400"} />
+            </button>
+          </div>
+
+          <div className={cn(
+            "p-4 rounded-2xl border flex items-start gap-3",
+            settings.themeId === 'rainy-cat' ? "bg-white/5 border-white/10" : "bg-blue-50 border-blue-100"
+          )}>
+            <RefreshCw size={20} className={settings.themeId === 'rainy-cat' ? "text-white/60" : "text-blue-500"} />
+            <p className={cn("text-xs leading-relaxed", settings.themeId === 'rainy-cat' ? "text-white/80" : "text-blue-700")}>
+              当前对话总计 <strong>{currentMessages.length}</strong> 条。请选择你想要总结的消息范围。总结后的内容将存入该角色的长期记忆库，帮助角色“记住”你们的互动。
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">起始消息 (1-{currentMessages.length})</label>
+              <input 
+                type="number" 
+                min="1"
+                max={currentMessages.length}
+                value={manualSummaryRange.start || Math.max(1, currentMessages.length - 50)}
+                onChange={(e) => setManualSummaryRange(prev => ({ ...prev, start: parseInt(e.target.value) }))}
+                className={cn(
+                  "w-full border-none rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 transition-all",
+                  settings.themeId === 'rainy-cat' ? "bg-white/10 text-white placeholder:text-white/20" : "bg-slate-100 text-slate-900"
+                )}
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">结束消息 (1-{currentMessages.length})</label>
+              <input 
+                type="number" 
+                min="1"
+                max={currentMessages.length}
+                value={manualSummaryRange.end || currentMessages.length}
+                onChange={(e) => setManualSummaryRange(prev => ({ ...prev, end: parseInt(e.target.value) }))}
+                className={cn(
+                  "w-full border-none rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 transition-all",
+                  settings.themeId === 'rainy-cat' ? "bg-white/10 text-white placeholder:text-white/20" : "bg-slate-100 text-slate-900"
+                )}
+              />
+            </div>
+          </div>
+
+          <button 
+            onClick={async () => {
+              const start = manualSummaryRange.start || Math.max(1, currentMessages.length - 50);
+              const end = manualSummaryRange.end || currentMessages.length;
+              if (start < 1 || end < start || end > currentMessages.length) {
+                showToast('无效的消息范围');
+                return;
+              }
+              setIsLoading(true);
+              try {
+                const targetMsgs = currentMessages.slice(start - 1, end);
+                const summary = await summarizeContent(friend, targetMsgs, isOfflineMode ? 'offline' : 'chat', friend.memorySettings?.summaryPrompt, { start, end });
+                if (summary) {
+                  if (isOfflineMode) {
+                    let plotTitle = '手动剧情总结';
+                    const titleMatch = summary.match(/【剧情标题[：:]\s*([^】\n]+)】/);
+                    if (titleMatch && titleMatch[1]) {
+                      plotTitle = titleMatch[1].trim();
+                    }
+                    addOfflinePlot(friend.id, plotTitle, targetMsgs, summary);
+                  } else {
+                    addOnlineMemory(friend.id, summary, 'manual');
+                  }
+                  showToast('记忆总结已经保存在角色专属记忆库');
+                  setActiveModal(null);
+                }
+              } catch (err: any) {
+                console.error("Manual summarize error:", err);
+                showToast(`总结失败: ${err?.message || '请重试'}`);
+              } finally {
+                setIsLoading(false);
+              }
+            }}
+            disabled={isLoading}
+            className="w-full py-4 bg-blue-500 text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-blue-600 disabled:opacity-50 transition-all"
+          >
+            {isLoading ? <Loader2 className="animate-spin" size={20} /> : <RefreshCw size={20} />}
+            开始生成记忆
+          </button>
+        </motion.div>
+      </div>
+    );
+  };
+
   if (showSettings) {
     return (
       <>
         <ChatSettings 
           friend={friend} 
-          messages={messages} 
+          messages={currentMessages} 
           settings={settings}
           groups={groups}
           chats={chats}
@@ -4482,6 +4832,8 @@ ${context}`;
           activeModal={activeModal}
           setActiveModal={setActiveModal}
           onShowCreateGroup={onShowCreateGroup}
+          isOfflineMode={isOfflineMode}
+          showToast={showToast}
         />
         {/* Render modals even in settings view */}
         <AnimatePresence>
@@ -4527,6 +4879,7 @@ ${context}`;
             />
           )}
         </AnimatePresence>
+        {renderManualSummaryModal()}
       </>
     );
   }
@@ -7244,106 +7597,7 @@ ${context}`;
           </div>
         )}
 
-        {activeModal === 'manual-summary' && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-end sm:items-center justify-center p-4">
-            <motion.div 
-              initial={{ y: 100, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              className={cn(
-                "rounded-[32px] w-full max-w-md p-6 space-y-6 overflow-hidden",
-                settings.themeId === 'rainy-cat' ? "bg-black/60 backdrop-blur-xl border border-white/10 text-white" : "bg-white"
-              )}
-            >
-              <div className="flex items-center justify-between">
-                <h3 className={cn("text-lg font-bold", settings.themeId === 'rainy-cat' ? "text-white" : "text-slate-800")}>手动生成记忆总结</h3>
-                <button onClick={() => setActiveModal(null)} className={cn("p-2 rounded-full", settings.themeId === 'rainy-cat' ? "hover:bg-white/10" : "hover:bg-slate-100")}>
-                  <X size={20} className={settings.themeId === 'rainy-cat' ? "text-white/60" : "text-slate-400"} />
-                </button>
-              </div>
-
-              <div className={cn(
-                "p-4 rounded-2xl border flex items-start gap-3",
-                settings.themeId === 'rainy-cat' ? "bg-white/5 border-white/10" : "bg-blue-50 border-blue-100"
-              )}>
-                <RefreshCw size={20} className={settings.themeId === 'rainy-cat' ? "text-white/60" : "text-blue-500"} />
-                <p className={cn("text-xs leading-relaxed", settings.themeId === 'rainy-cat' ? "text-white/80" : "text-blue-700")}>
-                  当前对话总计 <strong>{currentMessages.length}</strong> 条。请选择你想要总结的消息范围。总结后的内容将存入该角色的长期记忆库，帮助角色“记住”你们的互动。
-                </p>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">起始消息 (1-{currentMessages.length})</label>
-                  <input 
-                    type="number" 
-                    min="1"
-                    max={currentMessages.length}
-                    value={manualSummaryRange.start || Math.max(1, currentMessages.length - 50)}
-                    onChange={(e) => setManualSummaryRange(prev => ({ ...prev, start: parseInt(e.target.value) }))}
-                    className={cn(
-                      "w-full border-none rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 transition-all",
-                      settings.themeId === 'rainy-cat' ? "bg-white/10 text-white placeholder:text-white/20" : "bg-slate-100 text-slate-900"
-                    )}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">结束消息 (1-{currentMessages.length})</label>
-                  <input 
-                    type="number" 
-                    min="1"
-                    max={currentMessages.length}
-                    value={manualSummaryRange.end || currentMessages.length}
-                    onChange={(e) => setManualSummaryRange(prev => ({ ...prev, end: parseInt(e.target.value) }))}
-                    className={cn(
-                      "w-full border-none rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-blue-500 transition-all",
-                      settings.themeId === 'rainy-cat' ? "bg-white/10 text-white placeholder:text-white/20" : "bg-slate-100 text-slate-900"
-                    )}
-                  />
-                </div>
-              </div>
-
-              <button 
-                onClick={async () => {
-                  const start = manualSummaryRange.start || Math.max(1, currentMessages.length - 50);
-                  const end = manualSummaryRange.end || currentMessages.length;
-                  if (start < 1 || end < start || end > currentMessages.length) {
-                    showToast('无效的消息范围');
-                    return;
-                  }
-                  setIsLoading(true);
-                  try {
-                    const targetMsgs = currentMessages.slice(start - 1, end);
-                    const summary = await summarizeContent(friend, targetMsgs, isOfflineMode ? 'offline' : 'chat', friend.memorySettings?.summaryPrompt, { start, end });
-                    if (summary) {
-                      if (isOfflineMode) {
-                        let plotTitle = '手动剧情总结';
-                        const titleMatch = summary.match(/【剧情标题[：:]\s*([^】\n]+)】/);
-                        if (titleMatch && titleMatch[1]) {
-                          plotTitle = titleMatch[1].trim();
-                        }
-                        addOfflinePlot(friend.id, plotTitle, targetMsgs, summary);
-                      } else {
-                        addOnlineMemory(friend.id, summary, 'manual');
-                      }
-                      showToast('手动总结已存入记忆库');
-                      setActiveModal(null);
-                    }
-                  } catch (err) {
-                    console.error("Manual summarize error:", err);
-                    showToast('总结失败，请重试');
-                  } finally {
-                    setIsLoading(false);
-                  }
-                }}
-                disabled={isLoading}
-                className="w-full py-4 bg-blue-500 text-white rounded-2xl font-bold flex items-center justify-center gap-2 hover:bg-blue-600 disabled:opacity-50 transition-all"
-              >
-                {isLoading ? <Loader2 className="animate-spin" size={20} /> : <RefreshCw size={20} />}
-                开始生成记忆
-              </button>
-            </motion.div>
-          </div>
-        )}
+        {renderManualSummaryModal()}
 
         {activeModal === 'text-photo' && (
           <div key="text-photo-modal" className="fixed inset-0 z-[100] bg-black/60 flex items-center justify-center p-6">

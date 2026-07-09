@@ -38,7 +38,8 @@ import {
   Unlock,
   BookHeart,
   Moon,
-  Cloud
+  Cloud,
+  Gamepad2
 } from 'lucide-react';
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'motion/react';
 import { GoogleGenAI } from "@google/genai";
@@ -70,6 +71,7 @@ import ParallelUniverseApp from './components/Apps/ParallelUniverseApp';
 import CalendarApp from './components/Apps/CalendarApp';
 import ListenTogether from './components/Apps/ListenTogether';
 import { RestRoomApp } from './components/Apps/RestRoomApp';
+import { TextAdventureApp } from './components/Apps/TextAdventureApp';
 import PasswordLockScreen from './components/PasswordLockScreen';
 import { DynamicEffects } from './components/Theme/DynamicEffects';
 import { CatBattery, CatTime, CatProgressBar, CatMusicPlayer } from './components/Theme/CatElements';
@@ -105,6 +107,7 @@ const APPS: AppInfo[] = [
   { id: 'memory', name: '记忆库', icon: 'Brain', color: 'bg-purple-500' },
   { id: 'character-profile', name: '角色资料', icon: 'BookHeart', color: 'bg-pink-300' },
   { id: 'moon-shadow', name: '月影', icon: 'Moon', color: 'bg-slate-900' },
+  { id: 'text-adventure', name: '异世界文游', icon: 'Gamepad2', color: 'bg-rose-500' },
 ];
 
 const IconMap: Record<string, any> = {
@@ -122,6 +125,7 @@ const IconMap: Record<string, any> = {
   Brain,
   BookHeart,
   Moon,
+  Gamepad2,
   Cloud
 };
 
@@ -194,7 +198,7 @@ export default function App() {
       } else if (type === 'chat') {
         const memories = getFriendMemory(friend.id)?.onlineMemories || [];
         const currentSummaryIndex = memories.length;
-        const threshold = friend.memorySettings?.summaryThreshold || settings.autoSummaryThreshold || 100;
+        const threshold = friend.memorySettings?.summaryThreshold || settings.autoSummaryThreshold || 20;
         const startRound = currentSummaryIndex * threshold + 1;
         const endRound = (currentSummaryIndex + 1) * threshold;
         roundTitle = `【第 ${startRound}-${endRound} 轮对话总结】\n\n`;
@@ -259,68 +263,40 @@ export default function App() {
         ? `${offlineTemplate}\n\n对话内容：\n${context}`
         : (customPrompt ? `${customPrompt}\n\n${onlinePrompt}\n\n对话内容：\n${context}` : `${onlinePrompt}\n\n对话内容：\n${context}`);
 
-      // Try custom proxy API first if configured
-      const customApiUrl = localStorage.getItem('shop_backend_api_url') || settings.baseUrl || '';
-      const customApiKey = localStorage.getItem('shop_backend_api_key') || settings.apiKey || '';
-      const customModel = localStorage.getItem('shop_backend_selected_model') || settings.modelName || 'gpt-4o-mini';
+      const { apiFetch } = await import('./lib/apiHelper');
+      
+      const resolvedSettings = {
+        ...settings,
+        baseUrl: settings.memoryApiUrl || settings.baseUrl,
+        apiKey: settings.memoryApiKey || settings.apiKey,
+        modelName: settings.memoryModel || settings.modelName,
+        userApiKey: settings.memoryApiKey || settings.apiKey
+      };
 
-      let summaryText = "";
-
-      if (customApiUrl.trim()) {
-        try {
-          const endpoint = customApiUrl.endsWith('/chat/completions') 
-            ? customApiUrl 
-            : customApiUrl.endsWith('/') 
-              ? `${customApiUrl}chat/completions` 
-              : `${customApiUrl}/chat/completions`;
-
-          const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-          if (customApiKey.trim()) {
-            headers['Authorization'] = `Bearer ${customApiKey.trim()}`;
-          }
-
-          const res = await fetch(endpoint, {
-            method: 'POST',
-            headers,
-            body: JSON.stringify({
-              model: customModel,
-              messages: [
-                { role: 'system', content: 'You are a professional memory and plot summarizer.' },
-                { role: 'user', content: finalPrompt }
-              ],
-              temperature: 0.4
-            })
-          });
-
-          if (res.ok) {
-            const data = await res.json();
-            summaryText = data.choices?.[0]?.message?.content || data.content || '';
-          }
-        } catch (err) {
-          console.warn("Custom proxy API summarize failed, falling back to Gemini SDK", err);
+      const data = await apiFetch({
+        endpoint: '/api/chat',
+        body: {
+          system_prompt: 'You are a professional memory and plot summarizer.',
+          messages: [{ role: 'user', content: finalPrompt }],
+          settings: resolvedSettings
         }
+      });
+
+      let summaryText = data.text || '';
+      
+      if (!summaryText && data.choices?.[0]?.message?.content) {
+        summaryText = data.choices[0].message.content;
       }
 
       if (!summaryText) {
-        const { getGeminiClient, getGeminiModel } = await import('./lib/gemini');
-        const ai = getGeminiClient(settings);
-        const response = await ai.models.generateContent({
-          model: getGeminiModel(settings),
-          contents: [{ role: 'user', parts: [{ text: finalPrompt }] }],
-          config: {
-            temperature: 0.3
-          }
-        });
-        summaryText = response.text || "";
-        if (!summaryText && response.candidates?.[0]?.content?.parts?.[0]?.text) {
-          summaryText = response.candidates[0].content.parts[0].text;
-        }
+        console.error("API returned empty data object:", data);
+        throw new Error("API返回空总结。请检查[设置]中的【AI API配置】或专属【记忆/总结 API】是否配置正确并拥有额度。");
       }
 
-      return summaryText ? (type === 'offline' ? summaryText : roundTitle + summaryText) : null;
+      return type === 'offline' ? summaryText : roundTitle + summaryText;
     } catch (e: any) {
       console.error("Summarize error:", e);
-      return null;
+      throw e;
     }
   };
   const [showPassword, setShowPassword] = useState(false);
@@ -990,6 +966,15 @@ ${recentMemories}
                   addTransaction={addTransaction}
                   addMessage={addMessage}
                   initialData={activeAppData}
+                />
+              );
+            case 'text-adventure':
+              return (
+                <TextAdventureApp 
+                  settings={settings}
+                  friends={friends}
+                  user={user}
+                  onBack={() => setActiveApp('home')}
                 />
               );
             case 'home':

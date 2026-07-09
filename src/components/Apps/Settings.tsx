@@ -27,7 +27,7 @@ export default function SettingsApp({
   useEffect(() => {
     setForm(settings);
   }, [settings]);
-  const [activeSection, setActiveSection] = useState<'main' | 'api' | 'memory' | 'style' | 'icons' | 'pages' | 'theme' | 'display' | 'ai' | 'data' | 'voice' | 'console' | 'help' | 'imageGen'>('main');
+  const [activeSection, setActiveSection] = useState<'main' | 'api' | 'memory' | 'style' | 'icons' | 'pages' | 'theme' | 'display' | 'ai' | 'data' | 'voice' | 'console' | 'help' | 'imageGen' | 'memoryApi'>('main');
   const [showPasswordSetup, setShowPasswordSetup] = useState(false);
   const [themePresetName, setThemePresetName] = useState('');
   const [availableModels, setAvailableModels] = useState<string[]>([]);
@@ -112,6 +112,82 @@ export default function SettingsApp({
   const [isTestingImageConnection, setIsTestingImageConnection] = useState(false);
   const [imageConnectionStatus, setImageConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [imageConnectionError, setImageConnectionError] = useState<string | null>(null);
+
+  const [isFetchingMemoryModels, setIsFetchingMemoryModels] = useState(false);
+  const [availableMemoryModels, setAvailableMemoryModels] = useState<string[]>([]);
+  const [isTestingMemoryConnection, setIsTestingMemoryConnection] = useState(false);
+  const [memoryConnectionStatus, setMemoryConnectionStatus] = useState<'idle' | 'success' | 'error'>('idle');
+  const [memoryConnectionError, setMemoryConnectionError] = useState<string | null>(null);
+
+  const testMemoryConnection = async () => {
+    if (!form.memoryApiKey) {
+      showToast('请输入 API Key', 'error');
+      return;
+    }
+    setIsTestingMemoryConnection(true);
+    setMemoryConnectionStatus('idle');
+    setMemoryConnectionError(null);
+    try {
+      const data = await apiFetch({
+        endpoint: '/api/models',
+        body: {
+          baseUrl: form.memoryApiUrl,
+          apiKey: form.memoryApiKey
+        }
+      });
+      if (data.data) {
+        setMemoryConnectionStatus('success');
+        showToast('✅ 记忆API链接成功！');
+        
+        const models = data.data.map((m: any) => m.id);
+        setAvailableMemoryModels(models);
+        
+        if (models.length > 0 && (!form.memoryModel || !models.includes(form.memoryModel))) {
+          const updatedForm = { ...form, memoryModel: models[0] };
+          setForm(updatedForm);
+          onSave(updatedForm);
+        }
+      } else {
+        throw new Error('未返回有效的模型列表数据');
+      }
+    } catch (e: any) {
+      console.error('Test memory connection error:', e);
+      setMemoryConnectionStatus('error');
+      setMemoryConnectionError(e.message || '未知错误');
+      showToast(`❌ 链接测试失败: ${e.message}`, 'error');
+    } finally {
+      setIsTestingMemoryConnection(false);
+    }
+  };
+
+  const fetchMemoryModels = async () => {
+    if (!form.memoryApiKey) return showToast('请输入 API Key', 'error');
+    setIsFetchingMemoryModels(true);
+    try {
+      const data = await apiFetch({
+        endpoint: '/api/models',
+        body: {
+          baseUrl: form.memoryApiUrl,
+          apiKey: form.memoryApiKey
+        }
+      });
+      if (data.data) {
+        const models = data.data.map((m: any) => m.id);
+        setAvailableMemoryModels(models);
+        
+        if (models.length > 0 && (!form.memoryModel || !models.includes(form.memoryModel))) {
+          const updatedForm = { ...form, memoryModel: models[0] };
+          setForm(updatedForm);
+          onSave(updatedForm);
+        }
+        showToast(`✅ 成功拉取 ${data.data.length} 个模型`);
+      }
+    } catch (e: any) {
+      showToast('❌ 模型拉取失败', 'error');
+    } finally {
+      setIsFetchingMemoryModels(false);
+    }
+  };
 
   const testImageConnection = async () => {
     if (!form.imageGenApiKey) {
@@ -599,6 +675,7 @@ export default function SettingsApp({
     data: '数据管理',
     voice: '语音设置',
     imageGen: '生图设置',
+    memoryApi: '记忆总结API',
     help: '帮助与反馈',
   };
 
@@ -651,6 +728,13 @@ export default function SettingsApp({
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-full bg-green-100/50 flex items-center justify-center text-green-600"><Brain size={18} /></div>
                   <span className="font-medium text-slate-800">记忆总结</span>
+                </div>
+                <ChevronLeft size={20} className="text-slate-400 rotate-180" />
+              </button>
+              <button onClick={() => setActiveSection('memoryApi')} className="w-full px-4 py-4 flex items-center justify-between border-b hover:bg-white/10 transition-colors">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-indigo-100/50 flex items-center justify-center text-indigo-600"><Cloud size={18} /></div>
+                  <span className="font-medium text-slate-800">记忆总结专用 API</span>
                 </div>
                 <ChevronLeft size={20} className="text-slate-400 rotate-180" />
               </button>
@@ -2025,6 +2109,104 @@ export default function SettingsApp({
                       </button>
                     </motion.div>
                   )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        {activeSection === 'memoryApi' && (
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300 pb-10">
+            <div className={cn(
+              "rounded-2xl border shadow-sm overflow-hidden transition-all duration-500",
+              form.settingsBackgroundUrl ? "bg-transparent border-white/10" : "bg-white"
+            )} style={form.settingsBackgroundUrl ? { backgroundColor: `rgba(255, 255, 255, ${Math.max(0, (form.settingsBackgroundOpacity ?? 0.8) * 0.2)})` } : {}}>
+              <div className="p-6 space-y-6">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                      <Key size={14} className="text-slate-300" /> API KEY
+                    </label>
+                    <input
+                      type="password"
+                      value={form.memoryApiKey || ''}
+                      onChange={e => setForm({ ...form, memoryApiKey: e.target.value })}
+                      placeholder="OpenAI / Proxy API Key"
+                      className="w-full px-4 py-3 bg-slate-50/50 border border-slate-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-300 transition-all"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                      <Globe size={14} className="text-slate-300" /> API 地址
+                    </label>
+                    <input
+                      type="text"
+                      value={form.memoryApiUrl || ''}
+                      onChange={e => setForm({ ...form, memoryApiUrl: e.target.value })}
+                      placeholder="https://api.openai.com/v1"
+                      className="w-full px-4 py-3 bg-slate-50/50 border border-slate-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-300 transition-all"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                        <Cpu size={14} className="text-slate-300" /> 模型名称
+                        <button 
+                          onClick={fetchMemoryModels}
+                          disabled={isFetchingMemoryModels}
+                          className="ml-2 px-2 py-0.5 bg-indigo-50 text-indigo-500 rounded-md hover:bg-indigo-100 transition-colors"
+                        >
+                          <RefreshCw size={12} className={cn("text-indigo-500", isFetchingMemoryModels && "animate-spin")} />
+                        </button>
+                      </label>
+                      <div className="relative">
+                        <select
+                          value={form.memoryModel || ''}
+                          onChange={e => setForm({ ...form, memoryModel: e.target.value })}
+                          className="w-full px-4 py-3 bg-slate-50/50 border border-slate-100 rounded-xl text-sm outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-300 transition-all appearance-none"
+                        >
+                          {availableMemoryModels.length > 0 ? (
+                            availableMemoryModels.map(m => <option key={m} value={m}>{m}</option>)
+                          ) : (
+                            <option value={form.memoryModel || ''}>{form.memoryModel || '尚未拉取模型'}</option>
+                          )}
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={testMemoryConnection}
+                    disabled={isTestingMemoryConnection}
+                    className="w-full py-3 bg-indigo-50 text-indigo-600 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-indigo-100 transition-colors"
+                  >
+                    {isTestingMemoryConnection ? <RefreshCw size={18} className="animate-spin" /> : <Link2 size={18} />}
+                    {isTestingMemoryConnection ? '测试中...' : '测试连接并保存'}
+                  </button>
+
+                  <div className="space-y-2">
+                    {memoryConnectionStatus === 'success' && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: -5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="text-xs text-emerald-600 font-medium flex items-start gap-1.5 px-3 py-2 bg-emerald-50/50 rounded-xl border border-emerald-100/50"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 mt-1.5 flex-shrink-0" />
+                        <span>连接成功</span>
+                      </motion.div>
+                    )}
+                    {memoryConnectionStatus === 'error' && (
+                      <motion.div 
+                        initial={{ opacity: 0, y: -5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="text-xs text-rose-600 font-medium flex items-start gap-1.5 px-3 py-2 bg-rose-50/50 rounded-xl border border-rose-100/50"
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500 mt-1.5 flex-shrink-0" />
+                        <span>链接失败: {memoryConnectionError}</span>
+                      </motion.div>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>

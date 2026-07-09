@@ -1,23 +1,53 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { MemoryStore, OnlineMemoryEntry, OfflinePlotEntry } from '../types';
 
 const STORAGE_KEY = 'zhouzhou_memory_store';
+const MEMORY_UPDATE_EVENT = 'zhouzhou_memory_update';
 
 export function useMemory() {
   const [memoryStore, setMemoryStore] = useState<MemoryStore>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    return saved ? JSON.parse(saved) : {};
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      return saved ? JSON.parse(saved) : {};
+    } catch (e) {
+      return {};
+    }
   });
 
   useEffect(() => {
+    const handleUpdate = (e: CustomEvent) => {
+      if (e.detail && typeof e.detail === 'object') {
+        setMemoryStore(e.detail);
+      }
+    };
+    
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === STORAGE_KEY && e.newValue) {
+        try {
+          setMemoryStore(JSON.parse(e.newValue));
+        } catch (err) {}
+      }
+    };
+
+    window.addEventListener(MEMORY_UPDATE_EVENT as any, handleUpdate);
+    window.addEventListener('storage', handleStorage);
+    return () => {
+      window.removeEventListener(MEMORY_UPDATE_EVENT as any, handleUpdate);
+      window.removeEventListener('storage', handleStorage);
+    };
+  }, []);
+
+  const updateAndBroadcast = useCallback((newStore: MemoryStore) => {
+    setMemoryStore(newStore);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(memoryStore));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newStore));
     } catch (e) {
       console.warn("Storage quota exceeded for memory store", e);
     }
-  }, [memoryStore]);
+    window.dispatchEvent(new CustomEvent(MEMORY_UPDATE_EVENT, { detail: newStore }));
+  }, []);
 
-  const addOnlineMemory = (friendId: string, content: string, type: 'auto' | 'manual' = 'auto', source: 'chat' | 'weibo' = 'chat') => {
+  const addOnlineMemory = useCallback((friendId: string, content: string, type: 'auto' | 'manual' = 'auto', source: 'chat' | 'weibo' = 'chat') => {
     setMemoryStore(prev => {
       const friendMemory = prev[friendId] || { onlineMemories: [], offlinePlots: [] };
       const newEntry: OnlineMemoryEntry = {
@@ -27,17 +57,20 @@ export function useMemory() {
         type,
         source
       };
-      return {
+      const newStore = {
         ...prev,
         [friendId]: {
           ...friendMemory,
           onlineMemories: [newEntry, ...friendMemory.onlineMemories]
         }
       };
+      // Async update to avoid dispatching during render if used weirdly, but usually fine.
+      setTimeout(() => updateAndBroadcast(newStore), 0);
+      return newStore;
     });
-  };
+  }, [updateAndBroadcast]);
 
-  const addOfflinePlot = (friendId: string, title: string, logs: any[], summary: string) => {
+  const addOfflinePlot = useCallback((friendId: string, title: string, logs: any[], summary: string) => {
     setMemoryStore(prev => {
       const friendMemory = prev[friendId] || { onlineMemories: [], offlinePlots: [] };
       const newEntry: OfflinePlotEntry = {
@@ -47,19 +80,21 @@ export function useMemory() {
         logs,
         summary
       };
-      return {
+      const newStore = {
         ...prev,
         [friendId]: {
           ...friendMemory,
           offlinePlots: [newEntry, ...friendMemory.offlinePlots]
         }
       };
+      setTimeout(() => updateAndBroadcast(newStore), 0);
+      return newStore;
     });
-  };
+  }, [updateAndBroadcast]);
 
-  const getFriendMemory = (friendId: string) => {
+  const getFriendMemory = useCallback((friendId: string) => {
     return memoryStore[friendId] || { onlineMemories: [], offlinePlots: [] };
-  };
+  }, [memoryStore]);
 
   return {
     memoryStore,
