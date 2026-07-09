@@ -74,7 +74,7 @@ const INITIAL_FRIENDS: Friend[] = [
   {
     id: 'zhouzhou-assistant',
     name: '粥粥助手',
-    avatar: 'https://api.dicebear.com/7.x/bottts/svg?seed=ai',
+    avatar: 'https://iili.io/CltVPYF.png',
     persona: '你是一个乐于助人的粥粥助手，说话简洁明了。',
     address: '云端服务器',
     gender: 'other',
