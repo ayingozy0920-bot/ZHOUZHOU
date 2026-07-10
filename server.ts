@@ -119,28 +119,78 @@ async function startServer() {
         { category: "HARM_CATEGORY_UNSPECIFIED", threshold: "BLOCK_NONE" }
       ];
 
-      const modelName = settings.modelName || settings.model || "gemini-1.5-flash";
-      const genModel = genAI.getGenerativeModel({ 
-        model: modelName,
-        systemInstruction: system_prompt,
-        safetySettings: safetySettings as any,
-        generationConfig: {
-          temperature: settings.temperature || 0.8,
-          maxOutputTokens: settings.maxTokens || 8192,
-          topP: 0.95,
-          topK: 40
+      const requestedModel = settings.modelName || settings.model || "gemini-1.5-flash";
+      const fallbackModels = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"];
+      const modelsToTry = Array.from(new Set([requestedModel, ...fallbackModels]));
+
+      let response: any = null;
+      let lastError: any = null;
+
+      for (const m of modelsToTry) {
+        try {
+          const genModel = genAI.getGenerativeModel({ 
+            model: m,
+            systemInstruction: system_prompt,
+            safetySettings: safetySettings as any,
+            generationConfig: {
+              temperature: settings.temperature || 0.8,
+              maxOutputTokens: settings.maxTokens || 8192,
+              topP: 0.95,
+              topK: 40
+            }
+          });
+
+          response = await genModel.generateContent({
+            contents: messages.map((msg: any) => ({
+              role: msg.role === 'assistant' ? 'model' : 'user',
+              parts: [{ text: msg.parts?.[0]?.text || msg.content || '' }]
+            }))
+          });
+          break;
+        } catch (err: any) {
+          lastError = err;
+          const msg = err?.message || '';
+          if (msg.includes('404') || msg.includes('NOT_FOUND') || msg.includes('not found') || msg.includes('PROHIBITED_CONTENT') || msg.includes('prompt_blocked')) {
+            continue;
+          }
+          throw err;
         }
-      });
+      }
 
-      const response = await genModel.generateContent({
-        contents: messages.map((m: any) => ({
-          role: m.role === 'assistant' ? 'model' : 'user',
-          parts: [{ text: m.parts?.[0]?.text || m.content || '' }]
-        }))
-      });
+      if (!response && lastError) {
+        if (system_prompt && system_prompt.includes("JSON")) {
+          const fallbackText = JSON.stringify([
+            { time: "08:00", task: "晨起签到与健康早餐" },
+            { time: "10:00", task: "核心工作与任务推进" },
+            { time: "12:30", task: "午餐时间与放松休憩" },
+            { time: "15:00", task: "下午工作与协作交流" },
+            { time: "18:30", task: "晚餐与休闲时间" },
+            { time: "21:00", task: "夜间阅读与复盘总结" }
+          ]);
+          return res.json({ text: fallbackText });
+        }
+        throw lastError;
+      }
 
-      const result = await response.response;
-      const text = result.text();
+      let text = '';
+      try {
+        const result = await response.response;
+        text = result.text();
+      } catch (e: any) {
+        console.warn("AI generation text error / safety block:", e);
+        if (system_prompt && system_prompt.includes("JSON")) {
+          text = JSON.stringify([
+            { time: "08:00", task: "晨起签到与健康早餐" },
+            { time: "10:00", task: "核心工作与任务推进" },
+            { time: "12:30", task: "午餐时间与放松休憩" },
+            { time: "15:00", task: "下午工作与协作交流" },
+            { time: "18:30", task: "晚餐与休闲时间" },
+            { time: "21:00", task: "夜间阅读与复盘总结" }
+          ]);
+        } else {
+          text = "抱歉，刚才的内容触发了安全审核或暂时无法生成，请稍后再试或调整内容。";
+        }
+      }
       res.json({ text });
 
     } catch (error: any) {
@@ -157,6 +207,173 @@ async function startServer() {
     res.json({ 
       status: "ok", 
       time: new Date().toISOString()
+    });
+  });
+
+  app.post("/api/spot-check-scan", (req, res) => {
+    try {
+      const { friendId, friends, chats, spotCheckLimit = 15 } = req.body;
+      const limit = Number(spotCheckLimit) > 0 ? Number(spotCheckLimit) : 15;
+
+      const otherFriends = (friends || []).filter((f: any) => f.id !== friendId);
+      const items = otherFriends.map((f: any) => {
+        const friendMsgs = (chats || {})[f.id] || [];
+        const recentMsgs = friendMsgs.slice(-limit);
+        const transcript = recentMsgs.map((m: any) => {
+          const sender = m.role === 'user' ? '用户' : (f.alias || f.name);
+          const content = m.content || m.parts?.[0]?.text || '';
+          return `${sender}: ${content}`;
+        }).join(' | ');
+
+        const previewText = transcript || f.lastMessage || '最近聊得很开心...';
+        
+        return {
+          friendId: f.id,
+          friendName: f.alias || f.name,
+          friendAvatar: f.avatar,
+          previewText,
+          transcript,
+          messageCount: recentMsgs.length
+        };
+      }).filter((item: any) => item.previewText);
+
+      // Ensure at least 3 rich items for a comprehensive scan experience if few friends exist
+      const mockPool = [
+        { friendId: 'mock1', friendName: '学姐', friendAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80', previewText: '周末要不要一起去图书馆自习呀？留个位置给你~', transcript: '用户: 在干嘛呢？ | 学姐: 周末要不要一起去图书馆自习呀？留个位置给你~' },
+        { friendId: 'mock2', friendName: '阿杰', friendAvatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=150&q=80', previewText: '昨晚跟你说的那个聚会你到底去不去啊，大家都在等呢', transcript: '阿杰: 昨晚跟你说的那个聚会你到底去不去啊，大家都在等呢 | 用户: 看看情况吧' },
+        { friendId: 'mock3', friendName: '小美', friendAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&q=80', previewText: '收到啦，谢谢你的奶茶！下次请你喝咖啡哦~', transcript: '用户: 奶茶好喝吗 | 小美: 收到啦，谢谢你的奶茶！下次请你喝咖啡哦~' }
+      ];
+
+      let finalItems = [...items];
+      for (const m of mockPool) {
+        if (finalItems.length < 4 && !finalItems.some(i => i.friendName === m.friendName)) {
+          finalItems.push(m);
+        }
+      }
+
+      const summaryText = finalItems.map((item: any) => `[好友：${item.friendName}] (已读取最近 ${item.messageCount || limit} 条对话记录):\n${item.transcript || item.previewText}`).join('\n\n');
+
+      res.json({
+        items: finalItems,
+        summaryText,
+        limitUsed: limit
+      });
+    } catch (e: any) {
+      console.error("Spot check scan API error:", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
+  app.post("/api/huabei", (req, res) => {
+    const { amount } = req.body;
+    let total = parseFloat(amount);
+    if (isNaN(total) || total <= 0) {
+      total = parseFloat((Math.random() * 800 + 200).toFixed(2));
+    }
+
+    const categoryPools = [
+      {
+        name: "美食餐饮",
+        pool: [
+          { title: "奈雪的茶：多肉葡萄与欧包套餐" },
+          { title: "美团外卖：深夜海底捞小龙虾外卖" },
+          { title: "星巴克咖啡与下午茶组合" },
+          { title: "大众点评：周末双人日料大餐" },
+          { title: "喜茶：芝士芒芒与轻芒芒" }
+        ]
+      },
+      {
+        name: "日常购物",
+        pool: [
+          { title: "淘宝：购买了一套海蓝之谜化妆品" },
+          { title: "淘宝：入手Dyson吹风机配件" },
+          { title: "优衣库：夏季新款短袖T恤与休闲裤" },
+          { title: "名创优品：创意盲盒与日用小物" },
+          { title: "屈臣氏：个人护理与美妆护肤品" }
+        ]
+      },
+      {
+        name: "休闲娱乐",
+        pool: [
+          { title: "猫眼电影：IMAX双人观影及爆米花" },
+          { title: "沉浸式剧本杀与密室逃脱" },
+          { title: "KTV欢唱与果盘小吃" },
+          { title: "周末温泉度假门票" }
+        ]
+      },
+      {
+        name: "生活出行",
+        pool: [
+          { title: "永辉超市：生活日用品与新鲜水果" },
+          { title: "滴滴出行：深夜加班快车专车" },
+          { title: "全家便利店：深夜关东煮与酸奶" },
+          { title: "生活缴费：水电气与手机话费" }
+        ]
+      }
+    ];
+
+    const shuffledCategories = [...categoryPools].sort(() => 0.5 - Math.random());
+    const selectedCategoriesCount = Math.floor(Math.random() * 2) + 3; // 3 or 4 categories
+    const activeCategories = shuffledCategories.slice(0, selectedCategoriesCount);
+
+    const catWeights = activeCategories.map(() => Math.random() + 0.5);
+    const catWeightSum = catWeights.reduce((a, b) => a + b, 0);
+
+    let runningCatSum = 0;
+    const categoriesResult = activeCategories.map((cat, catIdx) => {
+      let catTotal: number;
+      if (catIdx === activeCategories.length - 1) {
+        catTotal = Math.max(20, Math.round((total - runningCatSum) * 100) / 100);
+      } else {
+        catTotal = Math.round((total * (catWeights[catIdx] / catWeightSum)) * 100) / 100;
+        runningCatSum += catTotal;
+      }
+
+      const shuffledItems = [...cat.pool].sort(() => 0.5 - Math.random());
+      const itemCount = Math.min(shuffledItems.length, 5); // up to 5 items per category
+      const selectedItems = shuffledItems.slice(0, itemCount);
+
+      const itemWeights = selectedItems.map(() => Math.random() + 0.3);
+      const itemWeightSum = itemWeights.reduce((a, b) => a + b, 0);
+
+      let runningItemSum = 0;
+      const items = selectedItems.map((itemObj, itemIdx) => {
+        let itemAmount: number;
+        if (itemIdx === selectedItems.length - 1) {
+          itemAmount = Math.max(5, Math.round((catTotal - runningItemSum) * 100) / 100);
+        } else {
+          itemAmount = Math.round((catTotal * (itemWeights[itemIdx] / itemWeightSum)) * 100) / 100;
+          runningItemSum += itemAmount;
+        }
+
+        const day = Math.floor(Math.random() * 9) + 1; // July 1st-9th
+        const hour = Math.floor(Math.random() * 14) + 9;
+        const minute = Math.floor(Math.random() * 60);
+        const timeStr = `7月${day}日 ${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+
+        return {
+          title: itemObj.title,
+          amount: itemAmount.toFixed(2),
+          time: timeStr
+        };
+      });
+
+      const actualCatTotal = items.reduce((sum, i) => sum + parseFloat(i.amount), 0);
+
+      return {
+        name: cat.name,
+        amount: actualCatTotal.toFixed(2),
+        items
+      };
+    });
+
+    const finalTotal = categoriesResult.reduce((sum, c) => sum + parseFloat(c.amount), 0);
+    const allItems = categoriesResult.flatMap(c => c.items);
+
+    res.json({
+      totalDebt: finalTotal.toFixed(2),
+      categories: categoriesResult,
+      items: allItems
     });
   });
 
@@ -592,6 +809,112 @@ async function startServer() {
     } catch (error: any) {
       console.error("Image proxy error:", error);
       res.status(500).send("Error proxying image");
+    }
+  });
+
+  app.post("/api/huabei", async (req, res) => {
+    try {
+      const { amount } = req.body;
+      const totalNum = parseFloat(amount) || 456.80;
+
+      const categoryPools = [
+        {
+          name: "美食餐饮",
+          pool: [
+            { title: "奈雪的茶：多肉葡萄与欧包套餐" },
+            { title: "美团外卖：深夜海底捞小龙虾外卖" },
+            { title: "星巴克咖啡与下午茶组合" },
+            { title: "大众点评：周末双人日料大餐" },
+            { title: "喜茶：芝士芒芒与轻芒芒" }
+          ]
+        },
+        {
+          name: "日常购物",
+          pool: [
+            { title: "淘宝：购买了一套海蓝之谜化妆品" },
+            { title: "淘宝：入手Dyson吹风机配件" },
+            { title: "优衣库：夏季新款短袖T恤与休闲裤" },
+            { title: "名创优品：创意盲盒与日用小物" },
+            { title: "屈臣氏：个人护理与美妆护肤品" }
+          ]
+        },
+        {
+          name: "休闲娱乐",
+          pool: [
+            { title: "猫眼电影：IMAX双人观影及爆米花" },
+            { title: "沉浸式剧本杀与密室逃脱" },
+            { title: "KTV欢唱与果盘小吃" },
+            { title: "周末温泉度假门票" }
+          ]
+        },
+        {
+          name: "生活出行",
+          pool: [
+            { title: "永辉超市：生活日用品与新鲜水果" },
+            { title: "滴滴出行：深夜加班快车专车" },
+            { title: "全家便利店：深夜关东煮与酸奶" },
+            { title: "生活缴费：水电气与手机话费" }
+          ]
+        }
+      ];
+
+      const shuffledCategories = [...categoryPools].sort(() => 0.5 - Math.random());
+      const activeCategories = shuffledCategories.slice(0, 3);
+      const catWeights = activeCategories.map(() => Math.random() + 0.5);
+      const catWeightSum = catWeights.reduce((a, b) => a + b, 0);
+      let runningCatSum = 0;
+
+      const newCategories = activeCategories.map((cat, catIdx) => {
+        let catTotal: number;
+        if (catIdx === activeCategories.length - 1) {
+          catTotal = Math.max(20, Math.round((totalNum - runningCatSum) * 100) / 100);
+        } else {
+          catTotal = Math.round((totalNum * (catWeights[catIdx] / catWeightSum)) * 100) / 100;
+          runningCatSum += catTotal;
+        }
+
+        const shuffledItems = [...cat.pool].sort(() => 0.5 - Math.random());
+        const selectedItems = shuffledItems.slice(0, 5);
+        const itemWeights = selectedItems.map(() => Math.random() + 0.3);
+        const itemWeightSum = itemWeights.reduce((a, b) => a + b, 0);
+        let runningItemSum = 0;
+
+        const items = selectedItems.map((itemObj, iIdx) => {
+          let itemAmount: number;
+          if (iIdx === selectedItems.length - 1) {
+            itemAmount = Math.max(5, Math.round((catTotal - runningItemSum) * 100) / 100);
+          } else {
+            itemAmount = Math.round((catTotal * (itemWeights[iIdx] / itemWeightSum)) * 100) / 100;
+            runningItemSum += itemAmount;
+          }
+          const day = Math.floor(Math.random() * 9) + 1;
+          const hour = Math.floor(Math.random() * 14) + 9;
+          const minute = Math.floor(Math.random() * 60);
+          return {
+            title: itemObj.title,
+            amount: itemAmount.toFixed(2),
+            time: `7月${day}日 ${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`
+          };
+        });
+
+        const actualCatTotal = items.reduce((sum, i) => sum + parseFloat(i.amount), 0);
+        return {
+          name: cat.name,
+          amount: actualCatTotal.toFixed(2),
+          items
+        };
+      });
+
+      const finalTotal = newCategories.reduce((sum, c) => sum + parseFloat(c.amount), 0);
+      const allItems = newCategories.flatMap(c => c.items);
+
+      res.json({
+        totalDebt: finalTotal.toFixed(2),
+        categories: newCategories,
+        items: allItems
+      });
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
     }
   });
 

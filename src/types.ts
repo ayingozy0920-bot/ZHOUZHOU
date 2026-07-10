@@ -8,7 +8,7 @@ export interface OpeningMemory {
 
 export interface Widget {
   id: string;
-  type: 'time' | 'weather' | 'music' | 'photo' | 'quote' | 'battery' | 'calendar' | 'todo' | 'countdown' | 'contact' | 'together' | 'schedule' | 'memo' | 'step' | 'mood' | 'healing-battery' | 'ins-split' | 'ticket' | 'collage' | 'ins-split-v2' | 'manga-blink' | 'film-frame' | 'ticket-v2' | 'polaroid-stack' | 'dynamic-cat' | 'live-weather' | 'ins-large-v1' | 'ins-large-v2' | 'ins-weather-calendar' | 'ins-photo-square' | 'ins-profile-card' | 'ins-circle-widget' | 'ins-music-circle-widget' | 'ins-photo-wall-v1' | 'ins-photo-wall-v2' | 'ins-signature-v1' | 'ins-signature-v2' | 'ins-large-calendar' | 'ins-love-music' | 'love-profile-card' | 'pure-photo-card' | 'polaroid-triple' | 'custom-generator';
+  type: 'time' | 'weather' | 'music' | 'photo' | 'quote' | 'battery' | 'calendar' | 'todo' | 'countdown' | 'contact' | 'together' | 'schedule' | 'memo' | 'step' | 'mood' | 'healing-battery' | 'ins-split' | 'ticket' | 'collage' | 'ins-split-v2' | 'manga-blink' | 'film-frame' | 'ticket-v2' | 'polaroid-stack' | 'dynamic-cat' | 'live-weather' | 'ins-large-v1' | 'ins-large-v2' | 'ins-weather-calendar' | 'ins-photo-square' | 'ins-profile-card' | 'ins-circle-widget' | 'ins-music-circle-widget' | 'ins-photo-wall-v1' | 'ins-photo-wall-v2' | 'ins-signature-v1' | 'ins-signature-v2' | 'ins-large-calendar' | 'ins-love-music' | 'love-profile-card' | 'pure-photo-card' | 'polaroid-triple' | 'browser-square-card' | 'couple-anniversary-card' | 'pink-polaroid-collage' | 'frosted-note-card' | 'korean-profile-card' | 'custom-generator';
   size: '1x1' | '2x2' | '2x1' | '4x2' | '5x2' | '4x4' | '6x2' | '2x4' | 'circle';
   category?: string;
   data?: any;
@@ -432,6 +432,10 @@ export interface Friend {
     memoryCount: number;
     customPrompt?: string;
   };
+  spotCheckEnabled?: boolean;
+  proactiveSpotCheckEnabled?: boolean;
+  spotCheckLimit?: number;
+  spotCheckProbability?: number;
 }
 
 export interface GroupChat {
@@ -488,7 +492,7 @@ export interface ChatMessage {
   id?: string;
   role: 'user' | 'assistant' | 'system';
   content: string;
-  type?: 'text' | 'image' | 'video' | 'voice' | 'transfer' | 'location' | 'call' | 'memory' | 'sticker' | 'blindbox-gift' | 'dice' | 'offline-invitation' | 'photo_card' | 'date_summary' | 'shopping-receipt' | 'red-packet' | 'opening-card' | 'group-announcement';
+  type?: 'text' | 'image' | 'video' | 'voice' | 'transfer' | 'location' | 'call' | 'memory' | 'sticker' | 'blindbox-gift' | 'dice' | 'offline-invitation' | 'photo_card' | 'date_summary' | 'shopping-receipt' | 'red-packet' | 'opening-card' | 'group-announcement' | 'huabei-bill';
   mediaUrl?: string;
   stickerUrl?: string;
   avatar?: string;
@@ -521,6 +525,16 @@ export interface ChatMessage {
     price: number;
     isOpened: boolean;
     source?: string;
+  };
+  huabeiData?: {
+    username: string;
+    totalDebt: string;
+    categories?: Array<{
+      name: string;
+      amount: string;
+      items: Array<{ title: string; amount: string; time: string }>;
+    }>;
+    items: Array<{ title: string; amount: string; time: string }> | string[];
   };
   invitationData?: {
     friendId: string;

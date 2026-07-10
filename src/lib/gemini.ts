@@ -49,7 +49,6 @@ export const getGeminiClient = (settings?: AppSettings) => {
               model: req.model,
               messages,
               temperature: req.config?.temperature || undefined,
-              response_format: req.config?.responseMimeType === 'application/json' ? { type: 'json_object' } : undefined,
               safetySettings: [
                 { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
                 { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" },
@@ -140,12 +139,57 @@ export const getGeminiClient = (settings?: AppSettings) => {
   const originalGenerateContent = client.models.generateContent.bind(client.models);
   const originalGenerateContentStream = client.models.generateContentStream.bind(client.models);
 
+  const fallbackModels = [
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
+    "gemini-1.5-pro",
+    "gemini-pro"
+  ];
+
   return {
     ...client,
     models: {
       ...client.models,
-      generateContent: async (req: any) => originalGenerateContent(injectSafetySettings(req)),
-      generateContentStream: async (req: any) => originalGenerateContentStream(injectSafetySettings(req))
+      generateContent: async (req: any) => {
+        const injected = injectSafetySettings(req);
+        const originalModel = injected.model;
+        const modelsToTry = Array.from(new Set([originalModel, ...fallbackModels])).filter(Boolean);
+        
+        let lastErr: any = null;
+        for (const m of modelsToTry) {
+          try {
+            return await originalGenerateContent({ ...injected, model: m });
+          } catch (e: any) {
+            lastErr = e;
+            const msg = e?.message || '';
+            if (msg.includes('404') || msg.includes('NOT_FOUND') || msg.includes('not found')) {
+              continue;
+            }
+            throw e;
+          }
+        }
+        throw lastErr;
+      },
+      generateContentStream: async (req: any) => {
+        const injected = injectSafetySettings(req);
+        const originalModel = injected.model;
+        const modelsToTry = Array.from(new Set([originalModel, ...fallbackModels])).filter(Boolean);
+        
+        let lastErr: any = null;
+        for (const m of modelsToTry) {
+          try {
+            return await originalGenerateContentStream({ ...injected, model: m });
+          } catch (e: any) {
+            lastErr = e;
+            const msg = e?.message || '';
+            if (msg.includes('404') || msg.includes('NOT_FOUND') || msg.includes('not found')) {
+              continue;
+            }
+            throw e;
+          }
+        }
+        throw lastErr;
+      }
     }
   } as any;
 };

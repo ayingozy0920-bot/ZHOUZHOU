@@ -4,7 +4,7 @@ import { AppId, AppInfo, DesktopItem, Widget, AppSettings } from '../types';
 import { cn } from '../lib/utils';
 import { DEFAULT_SETTINGS } from '../hooks/useSettings';
 import { OCEAN_BLUE_ICON_BGS } from '../lib/themeIcons';
-import { Plus, X, Edit2, Check, Cloud, Sun, Music, Camera, Quote, Battery, Calendar as CalendarIcon, Clock, Trash2, History, RefreshCw, ListTodo, Timer, User, Heart, MessageSquare, StickyNote, Footprints, Smile as SmileIcon, Play, SkipBack, SkipForward, Upload } from 'lucide-react';
+import { Plus, X, Edit2, Check, Cloud, Sun, Music, Camera, Quote, Battery, Calendar as CalendarIcon, Clock, Trash2, History, RefreshCw, ListTodo, Timer, User, Heart, MessageSquare, StickyNote, Footprints, Smile as SmileIcon, Play, SkipBack, SkipForward, Upload, Home } from 'lucide-react';
 
 const GRID_COLS = 4;
 const GRID_ROWS = 12;
@@ -38,7 +38,100 @@ function Desktop({ settings, onUpdateLayout, apps, iconMap, onOpenApp, currentTi
   const [history, setHistory] = useState<DesktopItem[][]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const layout = settings.desktopLayout || [];
+  // System Update Modal state
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  const todayDateStr = `${year}-${month}-${day}`;
+  const displayDateStr = `${year}年${month}月${day}日`;
+  const updateCheckKey = `system_update_checked_${todayDateStr}`;
+
+  useEffect(() => {
+    try {
+      // Clean up old update checked keys in localStorage to prevent quota buildup
+      for (let i = localStorage.length - 1; i >= 0; i--) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('system_update_checked_') && key !== updateCheckKey) {
+          localStorage.removeItem(key);
+        }
+      }
+
+      const hasChecked = localStorage.getItem(updateCheckKey) || sessionStorage.getItem(updateCheckKey);
+      if (!hasChecked) {
+        setShowUpdateModal(true);
+      }
+    } catch (e) {
+      const hasCheckedSession = sessionStorage.getItem(updateCheckKey);
+      if (!hasCheckedSession) {
+        setShowUpdateModal(true);
+      }
+    }
+  }, [updateCheckKey]);
+
+  const handleCloseUpdateModal = () => {
+    try {
+      localStorage.setItem(updateCheckKey, 'true');
+    } catch (e) {
+      console.warn('localStorage quota exceeded', e);
+    }
+    try {
+      sessionStorage.setItem(updateCheckKey, 'true');
+    } catch (e) {
+      // ignore
+    }
+    setShowUpdateModal(false);
+  };
+
+  const todayUpdateList = [
+    "1、查手机与主动查岗功能优化：支持按设置数量逐个扫描所有好友聊天记录，支持关键词触发或随机概率触发“角色查用户岗”审讯互动",
+    "2、动作描写智能开关：线上聊天默认自动禁止带括号的动作描写，除非用户手动在角色设置中关闭限制",
+    "3、日程与小组件增强：优化日程提醒交互，新增桌面便签、实时时钟与快捷查岗组件，提升桌面美化体验"
+  ];
+
+  const getItemSpan = (item: DesktopItem) => {
+    let colSpan = 1;
+    let rowSpan = 1;
+    if (item.type === 'widget' && item.widget) {
+      const size = item.widget.size;
+      if (size === '5x2' || size === '4x4' || size === '4x2' || size === '6x2') {
+        colSpan = 4;
+        rowSpan = size === '4x4' ? 4 : 2;
+      } else if (size === '2x2' || size === '2x1' || size === 'circle' || size === '2x4') {
+        colSpan = size === '2x4' ? 2 : 2;
+        rowSpan = size === '2x4' ? 4 : (size === 'circle' ? 2 : (size === '2x1' ? 1 : 2));
+      }
+    }
+    return { colSpan, rowSpan };
+  };
+
+  const sanitizeLayout = (items: DesktopItem[]): DesktopItem[] => {
+    return items.map(item => {
+      if (!item.position) {
+        return {
+          ...item,
+          position: { x: 0, y: 0, page: 0 }
+        };
+      }
+      const { colSpan, rowSpan } = getItemSpan(item);
+      const maxCol = Math.max(0, GRID_COLS - colSpan);
+      const maxRow = Math.max(0, GRID_ROWS - rowSpan);
+      const x = Math.min(Math.max(0, item.position.x ?? 0), maxCol);
+      const y = Math.min(Math.max(0, item.position.y ?? 0), maxRow);
+      const page = Math.max(0, item.position.page ?? 0);
+
+      if (x !== item.position.x || y !== item.position.y || page !== item.position.page) {
+        return {
+          ...item,
+          position: { x, y, page }
+        };
+      }
+      return item;
+    });
+  };
+
+  const layout = sanitizeLayout(settings.desktopLayout || []);
   const maxPage = Math.max((settings.totalPages || 1) - 1, ...layout.map(item => item.position.page));
 
   // Auto-add missing apps to desktop
@@ -117,42 +210,33 @@ function Desktop({ settings, onUpdateLayout, apps, iconMap, onOpenApp, currentTi
     const container = containerRef.current;
     if (!container) return;
 
-    const rect = container.getBoundingClientRect();
-    const x = info.point.x - rect.left;
-    const y = info.point.y - rect.top;
-
     const sourceItem = layout.find(i => i.id === id);
     if (!sourceItem) return;
 
-    // Get item spans
-    let colSpan = 1;
-    let rowSpan = 1;
-    if (sourceItem.type === 'widget' && sourceItem.widget) {
-      const size = sourceItem.widget.size;
-      if (size === '5x2' || size === '4x4' || size === '4x2') {
-        colSpan = 4;
-        rowSpan = size === '4x4' ? 4 : 2;
-      } else if (size === '2x2' || size === '2x1') {
-        colSpan = 2;
-        rowSpan = size === '2x2' ? 2 : 1;
-      }
+    const { colSpan, rowSpan } = getItemSpan(sourceItem);
+
+    const startX = sourceItem.position.x * (CELL_WIDTH + GAP_X);
+    const startY = sourceItem.position.y * (CELL_HEIGHT + GAP_Y);
+
+    const finalX = startX + (info.offset?.x || 0);
+    const finalY = startY + (info.offset?.y || 0);
+
+    let col = Math.round(finalX / (CELL_WIDTH + GAP_X));
+    let row = Math.round(finalY / (CELL_HEIGHT + GAP_Y));
+
+    if (isNaN(col)) col = sourceItem.position.x;
+    if (isNaN(row)) row = sourceItem.position.y;
+
+    const maxCol = Math.max(0, GRID_COLS - colSpan);
+    const maxRow = Math.max(0, GRID_ROWS - rowSpan);
+    col = Math.min(Math.max(0, col), maxCol);
+    row = Math.min(Math.max(0, row), maxRow);
+
+    if (col === sourceItem.position.x && row === sourceItem.position.y && sourceItem.position.page === currentPage) {
+      return;
     }
 
-    // Calculate grid position
-    let col = Math.floor(x / (CELL_WIDTH + GAP_X));
-    let row = Math.floor(y / (CELL_HEIGHT + GAP_Y));
-
-    // Clamp col and row to ensure the widget stays inside the grid boundaries
-    if (col < 0) col = 0;
-    if (col + colSpan > GRID_COLS) {
-      col = GRID_COLS - colSpan;
-    }
-    if (row < 0) row = 0;
-    if (row + rowSpan > GRID_ROWS) {
-      row = GRID_ROWS - rowSpan;
-    }
-
-    // Ensure the widget bottom doesn't overlap the dock or exceed container height
+    const rect = container.getBoundingClientRect();
     const itemHeight = rowSpan * CELL_HEIGHT + (rowSpan - 1) * GAP_Y;
     let maxAllowedRow = row;
     while (maxAllowedRow > 0 && (maxAllowedRow * (CELL_HEIGHT + GAP_Y) + itemHeight > rect.height)) {
@@ -241,7 +325,7 @@ function Desktop({ settings, onUpdateLayout, apps, iconMap, onOpenApp, currentTi
       }}
     >
       <div 
-        className="flex-1 relative overflow-hidden"
+        className="flex-1 relative overflow-y-visible overflow-x-hidden"
         onDoubleClick={() => setIsEditMode(false)}
       >
         <AnimatePresence mode="wait">
@@ -379,6 +463,48 @@ function Desktop({ settings, onUpdateLayout, apps, iconMap, onOpenApp, currentTi
           />
         )}
       </AnimatePresence>
+
+      {/* 今日系统更新公告弹窗 */}
+      <AnimatePresence>
+        {showUpdateModal && (
+          <div className="fixed inset-0 z-[99999] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden border border-gray-100 flex flex-col"
+            >
+              {/*头部浅色主题栏*/}
+              <div className="bg-sky-50 px-6 py-5 text-center border-b border-gray-100">
+                <h3 className="text-xl font-bold text-gray-800">今日更新</h3>
+                <p className="text-xs text-sky-600 font-semibold mt-1">{displayDateStr}</p>
+              </div>
+
+              {/*更新列表区域*/}
+              <div className="px-6 py-6 max-h-[60vh] overflow-y-auto">
+                <ul className="space-y-3 text-sm text-gray-700 leading-relaxed">
+                  {todayUpdateList.map((item, idx) => (
+                    <li key={idx} className="flex items-start gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-sky-500 mt-2 flex-shrink-0" />
+                      <span>{item}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {/*关闭按钮*/}
+              <div className="px-6 pb-6 pt-2">
+                <button 
+                  onClick={handleCloseUpdateModal}
+                  className="w-full py-3 bg-sky-500 hover:bg-sky-600 text-white rounded-xl transition-all font-semibold shadow-md active:scale-95"
+                >
+                  我知道了
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 
@@ -428,8 +554,8 @@ const DesktopItemRenderer = React.memo(({ item, settings, apps, iconMap, isEditM
       transition={{
         rotate: { repeat: Infinity, duration: 0.5, ease: "linear" },
         scale: { duration: 0.2 },
-        x: { type: 'spring', damping: 30, stiffness: 250 },
-        y: { type: 'spring', damping: 30, stiffness: 250 },
+        x: draggedItem === item.id ? { duration: 0 } : { type: 'tween', duration: 0.15 },
+        y: draggedItem === item.id ? { duration: 0 } : { type: 'tween', duration: 0.15 },
         opacity: { duration: 0.2 }
       }}
       drag={isEditMode}
@@ -829,24 +955,24 @@ function WidgetCustomizer({ item, onUpdate, onClose }: { item: DesktopItem; onUp
               <label className="text-xs font-bold text-slate-400 uppercase">主图</label>
               <div className="flex gap-2">
                 <input type="text" value={data.mainUrl || ''} onChange={(e) => setData({...data, mainUrl: e.target.value})} placeholder="URL" className="flex-1 px-4 py-2 bg-slate-100 rounded-xl" />
-                <button onClick={() => fileInputRef.current?.click()} className="p-2 bg-slate-100 rounded-xl"><Upload size={18} /></button>
-                <input type="file" ref={fileInputRef} onChange={(e) => handleFileUpload(e, 'mainUrl')} className="hidden" accept="image/*" />
+                <button onClick={() => document.getElementById(`collage-main-${item.id}`)?.click()} className="p-2 bg-slate-100 rounded-xl"><Upload size={18} /></button>
+                <input id={`collage-main-${item.id}`} type="file" onChange={(e) => handleFileUpload(e, 'mainUrl')} className="hidden" accept="image/*" />
               </div>
             </div>
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase">副图1</label>
               <div className="flex gap-2">
                 <input type="text" value={data.subUrl1 || ''} onChange={(e) => setData({...data, subUrl1: e.target.value})} placeholder="URL" className="flex-1 px-4 py-2 bg-slate-100 rounded-xl" />
-                <button onClick={() => fileInputRef.current?.click()} className="p-2 bg-slate-100 rounded-xl"><Upload size={18} /></button>
-                <input type="file" ref={fileInputRef} onChange={(e) => handleFileUpload(e, 'subUrl1')} className="hidden" accept="image/*" />
+                <button onClick={() => document.getElementById(`collage-sub1-${item.id}`)?.click()} className="p-2 bg-slate-100 rounded-xl"><Upload size={18} /></button>
+                <input id={`collage-sub1-${item.id}`} type="file" onChange={(e) => handleFileUpload(e, 'subUrl1')} className="hidden" accept="image/*" />
               </div>
             </div>
             <div className="space-y-2">
               <label className="text-xs font-bold text-slate-400 uppercase">副图2</label>
               <div className="flex gap-2">
                 <input type="text" value={data.subUrl2 || ''} onChange={(e) => setData({...data, subUrl2: e.target.value})} placeholder="URL" className="flex-1 px-4 py-2 bg-slate-100 rounded-xl" />
-                <button onClick={() => fileInputRef.current?.click()} className="p-2 bg-slate-100 rounded-xl"><Upload size={18} /></button>
-                <input type="file" ref={fileInputRef} onChange={(e) => handleFileUpload(e, 'subUrl2')} className="hidden" accept="image/*" />
+                <button onClick={() => document.getElementById(`collage-sub2-${item.id}`)?.click()} className="p-2 bg-slate-100 rounded-xl"><Upload size={18} /></button>
+                <input id={`collage-sub2-${item.id}`} type="file" onChange={(e) => handleFileUpload(e, 'subUrl2')} className="hidden" accept="image/*" />
               </div>
             </div>
             <div className="space-y-2">
@@ -927,8 +1053,8 @@ function WidgetCustomizer({ item, onUpdate, onClose }: { item: DesktopItem; onUp
                 <label className="text-xs font-bold text-slate-400 uppercase">图片 {i} 链接</label>
                 <div className="flex gap-2">
                   <input type="text" value={data[`url${i}`] || ''} onChange={(e) => setData({...data, [`url${i}`]: e.target.value})} placeholder="URL" className="flex-1 px-4 py-2 bg-slate-100 rounded-xl" />
-                  <button onClick={() => document.getElementById(`file-upload-${i}`)?.click()} className="p-2 bg-slate-100 rounded-xl"><Upload size={18} /></button>
-                  <input id={`file-upload-${i}`} type="file" onChange={(e) => handleFileUpload(e, `url${i}`)} className="hidden" accept="image/*" />
+                  <button onClick={() => document.getElementById(`ins-wall-${i}-${item.id}`)?.click()} className="p-2 bg-slate-100 rounded-xl"><Upload size={18} /></button>
+                  <input id={`ins-wall-${i}-${item.id}`} type="file" onChange={(e) => handleFileUpload(e, `url${i}`)} className="hidden" accept="image/*" />
                 </div>
               </div>
             ))}
@@ -980,6 +1106,141 @@ function WidgetCustomizer({ item, onUpdate, onClose }: { item: DesktopItem; onUp
                 </div>
               </div>
             ))}
+          </div>
+        );
+      case 'browser-square-card':
+        return (
+          <>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase">网址 (URL Bar)</label>
+              <input type="text" value={data.url || ''} onChange={(e) => setData({...data, url: e.target.value})} placeholder="www.custom-url.com" className="w-full px-4 py-2 bg-slate-100 rounded-xl" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase">正方形图片</label>
+              <div className="flex gap-2">
+                <input type="text" value={data.photoUrl || ''} onChange={(e) => setData({...data, photoUrl: e.target.value})} placeholder="图片 URL" className="flex-1 px-4 py-2 bg-slate-100 rounded-xl" />
+                <button onClick={() => document.getElementById(`browser-upload-${item.id}`)?.click()} className="p-2 bg-slate-100 rounded-xl"><Upload size={18} /></button>
+                <input id={`browser-upload-${item.id}`} type="file" onChange={(e) => handleFileUpload(e, 'photoUrl')} className="hidden" accept="image/*" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase">底部文字说明</label>
+              <input type="text" value={data.text || ''} onChange={(e) => setData({...data, text: e.target.value})} placeholder="下一站：幸福降臨。🤍🖤" className="w-full px-4 py-2 bg-slate-100 rounded-xl" />
+            </div>
+          </>
+        );
+      case 'couple-anniversary-card':
+        return (
+          <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-400 uppercase">左侧头像</label>
+                <div className="flex gap-1">
+                  <input type="text" value={data.avatar1 || ''} onChange={e => setData({...data, avatar1: e.target.value})} placeholder="头像 URL" className="flex-1 px-3 py-1 bg-slate-100 rounded-lg text-xs" />
+                  <button onClick={() => document.getElementById(`couple-up-1-${item.id}`)?.click()} className="p-1 bg-slate-100 rounded-lg"><Upload size={14} /></button>
+                  <input id={`couple-up-1-${item.id}`} type="file" onChange={(e) => handleFileUpload(e, 'avatar1')} className="hidden" accept="image/*" />
+                </div>
+                <input type="text" value={data.nick1 || ''} onChange={e => setData({...data, nick1: e.target.value})} placeholder="左侧昵称" className="w-full px-3 py-1 bg-slate-100 rounded-lg text-xs" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-xs font-bold text-slate-400 uppercase">右侧头像</label>
+                <div className="flex gap-1">
+                  <input type="text" value={data.avatar2 || ''} onChange={e => setData({...data, avatar2: e.target.value})} placeholder="头像 URL" className="flex-1 px-3 py-1 bg-slate-100 rounded-lg text-xs" />
+                  <button onClick={() => document.getElementById(`couple-up-2-${item.id}`)?.click()} className="p-1 bg-slate-100 rounded-lg"><Upload size={14} /></button>
+                  <input id={`couple-up-2-${item.id}`} type="file" onChange={(e) => handleFileUpload(e, 'avatar2')} className="hidden" accept="image/*" />
+                </div>
+                <input type="text" value={data.nick2 || ''} onChange={e => setData({...data, nick2: e.target.value})} placeholder="右侧昵称" className="w-full px-3 py-1 bg-slate-100 rounded-lg text-xs" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase">在一起起始日期 (自动计算天数)</label>
+              <input type="date" value={data.startDay || '2024-05-16'} onChange={e => setData({...data, startDay: e.target.value})} className="w-full px-4 py-2 bg-slate-100 rounded-xl text-sm" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase">底部签名标语</label>
+              <input type="text" value={data.sign || ''} onChange={e => setData({...data, sign: e.target.value})} placeholder="*·重度依赖·*" className="w-full px-4 py-2 bg-slate-100 rounded-xl text-sm" />
+            </div>
+          </div>
+        );
+      case 'pink-polaroid-collage':
+        return (
+          <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase">左侧拍立得照片</label>
+              <div className="flex gap-2">
+                <input type="text" value={data.url1 || ''} onChange={(e) => setData({...data, url1: e.target.value})} placeholder="图片 URL" className="flex-1 px-4 py-2 bg-slate-100 rounded-xl text-sm" />
+                <button onClick={() => document.getElementById(`pink-polaroid-1-${item.id}`)?.click()} className="p-2 bg-slate-100 rounded-xl"><Upload size={18} /></button>
+                <input id={`pink-polaroid-1-${item.id}`} type="file" onChange={(e) => handleFileUpload(e, 'url1')} className="hidden" accept="image/*" />
+              </div>
+              <input type="text" value={data.text1 || ''} onChange={(e) => setData({...data, text1: e.target.value})} placeholder="左侧备注文字" className="w-full px-3 py-1 bg-slate-100 rounded-lg text-xs" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase">右侧拍立得照片</label>
+              <div className="flex gap-2">
+                <input type="text" value={data.url2 || ''} onChange={(e) => setData({...data, url2: e.target.value})} placeholder="图片 URL" className="flex-1 px-4 py-2 bg-slate-100 rounded-xl text-sm" />
+                <button onClick={() => document.getElementById(`pink-polaroid-2-${item.id}`)?.click()} className="p-2 bg-slate-100 rounded-xl"><Upload size={18} /></button>
+                <input id={`pink-polaroid-2-${item.id}`} type="file" onChange={(e) => handleFileUpload(e, 'url2')} className="hidden" accept="image/*" />
+              </div>
+              <input type="text" value={data.text2 || ''} onChange={(e) => setData({...data, text2: e.target.value})} placeholder="右侧备注文字" className="w-full px-3 py-1 bg-slate-100 rounded-lg text-xs" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase">底部标语</label>
+              <input type="text" value={data.slogan || ''} onChange={(e) => setData({...data, slogan: e.target.value})} placeholder="祝你鱼块+☆·°" className="w-full px-4 py-2 bg-slate-100 rounded-xl text-sm" />
+            </div>
+          </div>
+        );
+      case 'frosted-note-card':
+        return (
+          <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase">背景图片 (图床链接 或 本地上传)</label>
+              <div className="flex gap-2">
+                <input type="text" value={data.bgUrl || ''} onChange={(e) => setData({...data, bgUrl: e.target.value})} placeholder="图片 URL" className="flex-1 px-4 py-2 bg-slate-100 rounded-xl text-sm" />
+                <button onClick={() => document.getElementById(`frosted-bg-${item.id}`)?.click()} className="p-2 bg-slate-100 rounded-xl"><Upload size={18} /></button>
+                <input id={`frosted-bg-${item.id}`} type="file" onChange={(e) => handleFileUpload(e, 'bgUrl')} className="hidden" accept="image/*" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase">主标题文字</label>
+              <input type="text" value={data.mainText || ''} onChange={(e) => setData({...data, mainText: e.target.value})} placeholder="温柔标签" className="w-full px-4 py-2 bg-slate-100 rounded-xl text-sm" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase">副标题/描述文字</label>
+              <input type="text" value={data.subText || ''} onChange={(e) => setData({...data, subText: e.target.value})} placeholder="自定义文字 · 毛玻璃小组件" className="w-full px-4 py-2 bg-slate-100 rounded-xl text-sm" />
+            </div>
+          </div>
+        );
+      case 'korean-profile-card':
+        return (
+          <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase">顶部标题</label>
+              <input type="text" value={data.topTitle || ''} onChange={(e) => setData({...data, topTitle: e.target.value})} placeholder="보내기" className="w-full px-4 py-2 bg-slate-100 rounded-xl text-sm" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase">头像 (图床链接 或 本地上传)</label>
+              <div className="flex gap-2">
+                <input type="text" value={data.avatarUrl || ''} onChange={(e) => setData({...data, avatarUrl: e.target.value})} placeholder="图片 URL" className="flex-1 px-4 py-2 bg-slate-100 rounded-xl text-sm" />
+                <button onClick={() => document.getElementById(`korean-avatar-${item.id}`)?.click()} className="p-2 bg-slate-100 rounded-xl"><Upload size={18} /></button>
+                <input id={`korean-avatar-${item.id}`} type="file" onChange={(e) => handleFileUpload(e, 'avatarUrl')} className="hidden" accept="image/*" />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase">昵称</label>
+              <input type="text" value={data.nickname || ''} onChange={(e) => setData({...data, nickname: e.target.value})} placeholder="디저트" className="w-full px-4 py-2 bg-slate-100 rounded-xl text-sm" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase">第一行主文字</label>
+              <input type="text" value={data.text1 || ''} onChange={(e) => setData({...data, text1: e.target.value})} placeholder="고생 끝에 낙이 온다" className="w-full px-4 py-2 bg-slate-100 rounded-xl text-sm" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase">第一行右侧标签文字</label>
+              <input type="text" value={data.tag1 || ''} onChange={(e) => setData({...data, tag1: e.target.value})} placeholder="슬프다" className="w-full px-4 py-2 bg-slate-100 rounded-xl text-sm" />
+            </div>
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-slate-400 uppercase">第二行黑色长条文字</label>
+              <input type="text" value={data.text2 || ''} onChange={(e) => setData({...data, text2: e.target.value})} placeholder="自定义副标题/描述" className="w-full px-4 py-2 bg-slate-100 rounded-xl text-sm" />
+            </div>
           </div>
         );
       default:
@@ -1060,7 +1321,11 @@ function WidgetRenderer({ widget, settings, currentTime }: { widget: Widget; set
     'collage',
     'film-frame',
     'ticket',
-    'ticket-v2'
+    'ticket-v2',
+    'browser-square-card',
+    'couple-anniversary-card',
+    'pink-polaroid-collage',
+    'frosted-note-card'
   ].includes(widget.type);
   const customBlur = widget.data?.blur !== undefined ? widget.data.blur : 12;
   const customOpacity = widget.data?.opacity !== undefined ? widget.data.opacity : 15;
@@ -1891,19 +2156,23 @@ function WidgetRenderer({ widget, settings, currentTime }: { widget: Widget; set
         );
       case 'ins-photo-wall-v1':
         return (
-          <div className="flex gap-2 p-2 h-full z-10 bg-white/90 backdrop-blur-md rounded-[32px] border border-white/50 shadow-lg overflow-hidden">
+          <div className="relative flex gap-2 p-2 h-full z-10 bg-white/90 backdrop-blur-md rounded-[32px] border border-white/50 shadow-lg overflow-hidden pb-10">
             {[1, 2].map(i => (
               <img key={i} src={widget.data?.[`url${i}`] || `https://picsum.photos/seed/wall1-${i}/400/400`} className="flex-1 h-full object-cover rounded-[20px] border-2 border-white shadow-sm" referrerPolicy="no-referrer" />
             ))}
-            <p className="absolute bottom-2 left-0 right-0 text-slate-800 font-bold text-xs text-center">{widget.data?.text || "Photo Wall"}</p>
+            <div className="absolute bottom-2 left-3 right-3 bg-white/80 backdrop-blur-md px-3 py-1.5 rounded-xl shadow-sm text-center">
+              <p className="text-slate-800 font-bold text-xs truncate">{widget.data?.text || "Photo Wall"}</p>
+            </div>
           </div>
         );
       case 'ins-photo-wall-v2':
         return (
-          <div className="flex gap-2 p-2 h-full z-10 bg-white/90 backdrop-blur-md rounded-[32px] border border-white/50 shadow-lg overflow-hidden">
+          <div className="relative flex gap-2 p-2 h-full z-10 bg-white/90 backdrop-blur-md rounded-[32px] border border-white/50 shadow-lg overflow-hidden pb-10">
             <img src={widget.data?.url1 || "https://picsum.photos/seed/wall2-1/400/400"} className="w-1/2 h-full object-cover rounded-[20px] border-2 border-white shadow-sm" referrerPolicy="no-referrer" />
             <img src={widget.data?.url2 || "https://picsum.photos/seed/wall2-2/400/400"} className="w-1/2 h-full object-cover rounded-[20px] border-2 border-white shadow-sm" referrerPolicy="no-referrer" />
-            <p className="absolute bottom-2 left-0 right-0 text-slate-800 font-bold text-xs text-center">{widget.data?.text || "Photo Wall"}</p>
+            <div className="absolute bottom-2 left-3 right-3 bg-white/80 backdrop-blur-md px-3 py-1.5 rounded-xl shadow-sm text-center">
+              <p className="text-slate-800 font-bold text-xs truncate">{widget.data?.text || "Photo Wall"}</p>
+            </div>
           </div>
         );
       case 'ins-signature-v1':
@@ -1944,6 +2213,194 @@ function WidgetRenderer({ widget, settings, currentTime }: { widget: Widget; set
               </div>
               <div className="absolute left-[55%] top-[10%] w-[42%] h-[82%] bg-white p-2 pb-6 rounded-md shadow-xl z-30 transform rotate-6 border border-slate-100">
                 <img src={widget.data?.url3 || "https://picsum.photos/seed/p3/300/300"} className="w-full h-[78%] object-cover rounded-sm" referrerPolicy="no-referrer" />
+              </div>
+            </div>
+          </div>
+        );
+      case 'browser-square-card':
+        return (
+          <div className="w-full h-full bg-white rounded-[32px] p-6 shadow-xl flex flex-col justify-between border border-slate-100 relative overflow-hidden font-sans">
+            <div className="flex items-center justify-between mb-4 bg-slate-50/80 px-4 py-2 rounded-full border border-slate-200/60 shadow-xs">
+              <span className="text-slate-400 hover:text-slate-600 transition-colors"><Home size={16} /></span>
+              <div className="flex-1 mx-3 bg-white h-8 rounded-full px-4 flex items-center justify-center text-xs text-slate-600 font-mono tracking-tight truncate border border-slate-100 shadow-sm">
+                {widget.data?.url || "www.custom-url.com"}
+              </div>
+              <span className="text-slate-400 hover:text-slate-600 transition-colors"><RefreshCw size={16} /></span>
+            </div>
+            <div className="flex-1 rounded-2xl overflow-hidden bg-slate-100 relative shadow-inner aspect-square max-h-[200px] mx-auto w-full">
+              <img 
+                src={widget.data?.photoUrl || "https://picsum.photos/seed/browser/600/600"} 
+                className="w-full h-full object-cover" 
+                referrerPolicy="no-referrer" 
+              />
+            </div>
+            <p className="text-center text-slate-700 mt-4 text-sm tracking-wider font-medium">
+              {widget.data?.text || "下一站：幸福降臨。🤍🖤"}
+            </p>
+          </div>
+        );
+      case 'couple-anniversary-card': {
+        const start = new Date(widget.data?.startDay || "2024-05-16");
+        const now = new Date();
+        const diffDays = Math.max(0, Math.floor((now.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+        const startDateStr = widget.data?.startDay || "2024/05/16";
+
+        return (
+          <div className="w-full h-full bg-white rounded-[28px] p-5 shadow-lg flex flex-col justify-between relative overflow-hidden border border-slate-100">
+            <div className="flex items-center justify-between my-auto px-2 relative z-10">
+              <div className="text-center flex flex-col items-center">
+                <span className="text-[11px] text-slate-600 mb-2 font-medium tracking-tight">
+                  {widget.data?.nick1 || "@小喵"}
+                </span>
+                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full overflow-hidden border-2 border-pink-100 shadow-md">
+                  <img 
+                    src={widget.data?.avatar1 || "https://picsum.photos/seed/avatar1/200/200"} 
+                    className="w-full h-full object-cover" 
+                    referrerPolicy="no-referrer" 
+                  />
+                </div>
+              </div>
+
+              <div className="text-center flex flex-col items-center px-2">
+                <div className="w-9 h-9 bg-rose-50 rounded-full flex items-center justify-center text-rose-500 shadow-sm mb-1 animate-pulse">
+                  <Heart size={20} fill="currentColor" />
+                </div>
+                <div className="text-3xl font-bold font-sans text-slate-800 tracking-tight my-0.5">
+                  {diffDays}
+                </div>
+                <div className="text-[10px] text-slate-400 font-mono tracking-wider">
+                  {startDateStr.replace(/-/g, '/')}
+                </div>
+              </div>
+
+              <div className="text-center flex flex-col items-center">
+                <span className="text-[11px] text-slate-600 mb-2 font-medium tracking-tight">
+                  {widget.data?.nick2 || "@小呆"}
+                </span>
+                <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-full overflow-hidden border-2 border-pink-100 shadow-md">
+                  <img 
+                    src={widget.data?.avatar2 || "https://picsum.photos/seed/avatar2/200/200"} 
+                    className="w-full h-full object-cover" 
+                    referrerPolicy="no-referrer" 
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="absolute left-2 top-1/2 -translate-y-1/2 opacity-25 pointer-events-none">
+              <svg width="40" height="60" viewBox="0 0 80 120" fill="none" stroke="#64748b" strokeWidth="2.5" strokeLinecap="round">
+                <circle cx="12" cy="20" r="10" fill="white" />
+                <path d="M12 30 Q 2 70 8 110" />
+              </svg>
+            </div>
+            <div className="absolute right-2 top-1/2 -translate-y-1/2 opacity-25 pointer-events-none transform scale-x-[-1]">
+              <svg width="40" height="60" viewBox="0 0 80 120" fill="none" stroke="#64748b" strokeWidth="2.5" strokeLinecap="round">
+                <circle cx="12" cy="20" r="10" fill="white" />
+                <path d="M12 30 Q 2 70 8 110" />
+              </svg>
+            </div>
+
+            <div className="text-center pt-2 border-t border-slate-50 relative z-10">
+              <span className="text-xs text-slate-500 font-medium tracking-wide">
+                {widget.data?.sign || "*·重度依赖·*"}
+              </span>
+            </div>
+          </div>
+        );
+      }
+      case 'pink-polaroid-collage':
+        return (
+          <div className="w-full h-full bg-[#fff5f7] rounded-[32px] p-6 shadow-xl flex flex-col justify-between relative overflow-hidden border border-pink-100/80 font-sans">
+            <div className="absolute top-3 left-3 w-10 h-10 opacity-90 pointer-events-none text-2xl select-none animate-bounce">
+              🧸
+            </div>
+            <div className="absolute bottom-3 right-3 w-10 h-10 opacity-90 pointer-events-none text-2xl select-none">
+              🍬
+            </div>
+            <div className="absolute top-1/2 left-2 -translate-y-1/2 opacity-80 pointer-events-none text-lg select-none">
+              🐾
+            </div>
+
+            <div className="flex gap-4 h-[78%] items-center justify-center pt-2 px-2 z-10">
+              <div className="flex-1 h-full bg-white p-3 pb-7 rounded-xl shadow-lg relative transform -rotate-3 border border-pink-100 flex flex-col justify-between">
+                <div className="absolute -top-3 left-6 w-12 h-5 bg-pink-200/90 rounded-sm shadow-xs border border-pink-300/40"></div>
+                <div className="w-full h-[78%] bg-slate-100 rounded-lg overflow-hidden shadow-inner">
+                  <img 
+                    src={widget.data?.url1 || "https://picsum.photos/seed/p1/400/400"} 
+                    className="w-full h-full object-cover" 
+                    referrerPolicy="no-referrer" 
+                  />
+                </div>
+                <p className="text-center mt-2 text-xs text-slate-700 font-bold tracking-tight truncate">
+                  {widget.data?.text1 || "D7-1D"}
+                </p>
+              </div>
+
+              <div className="flex-1 h-full bg-white p-3 pb-7 rounded-xl shadow-lg relative transform rotate-3 border border-pink-100 flex flex-col justify-between">
+                <div className="absolute -top-3 right-6 w-12 h-5 bg-pink-200/90 rounded-sm shadow-xs border border-pink-300/40 transform rotate-6"></div>
+                <div className="w-full h-[78%] bg-slate-100 rounded-lg overflow-hidden shadow-inner">
+                  <img 
+                    src={widget.data?.url2 || "https://picsum.photos/seed/p2/400/400"} 
+                    className="w-full h-full object-cover" 
+                    referrerPolicy="no-referrer" 
+                  />
+                </div>
+                <p className="text-center mt-2 text-xs text-slate-700 font-bold tracking-tight truncate">
+                  {widget.data?.text2 || "13:D3"}
+                </p>
+              </div>
+            </div>
+
+            <p className="text-center text-sm text-pink-600 font-bold tracking-widest mt-2 z-10">
+              {widget.data?.slogan || "祝你鱼块+☆·°"}
+            </p>
+          </div>
+        );
+      case 'frosted-note-card':
+        return (
+          <div className="w-full h-full relative rounded-[28px] overflow-hidden shadow-xl font-sans">
+            <img 
+              src={widget.data?.bgUrl || "https://p3-flow-image-sign.byteimg.com/tos-cn-i-a9rns2rl98/300400a2309c40189d4d41d2d013d311~tplv-a9rns2rl98-image.image"} 
+              className="absolute inset-0 w-full h-full object-cover" 
+              referrerPolicy="no-referrer"
+            />
+            <div className="absolute inset-0 backdrop-blur-[12px] [-webkit-backdrop-filter:blur(12px)] bg-white/25 border border-white/40 flex flex-col items-center justify-center p-4 text-center shadow-lg">
+              <h2 className="text-white text-base sm:text-lg font-medium tracking-wide drop-shadow-sm mb-1.5">
+                {widget.data?.mainText || "温柔标签"}
+              </h2>
+              <p className="text-white/85 text-xs sm:text-sm tracking-tight drop-shadow-xs">
+                {widget.data?.subText || "自定义文字 · 毛玻璃小组件"}
+              </p>
+            </div>
+          </div>
+        );
+      case 'korean-profile-card':
+        return (
+          <div className="w-full h-full bg-[#f1f1f2] rounded-[24px] p-3.5 sm:p-4 flex flex-col justify-between font-sans shadow-xl">
+            <div className="text-sm sm:text-base font-medium text-gray-900 flex items-center justify-between">
+              <span>{widget.data?.topTitle || "보내기"} ♡</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl overflow-hidden bg-black shrink-0 shadow-sm">
+                  <img src={widget.data?.avatarUrl || "https://p3-flow-image-sign.byteimg.com/tos-cn-i-a9rns2rl98/300400a2309c40189d4d41d2d013d311~tplv-a9rns2rl98-image.image"} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                </div>
+                <span className="text-base sm:text-lg text-gray-800 font-medium truncate">{widget.data?.nickname || "디저트"}</span>
+              </div>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="1.8" className="shrink-0">
+                <path d="M9 6l6 6-6 6"/>
+              </svg>
+            </div>
+            <div className="bg-white rounded-2xl px-3 py-2 flex items-center justify-between shadow-xs">
+              <p className="text-xs sm:text-sm text-gray-500 truncate mr-2">{widget.data?.text1 || "고생 끝에 낙이 온다"}</p>
+              <span className="text-xs text-slate-500 shrink-0 font-medium">{widget.data?.tag1 || "슬프다"}</span>
+            </div>
+            <div className="bg-white rounded-2xl px-3 py-2 flex items-center relative shadow-xs">
+              <div className="w-3/4 h-3.5 sm:h-4 bg-black rounded-md overflow-hidden flex items-center px-2">
+                <span className="text-[10px] sm:text-xs text-white/90 truncate">{widget.data?.text2 || ""}</span>
+              </div>
+              <div className="absolute right-3 w-8 h-8 sm:w-9 sm:h-9 border-2 border-gray-300 rounded-full flex items-center justify-center bg-white shadow-xs">
+                <span className="text-xs text-gray-400 font-mono">%</span>
               </div>
             </div>
           </div>
@@ -2333,6 +2790,11 @@ function WidgetGallery({ onAdd, onClose, settings, currentTime }: { onAdd: (w: W
     { id: 'w44', type: 'ins-photo-wall-v2', size: '5x2', category: 'Photo Wall' },
     { id: 'w53', type: 'pure-photo-card', size: '2x2', category: 'Photo Wall' },
     { id: 'w54', type: 'polaroid-triple', size: '4x2', category: 'Photo Wall' },
+    { id: 'w55', type: 'browser-square-card', size: '4x4', category: 'Photo Wall' },
+    { id: 'w56', type: 'couple-anniversary-card', size: '5x2', category: 'Love' },
+    { id: 'w57', type: 'pink-polaroid-collage', size: '4x4', category: 'Photo Wall' },
+    { id: 'w58', type: 'frosted-note-card', size: '2x2', category: 'Photo Wall' },
+    { id: 'w59', type: 'korean-profile-card', size: '5x2', category: 'Love' },
     { id: 'w50', type: 'ins-large-calendar', size: '5x2', category: 'Calendar' },
     { id: 'w51', type: 'ins-love-music', size: '4x4', category: 'Love' },
     { id: 'w52', type: 'love-profile-card', size: '4x4', category: 'Love' },

@@ -170,10 +170,11 @@ async function handleDirectFetch(endpoint: string, body: any): Promise<any> {
       return { text: data.choices?.[0]?.message?.content || '' };
     }
 
-    // Native Gemini via REST API directly from browser
-    const model = settings.modelName || 'gemini-1.5-flash';
+    // Native Gemini via REST API directly from browser with fallback models
+    const requestedModel = settings.modelName || 'gemini-1.5-flash';
+    const fallbackModels = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro'];
+    const modelsToTry = Array.from(new Set([requestedModel, ...fallbackModels]));
     const cleanBaseUrl = baseUrl.replace(/\/v1beta$/, '').replace(/\/v1$/, '');
-    const url = `${cleanBaseUrl}/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
     const contents = messages.map((m: any) => ({
       role: m.role === 'assistant' || m.role === 'model' ? 'model' : 'user',
@@ -189,28 +190,52 @@ async function handleDirectFetch(endpoint: string, body: any): Promise<any> {
       { category: "HARM_CATEGORY_UNSPECIFIED", threshold: "BLOCK_NONE" }
     ];
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents,
-        systemInstruction: {
-          parts: [{ text: system_prompt }]
-        },
-        generationConfig: {
-          temperature: settings.temperature !== undefined ? settings.temperature : 0.7,
-          maxOutputTokens: settings.maxTokens || 8192
-        },
-        safetySettings
-      })
-    });
+    let data: any = null;
+    let lastErr: any = null;
 
-    if (!response.ok) {
-      const errText = await response.text();
-      throw new Error(errText || `HTTP ${response.status}`);
+    for (const model of modelsToTry) {
+      const url = `${cleanBaseUrl}/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents,
+            systemInstruction: {
+              parts: [{ text: system_prompt }]
+            },
+            generationConfig: {
+              temperature: settings.temperature !== undefined ? settings.temperature : 0.7,
+              maxOutputTokens: settings.maxTokens || 8192
+            },
+            safetySettings
+          })
+        });
+
+        if (!response.ok) {
+          const errText = await response.text();
+          if (response.status === 404 || errText.includes('NOT_FOUND') || errText.includes('not found')) {
+            lastErr = new Error(errText);
+            continue;
+          }
+          throw new Error(errText || `HTTP ${response.status}`);
+        }
+
+        data = await response.json();
+        break;
+      } catch (e: any) {
+        lastErr = e;
+        if (e.message && (e.message.includes('404') || e.message.includes('NOT_FOUND') || e.message.includes('not found'))) {
+          continue;
+        }
+        throw e;
+      }
     }
 
-    const data = await response.json();
+    if (!data && lastErr) {
+      throw lastErr;
+    }
+
     const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
     return { text: generatedText };
   }

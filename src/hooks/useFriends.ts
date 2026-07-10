@@ -358,6 +358,8 @@ export function useFriends() {
       set(FRIENDS_KEY, newFriends).catch(console.error);
       return newFriends;
     });
+
+    window.dispatchEvent(new CustomEvent('zhouzhou_ji_chats_updated', { detail: { friendId, message } }));
   };
 
   const updateMessage = (friendId: string, messageIndex: number, updates: Partial<ChatMessage>) => {

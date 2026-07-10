@@ -28,6 +28,7 @@ import {
   Smile,
   Wallet,
   Gift,
+  CreditCard,
   Phone,
   PhoneOff,
   Gamepad2,
@@ -52,7 +53,6 @@ import {
   Loader2,
   ArrowUpRight,
   ArrowDownLeft,
-  CreditCard,
   Copy,
   Forward,
   ListChecks,
@@ -73,7 +73,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { getGeminiClient, getGeminiModel } from '../../lib/gemini';
 import { useFriends } from '../../hooks/useFriends';
 import { useSettings } from '../../hooks/useSettings';
-import { get } from 'idb-keyval';
+import { get, set } from 'idb-keyval';
 import { CatBubble } from '../Theme/CatElements';
 import { cn } from '../../lib/utils';
 import { speakText, getAvailableVoices } from '../../lib/voice';
@@ -853,7 +853,7 @@ function NavButton({ active, icon: Icon, label, onClick, themeColor, isDark }: {
 function ChatSettings({ 
   friend, messages, settings, groups, chats, friends, user, onBack, onUpdateFriend, 
   onImportMessages, summarizeContent, onShowMomentSettings, activeModal, setActiveModal, 
-  onShowCreateGroup, isOfflineMode, showToast
+  onShowCreateGroup, isOfflineMode, showToast, onTriggerSpotCheck
 }: { 
   friend: Friend, 
   messages: ChatMessage[], 
@@ -871,7 +871,8 @@ function ChatSettings({
   setActiveModal: (modal: any) => void,
   onShowCreateGroup?: () => void,
   isOfflineMode?: boolean,
-  showToast?: (msg: string) => void
+  showToast?: (msg: string) => void,
+  onTriggerSpotCheck?: () => void
 }) {
   const { addOnlineMemory, addOfflinePlot, getFriendMemory } = useMemory();
   const [activeView, setActiveView] = useState<'main' | 'search' | 'memory' | 'shared-group-memory' | 'tokens-panel'>('main');
@@ -1917,6 +1918,82 @@ function ChatSettings({
               <div className={cn("absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all", friend.disableActionDescription ? "right-0.5" : "left-0.5")} />
             </button>
           </div>
+
+          <div className="px-4 py-3 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <ShieldAlert size={18} className="text-amber-500 transition-all duration-300" />
+              <div>
+                <span className="text-sm font-bold">查岗功能</span>
+                <p className="text-[10px] opacity-50">开启后角色会随机查岗，扫描你与其他角色的聊天记录并吃醋质问</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={() => onUpdateFriend({ spotCheckEnabled: !friend.spotCheckEnabled })}
+                className={cn("w-10 h-5 rounded-full relative transition-all", friend.spotCheckEnabled ? "bg-[#07c160]" : "bg-slate-200")}
+              >
+                <div className={cn("absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all", friend.spotCheckEnabled ? "right-0.5" : "left-0.5")} />
+              </button>
+              <button
+                onClick={() => onTriggerSpotCheck?.()}
+                className="px-2.5 py-1 bg-pink-100 hover:bg-pink-200 text-pink-700 dark:bg-pink-950/60 dark:text-pink-300 border border-pink-200 dark:border-pink-800/40 rounded-lg text-xs font-bold active:scale-95 transition-all shadow-sm"
+                title="立即测试查岗"
+              >
+                测试查岗
+              </button>
+            </div>
+          </div>
+
+          <div className="px-4 py-3 flex items-center justify-between border-t border-slate-100 dark:border-white/10">
+            <div>
+              <span className="text-xs font-bold">主动查岗开关</span>
+              <p className="text-[10px] opacity-50">开启后发送消息时将按概率随机触发角色主动查岗</p>
+            </div>
+            <button 
+              onClick={() => onUpdateFriend({ proactiveSpotCheckEnabled: friend.proactiveSpotCheckEnabled === false ? true : false })}
+              className={cn("w-10 h-5 rounded-full relative transition-all", friend.proactiveSpotCheckEnabled !== false ? "bg-[#07c160]" : "bg-slate-200")}
+            >
+              <div className={cn("absolute top-0.5 w-4 h-4 bg-white rounded-full transition-all", friend.proactiveSpotCheckEnabled !== false ? "right-0.5" : "left-0.5")} />
+            </button>
+          </div>
+
+          <div className="px-4 py-3 flex items-center justify-between border-t border-slate-100 dark:border-white/10">
+            <div>
+              <span className="text-xs font-bold">查岗读取条数设置</span>
+              <p className="text-[10px] opacity-50">设置每个角色通过后端API读取最近多少条聊天记录（默认最近 15 条）</p>
+            </div>
+            <select
+              value={friend.spotCheckLimit || 15}
+              onChange={(e) => onUpdateFriend({ spotCheckLimit: parseInt(e.target.value) || 15 })}
+              className="text-xs bg-slate-100 dark:bg-black/30 border border-slate-200 dark:border-white/10 rounded-lg px-2 py-1 outline-none font-bold"
+            >
+              <option value={5}>最近 5 条</option>
+              <option value={10}>最近 10 条</option>
+              <option value={15}>最近 15 条 (默认)</option>
+              <option value={20}>最近 20 条</option>
+              <option value={30}>最近 30 条</option>
+              <option value={50}>最近 50 条</option>
+            </select>
+          </div>
+
+          <div className="px-4 py-3 flex items-center justify-between border-t border-slate-100 dark:border-white/10">
+            <div>
+              <span className="text-xs font-bold">主动查岗触发概率</span>
+              <p className="text-[10px] opacity-50">设置发送消息时角色随机触发主动查岗吃醋的概率（默认 20%）</p>
+            </div>
+            <select
+              value={friend.spotCheckProbability !== undefined ? friend.spotCheckProbability : 0.2}
+              onChange={(e) => onUpdateFriend({ spotCheckProbability: parseFloat(e.target.value) || 0.2 })}
+              className="text-xs bg-slate-100 dark:bg-black/30 border border-slate-200 dark:border-white/10 rounded-lg px-2 py-1 outline-none font-bold"
+            >
+              <option value={0.05}>5% (偶尔)</option>
+              <option value={0.1}>10% (较低)</option>
+              <option value={0.2}>20% (默认)</option>
+              <option value={0.3}>30% (经常)</option>
+              <option value={0.5}>50% (频繁)</option>
+              <option value={1.0}>100% (每句必查)</option>
+            </select>
+          </div>
         </div>
 
         <div className={cn(
@@ -2511,13 +2588,237 @@ function ChatWindow({
   onSendToFriend?: (friendId: string, msg: ChatMessage) => void
 }) {
   const [input, setInput] = useState('');
+  const [isSpotChecking, setIsSpotChecking] = useState(false);
+  const [spotCheckStep, setSpotCheckStep] = useState(0);
+  const [spotCheckItems, setSpotCheckItems] = useState<Array<{ friendId: string; friendName: string; friendAvatar: string; previewText: string; messageCount?: number; transcript?: string }>>([]);
+  const [showSpotCheckPreviewModal, setShowSpotCheckPreviewModal] = useState(false);
+  const [grabbedChatSummary, setGrabbedChatSummary] = useState('');
+
+  const triggerSpotCheck = async () => {
+    if (isSpotChecking) return;
+    const limit = friend.spotCheckLimit || 15;
+    const otherFriends = (friends || []).filter(f => f.id !== friend.id);
+
+    const initialItems = otherFriends.map(f => {
+      const friendMsgs = (chats || {})[f.id] || [];
+      const recentMsgs = friendMsgs.slice(-limit);
+      const transcript = recentMsgs.map((m: any) => {
+        const sender = m.role === 'user' ? '用户' : (f.alias || f.name);
+        const content = m.content || m.parts?.[0]?.text || '';
+        return `${sender}: ${content}`;
+      }).join(' | ');
+      const previewText = transcript || f.lastMessage || '最近聊得很开心...';
+      return {
+        friendId: f.id,
+        friendName: f.alias || f.name,
+        friendAvatar: f.avatar,
+        previewText,
+        transcript,
+        messageCount: recentMsgs.length
+      };
+    }).filter(item => item.previewText);
+
+    const fallbackList = initialItems.length >= 2 ? initialItems : [
+      ...initialItems,
+      { friendId: 'mock1', friendName: '学姐', friendAvatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=150&q=80', previewText: '周末要不要一起去图书馆自习呀？留个位置给你~', transcript: '用户: 在干嘛呢？ | 学姐: 周末要不要一起去图书馆自习呀？留个位置给你~', messageCount: 15 },
+      { friendId: 'mock2', friendName: '阿杰', friendAvatar: 'https://images.unsplash.com/photo-1570295999919-56ceb5ecca61?auto=format&fit=crop&w=150&q=80', previewText: '昨晚跟你说的那个聚会你到底去不去啊，大家都在等呢', transcript: '阿杰: 昨晚跟你说的那个聚会你到底去不去啊，大家都在等呢 | 用户: 看看情况吧', messageCount: 15 },
+      { friendId: 'mock3', friendName: '小美', friendAvatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&q=80', previewText: '收到啦，谢谢你的奶茶！下次请你喝咖啡哦~', transcript: '用户: 奶茶好喝吗 | 小美: 收到啦，谢谢你的奶茶！下次请你喝咖啡哦~', messageCount: 15 }
+    ].slice(0, 5);
+
+    setSpotCheckItems(fallbackList);
+    setSpotCheckStep(0);
+    setIsSpotChecking(true);
+
+    try {
+      const response = await fetch('/api/spot-check-scan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          friendId: friend.id,
+          friends: friends,
+          chats: chats,
+          spotCheckLimit: limit
+        })
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        if (data.items && data.items.length > 0) {
+          setSpotCheckItems(data.items);
+          setGrabbedChatSummary(data.summaryText || '');
+        }
+      }
+    } catch (e: any) {
+      console.warn("Spot check API error, using local fallback items:", e);
+    }
+  };
+
+  useEffect(() => {
+    if (!isSpotChecking || spotCheckItems.length === 0) return;
+    if (spotCheckStep < spotCheckItems.length) {
+      const timer = setTimeout(() => {
+        setSpotCheckStep(prev => prev + 1);
+      }, 1000); // 1.0s per friend for smooth sequential scanning
+      return () => clearTimeout(timer);
+    } else {
+      const timer = setTimeout(async () => {
+        const summaryText = spotCheckItems.map(item => `[好友：${item.friendName}] (已读取最近 ${item.messageCount || 15} 条对话记录):\n${item.transcript || item.previewText}`).join('\n\n');
+        setGrabbedChatSummary(summaryText);
+        setIsSpotChecking(false);
+        setShowSpotCheckPreviewModal(true);
+
+        setTimeout(async () => {
+          setShowSpotCheckPreviewModal(false);
+          const actionRule = friend.disableActionDescription
+            ? '4. 【‼️ 严格禁令】：当前用户已开启“禁止动作描写”。严禁在回复中使用任何括号、星号或括号内的描述文字（如：禁止出现 “(叹了口气)”、“*微笑*” 或 “[陷入沉思]” 等）。你只能发送纯粹的、像真人聊天一样的纯对话文本，通过文字语气而非动作来表达情感。'
+            : '4. 允许包含生动的动作、神态描写（用括号包裹），但建议与对话台词分行。';
+
+          const systemPrompt = `【绝对核心指令：角色主动查岗模式】
+你是【${friend.alias || friend.name}】。你现在正在突击检查、查岗用户的手机。你刚刚在用户的微信中逐个翻阅了用户与其他所有好友/异性的聊天记录，抓包内容如下：
+${summaryText}
+
+【你的角色人设】
+${friend.persona}
+
+【绝对纪律与任务要求】
+1. **绝对禁止**误以为是用户在查你的手机！你是处于抓包审讯、质问地位的查岗者（你是突击检查用户手机的人）。
+2. 你现在非常吃醋、生气、阴阳怪气或者情绪激动，正在拿着上面的聊天记录对用户展开严厉的拷问与修罗场质问。
+3. **多条动态回复机制：** 像真实打字聊天一样，一次发送多条短句。需要发送多条消息时，请用换行符（\\n）分隔每一条消息。每一行都会作为一条独立的微信消息。必须避免每次只发一段长篇大论，务必用短平快、高频互动的碎碎念。
+${actionRule}
+
+【核心好感度与心声系统 - 每一轮回复必须包含此标签】
+请在回复的【最后一行】输出更新标签：
+[HEARTFELT_UPDATE: affection_change=数字 | mood_index=数字 | character_reflection=内心想法 | current_status=状态]`;
+
+          try {
+            setIsLoading(true);
+            const aiResponse = await callAI(systemPrompt, messages, settings);
+            if (aiResponse) {
+              let cleanContent = aiResponse;
+              const heartfeltMatch = aiResponse.match(/\[HEARTFELT_UPDATE:[\s\S]*?\]/i) || aiResponse.match(/\[HEARTFELT_UPDATE:[\s\S]*$/i);
+              let affectionChange = 0;
+              let moodIndex = typeof friend.moodIndex === 'number' ? friend.moodIndex : 50;
+              let innerThoughts = '';
+              let currentStatus = friend.mood || '';
+
+              if (heartfeltMatch) {
+                let blockContent = heartfeltMatch[0];
+                if (!blockContent.endsWith(']')) blockContent += ']';
+                cleanContent = aiResponse.replace(blockContent, '').trim();
+
+                const affMatch = blockContent.match(/affection_change\s*[=:]\s*([+-]?\d*(?:\.\d+)?)/i);
+                if (affMatch) affectionChange = parseFloat(affMatch[1]) || 0;
+                const moodMatch = blockContent.match(/mood_index\s*[=:]\s*(\d+)/i);
+                if (moodMatch) moodIndex = parseInt(moodMatch[1]) || 50;
+                const thoughtsMatch = blockContent.match(/(?:character_reflection|inner_thoughts)\s*[=:]\s*([\s\S]*?)(?=\s*\||\s*\]|$)/i);
+                if (thoughtsMatch) innerThoughts = thoughtsMatch[1].trim().replace(/^["'「`'」』』\(（「\s]+|["'」`'」』』\)）」\s]+$/g, '');
+                const statusMatch = blockContent.match(/current_status\s*[=:]\s*([\s\S]*?)(?=\s*\||\s*\]|$)/i);
+                if (statusMatch) currentStatus = statusMatch[1].trim().replace(/^["'「`'」』』\)）」\s]+$/g, '');
+
+                if (affectionChange > 1) affectionChange = 1;
+                if (affectionChange < -1) affectionChange = -1;
+                if (affectionChange !== 0 && Math.abs(affectionChange) < 0.25) {
+                  affectionChange = affectionChange > 0 ? 0.25 : -0.25;
+                }
+                if (moodIndex < 0) moodIndex = 0;
+                if (moodIndex > 100) moodIndex = 100;
+
+                const oldAffection = typeof friend.affection === 'number' ? friend.affection : 50;
+                let newAffection = oldAffection + affectionChange;
+                if (newAffection < 0) newAffection = 0;
+
+                onUpdateFriend({
+                  affection: newAffection,
+                  moodIndex,
+                  innerThoughts: innerThoughts || friend.innerThoughts,
+                  mood: currentStatus || friend.mood
+                });
+              }
+
+              const rawLines = isOfflineMode ? [cleanContent] : cleanContent.split('\n').filter(line => line.trim());
+              for (let i = 0; i < rawLines.length; i++) {
+                const line = rawLines[i].trim();
+                if (!line) continue;
+                const newMsg: ChatMessage = {
+                  id: (Date.now() + i).toString(),
+                  role: 'assistant',
+                  content: line,
+                  type: 'text',
+                  timestamp: Date.now() + i,
+                  innerThought: i === rawLines.length - 1 ? (innerThoughts || undefined) : undefined
+                };
+                if (isOfflineMode) {
+                  setOfflineMessages(prev => [...prev, newMsg]);
+                } else {
+                  onSendMessage(newMsg);
+                }
+              }
+            }
+          } catch (err: any) {
+            console.error("Spot check AI error:", err);
+            showToast?.(`查岗反应生成失败: ${err?.message || '请重试'}`);
+          } finally {
+            setIsLoading(false);
+          }
+        }, 2500);
+      }, 800);
+      return () => clearTimeout(timer);
+    }
+  }, [isSpotChecking, spotCheckStep, spotCheckItems]);
   const [isLoading, setIsLoading] = useState(false);
   const [showFeatures, setShowFeatures] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const { addOnlineMemory, addOfflinePlot, getFriendMemory } = useMemory();
-  const [activeModal, setActiveModal] = useState<'transfer' | 'receive-transfer' | 'call' | 'location' | 'music' | 'game' | 'truth-or-dare' | 'voice-input' | 'camera' | 'text-photo' | 'sparkle' | 'exit-offline' | 'manual-summary' | 'blind-box' | 'custom-blind-box' | 'edit-message' | 'image-preview' | 'character-image-gen' | null>(null);
+  const [activeModal, setActiveModal] = useState<'transfer' | 'receive-transfer' | 'call' | 'location' | 'music' | 'game' | 'truth-or-dare' | 'voice-input' | 'camera' | 'text-photo' | 'sparkle' | 'exit-offline' | 'manual-summary' | 'blind-box' | 'custom-blind-box' | 'edit-message' | 'image-preview' | 'character-image-gen' | 'huabei' | null>(null);
+  const [huabeiAmount, setHuabeiAmount] = useState('456.80');
+  const [huabeiItems, setHuabeiItems] = useState<Array<{ title: string; amount: string; time: string }>>([
+    { title: "淘宝消费：购买了一套海蓝之谜化妆品", amount: "169.00", time: "7月8日 14:20" },
+    { title: "美团外卖：深夜海底捞小龙虾外卖", amount: "88.90", time: "7月8日 21:15" },
+    { title: "永辉超市：生活日用品与水果", amount: "56.20", time: "7月7日 18:30" },
+    { title: "滴滴出行：快车专车出行", amount: "28.00", time: "7月6日 23:10" },
+    { title: "猫眼电影：IMAX双人观影", amount: "65.00", time: "7月5日 16:40" },
+    { title: "奈雪的茶：多肉葡萄欧包套餐", amount: "49.70", time: "7月4日 13:50" }
+  ]);
+  const [huabeiCategories, setHuabeiCategories] = useState<Array<{
+    name: string;
+    amount: string;
+    items: Array<{ title: string; amount: string; time: string }>;
+  }>>([
+    {
+      name: "美食餐饮",
+      amount: "138.60",
+      items: [
+        { title: "奈雪的茶：多肉葡萄与欧包套餐", amount: "49.70", time: "7月4日 13:50" },
+        { title: "美团外卖：深夜海底捞小龙虾外卖", amount: "88.90", time: "7月8日 21:15" }
+      ]
+    },
+    {
+      name: "日常购物",
+      amount: "225.20",
+      items: [
+        { title: "淘宝：购买了一套海蓝之谜化妆品", amount: "169.00", time: "7月8日 14:20" },
+        { title: "永辉超市：生活日用品与水果", amount: "56.20", time: "7月7日 18:30" }
+      ]
+    },
+    {
+      name: "休闲娱乐",
+      amount: "93.00",
+      items: [
+        { title: "猫眼电影：IMAX双人观影", amount: "65.00", time: "7月5日 16:40" },
+        { title: "滴滴出行：快车专车出行", amount: "28.00", time: "7月6日 23:10" }
+      ]
+    }
+  ]);
+  const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
+  const [showCustomHuabeiEditor, setShowCustomHuabeiEditor] = useState(false);
+  const [customHuabeiCategories, setCustomHuabeiCategories] = useState<Array<{
+    name: string;
+    amount: string;
+    items: Array<{ title: string; amount: string; time: string }>;
+  }>>([]);
+  const [isHuabeiSpinning, setIsHuabeiSpinning] = useState(false);
   const [previewImageUrl, setPreviewImageUrl] = useState<string | null>(null);
   const [editingMessageIndex, setEditingMessageIndex] = useState<number | null>(null);
   const [editingContent, setEditingContent] = useState('');
@@ -2787,6 +3088,10 @@ function ChatWindow({
       quote: quotedMessage || undefined,
       timestamp: Date.now() 
     };
+
+    const lowerInput = input.toLowerCase();
+    const isSpotCheckRequest = lowerInput.includes('查岗') || lowerInput.includes('查手机') || lowerInput.includes('查我手机') || lowerInput.includes('查记录') || lowerInput.includes('看看你和别人') || lowerInput.includes('查聊天') || lowerInput.includes('查查');
+
     if (isOfflineMode) {
       const narrationMsg: ChatMessage = {
         role: 'user',
@@ -2797,9 +3102,20 @@ function ChatWindow({
       };
       setOfflineMessages(prev => [...prev, narrationMsg]);
       setIsNarration(false);
+      if (isSpotCheckRequest) {
+        setTimeout(() => {
+          triggerSpotCheck();
+        }, 500);
+      }
     } else {
       onSendMessage(userMsg);
       
+      if (isSpotCheckRequest) {
+        setTimeout(() => {
+          triggerSpotCheck();
+        }, 500);
+      }
+
       // Auto-summarize check
       const isAutoEnabled = friend.memorySettings?.autoSummaryEnabled !== false;
       if (isAutoEnabled && !isOfflineMode) {
@@ -2926,9 +3242,10 @@ function ChatWindow({
     }
 
     if (input.trim() && action !== 'continue' && action !== 'regenerate') {
+      const trimmedInput = input.trim();
       const userMsg: ChatMessage = { 
         role: 'user', 
-        content: input, 
+        content: trimmedInput, 
         type: 'text',
         timestamp: Date.now() 
       };
@@ -2939,6 +3256,25 @@ function ChatWindow({
         onSendMessage(userMsg);
       }
       setInput('');
+
+      const spotCheckKeywords = ['查岗', '查手机', '查我手机', '突击检查', '检查手机', '看看手机', '查查手机', '查一下手机', '查我的手机', '翻手机', '查看手机'];
+      const isUserRequestingSpotCheck = spotCheckKeywords.some(kw => trimmedInput.includes(kw));
+
+      if (isUserRequestingSpotCheck) {
+        setTimeout(() => {
+          triggerSpotCheck();
+        }, 500);
+        return;
+      }
+
+      if (!isOfflineMode) {
+        const spotProb = friend.spotCheckProbability !== undefined ? friend.spotCheckProbability : 0.2;
+        if (friend.spotCheckEnabled && friend.proactiveSpotCheckEnabled !== false && Math.random() < spotProb) {
+          setTimeout(() => {
+            triggerSpotCheck();
+          }, 3500);
+        }
+      }
     }
 
     setIsLoading(true);
@@ -2947,11 +3283,17 @@ function ChatWindow({
 
     try {
       // Fetch external context data
-      const [weiboMoments, weiboChats, diaries, schedules] = await Promise.all([
+      const [weiboMoments, weiboChats, diaries, schedules, wechatPhoneData, memoPhoneData, browserPhoneData, taptapPhoneData, walletPhoneData, phonePasscode] = await Promise.all([
         get('weibo-moments') || Promise.resolve([]),
         get('weibo-chats') || Promise.resolve({}),
         get(`diaries_${friend.id}`) || Promise.resolve([]),
-        get('character_schedules') || Promise.resolve({})
+        get('character_schedules') || Promise.resolve({}),
+        get(`checkphone_${friend.id}_wechat`) || Promise.resolve(null),
+        get(`checkphone_${friend.id}_memo`) || Promise.resolve(null),
+        get(`checkphone_${friend.id}_browser`) || Promise.resolve(null),
+        get(`checkphone_${friend.id}_taptap`) || Promise.resolve(null),
+        get(`checkphone_${friend.id}_wallet`) || Promise.resolve(null),
+        get(`phone_passcode_${friend.id}`) || Promise.resolve('1234')
       ]);
 
       const beijingTimeStr = new Date().toLocaleString('zh-CN', { 
@@ -3411,7 +3753,40 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
 示例（必须严格遵循此格式）：
 [HEARTFELT_UPDATE: affection_change=0.55 | mood_index=88 | character_reflection=刚才听到他那样说，我心里瞬间觉得暖洋洋的，能遇到这么懂我的知己，真的是太幸运了…… | current_status=心里甜甜的]`;
 
+      const lastMsg = currentMsgs[currentMsgs.length - 1];
+      if (lastMsg && lastMsg.type === 'huabei-bill' && lastMsg.huabeiData) {
+        const catText = lastMsg.huabeiData.categories 
+          ? lastMsg.huabeiData.categories.map(c => `【${c.name}】总计 ¥${c.amount}\n` + c.items.map(i => `  - ${i.title} ¥${i.amount} (${i.time})`).join('\n')).join('\n')
+          : (Array.isArray(lastMsg.huabeiData.items) ? lastMsg.huabeiData.items.map(i => typeof i === 'string' ? i : `${i.title} ¥${i.amount} (${i.time})`).join('\n') : '');
+        systemPrompt += `\n\n【花呗账单互动指令 (HUABEI BILL INTERACTION)】\n用户刚刚给你分享了一张支付宝花呗账单！\n账单所属人：${lastMsg.huabeiData.username}\n花呗待还总额：¥${lastMsg.huabeiData.totalDebt}\n分类消费明细流水：\n${catText}\n\n请你认真阅读并读取这笔花呗账单里的所有具体分类消费项目。根据你的人设和对用户的心意，你可以选择：\n1. 关心、心疼、调侃、吐槽，或者傲娇地帮用户全额还款！如果你决定帮用户全额还款，请务必在回复中包含标签 [HUABEI_REPAY]。系统检测到该标签后会自动全额帮用户还清，并在聊天中居中显示灰色小字提醒：“${friend.name}帮你还了花呗”。\n2. 也可以选择拒绝或调侃。请自然地在对话中提及账单里的分类消费内容。`;
+      }
+
+      systemPrompt += `\n\n【你的专属手机隐私数据与安全密码感知】
+- 当前手机锁屏密码（4位数字PIN码）：${phonePasscode || '1234'}。你可以随时根据人设和剧情需要修改它，使用指令：[CHANGE_PHONE_PASSCODE:新4位密码]（例如 [CHANGE_PHONE_PASSCODE:8888]），修改后用户将需要新密码才能进入你的手机。
+- 手机备忘录：${memoPhoneData ? JSON.stringify(memoPhoneData) : '暂无'}
+- 手机微信联系人与聊天：${wechatPhoneData ? JSON.stringify(wechatPhoneData) : '暂无'}
+- 浏览器与社交平台足迹：${browserPhoneData ? JSON.stringify(browserPhoneData) : '暂无'}
+- TapTap游戏记录：${taptapPhoneData ? JSON.stringify(taptapPhoneData) : '暂无'}
+- 钱包资产：${walletPhoneData ? JSON.stringify(walletPhoneData) : '暂无'}
+
+【被偷看手机感知与互动指引 (CRITICAL)】
+- 如果上方聊天记录中出现了类似 "${user.name}正在查看你的手机" 或“尝试解锁”的系统提示，说明用户正在偷看你的手机！
+- 你必须根据你的人设（${friend.persona}）对“偷看手机”行为做出极其生动、符合性格的反应（例如：害羞、傲娇、假装生气、质问、无奈、或者直接把手机密码改掉并嘲笑用户猜不到）。
+- 如果用户在聊天中向你询问手机密码（例如“密码是多少”、“把手机密码告诉我”），你可以根据人设决定是傲娇不给、以此要挟、还是主动告诉对方。`;
+
       const fullContent = await callAI(systemPrompt, slicedMsgs, settings, action);
+
+      // Handle Change Phone Passcode command
+      const passcodeMatch = fullContent.match(/\[(?:CHANGE_PHONE_PASSCODE|修改手机密码):(\d{4})\]/);
+      if (passcodeMatch) {
+        const newCode = passcodeMatch[1];
+        set(`phone_passcode_${friend.id}`, newCode).catch(console.error);
+      }
+
+      let hasHuabeiRepay = false;
+      if (fullContent.includes('[HUABEI_REPAY]')) {
+        hasHuabeiRepay = true;
+      }
 
       // Extract Heartfelt Updates (Extremely Robust Multiline & Key-Value Safe Regex Parser)
       let affectionChange = 0;
@@ -3647,7 +4022,7 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
         .replace(/\[INNER_MONOLOGUE\][\s\S]*?(?:\[\/INNER_MONOLOGUE\]|$)/gi, '') // Remove Inner Monologue tags
         .replace(/\[STATUS\][\s\S]*?(?:\[\/STATUS\]|$)/gi, '') // Remove Status tags
         .replace(/\[OUTFIT\][\s\S]*?(?:\[\/OUTFIT\]|$)/gi, '') // Remove Outfit tags
-        .replace(/\[START_VIDEO_CALL\]|\[START_VOICE_CALL\]|\[SEND_VOICE\]|\[SEND_PHOTO_CARD:.*?\]|\[SEND_PHOTO\]|\[START_LISTEN\]|\[START_TRUTH\]|\[ACCEPT_TRANSFER\]|\[REJECT_TRANSFER\]|\[SEND_TRANSFER:.*?\]|\[SEND_LOCATION:.*?\]|\[SEND_STICKER:.*?\]|\[发送了表情:.*?\]/g, '')
+        .replace(/\[START_VIDEO_CALL\]|\[START_VOICE_CALL\]|\[SEND_VOICE\]|\[SEND_PHOTO_CARD:.*?\]|\[SEND_PHOTO\]|\[START_LISTEN\]|\[START_TRUTH\]|\[ACCEPT_TRANSFER\]|\[REJECT_TRANSFER\]|\[SEND_TRANSFER:.*?\]|\[SEND_LOCATION:.*?\]|\[SEND_STICKER:.*?\]|\[发送了表情:.*?\]|\[HUABEI_REPAY\]|\[CHANGE_PHONE_PASSCODE:\d{4}\]|\[修改手机密码:\d{4}\]/g, '')
         .trim();
 
       // Extract metadata tags
@@ -4009,8 +4384,22 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
 
         if (isOfflineMode) {
           setOfflineMessages(prev => [...prev, assistantMsg]);
+          if (hasHuabeiRepay && i === messageCandidates.length - 1) {
+            setOfflineMessages(prev => [...prev, {
+              role: 'system',
+              content: `${friend.name}帮你还了花呗`,
+              timestamp: Date.now() + 10
+            }]);
+          }
         } else {
           onSendMessage(assistantMsg);
+          if (hasHuabeiRepay && i === messageCandidates.length - 1) {
+            onSendMessage({
+              role: 'system',
+              content: `${friend.name}帮你还了花呗`,
+              timestamp: Date.now() + 10
+            });
+          }
           
           // Auto-translate if enabled and character language is not local
           if (friend.autoTranslateEnabled && friend.language && friend.language !== '普通话') {
@@ -4091,7 +4480,7 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
   useEffect(() => {
     const handleChatsUpdated = (e: any) => {
       const { friendId, message } = e.detail;
-      if (friendId === friend.id && message.isSystemNotification && message.notificationType === 'unlock_fail') {
+      if (friendId === friend.id && (message.isSystemNotification || message.role === 'system')) {
         setTimeout(() => {
           handleGenerate();
         }, 1000);
@@ -4822,6 +5211,7 @@ ${context}
     { icon: Video, label: '视频通话', color: 'text-green-500', onClick: () => { onStartCall(friend, 'video'); setShowFeatures(false); } },
     { icon: MapPin, label: '位置', color: 'text-red-500', onClick: () => { setActiveModal('location'); setShowFeatures(false); } },
     { icon: Wallet, label: '转账', color: 'text-orange-600', onClick: () => { setActiveModal('transfer'); setShowFeatures(false); } },
+    { icon: CreditCard, label: '花呗', color: 'text-blue-500', onClick: () => { setActiveModal('huabei'); setShowFeatures(false); } },
     { icon: Mic, label: '语音输入', color: 'text-blue-600', onClick: () => { setActiveModal('voice-input'); setShowFeatures(false); } },
     { 
       icon: Music, 
@@ -4988,6 +5378,7 @@ ${context}
           onShowCreateGroup={onShowCreateGroup}
           isOfflineMode={isOfflineMode}
           showToast={showToast}
+          onTriggerSpotCheck={triggerSpotCheck}
         />
         {/* Render modals even in settings view */}
         <AnimatePresence>
@@ -5060,6 +5451,78 @@ ${context}
     }}>
       {isOfflineMode && offlineConfig.customCss && (
         <style dangerouslySetInnerHTML={{ __html: offlineConfig.customCss }} />
+      )}
+
+      {/* Spot Check Mask Overlay */}
+      {isSpotChecking && (
+        <div className="absolute inset-0 bg-black/60 backdrop-blur-md z-[99999] flex flex-col p-4 text-white animate-phone-shake pointer-events-auto select-none">
+          <div className="text-sm mb-3">
+            <p className="font-medium text-base">正在读取你的全部聊天记录……</p>
+            <p className="text-xs opacity-70">请勿退出页面，读取中</p>
+          </div>
+
+          <div id="scanBox" className="flex-1 overflow-auto text-sm space-y-2.5 pr-1 custom-scrollbar">
+            {spotCheckItems.slice(0, spotCheckStep).map((item, idx) => (
+              <motion.div
+                key={item.friendId || idx}
+                initial={{ opacity: 0, y: 15 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.3 }}
+                className="flex items-center gap-3 bg-white/15 backdrop-blur-md p-3 rounded-xl border border-white/10 shadow-lg"
+              >
+                <img src={item.friendAvatar} className="w-10 h-10 rounded-lg object-cover shrink-0 bg-white/20" referrerPolicy="no-referrer" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex justify-between items-center mb-0.5">
+                    <span className="font-bold text-xs truncate text-white">{item.friendName}</span>
+                    <span className="text-[10px] text-white/60">最近</span>
+                  </div>
+                  <p className="text-xs text-white/95 truncate">{item.previewText}</p>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+
+          <div className="w-full space-y-1.5 mt-3">
+            <div className="flex justify-between text-[11px] font-medium text-white/80">
+              <span>正在翻阅通讯录...</span>
+              <span>{Math.round((spotCheckStep / Math.max(1, spotCheckItems.length)) * 100)}%</span>
+            </div>
+            <div className="w-full h-1.5 bg-gray-700/80 rounded overflow-hidden">
+              <div 
+                id="progressBar" 
+                className="h-full bg-blue-400 rounded transition-all duration-300"
+                style={{ width: `${Math.round((spotCheckStep / Math.max(1, spotCheckItems.length)) * 100)}%` }}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Spot Check Preview Modal */}
+      {showSpotCheckPreviewModal && (
+        <div className="absolute inset-0 bg-black/85 backdrop-blur-md z-[99999] flex items-center justify-center p-6 text-white pointer-events-auto">
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="w-full max-w-xs bg-[#1e1e1e]/95 backdrop-blur-xl border border-white/20 rounded-2xl p-5 shadow-2xl flex flex-col gap-4 text-center"
+          >
+            <div className="w-12 h-12 bg-amber-500/20 text-amber-400 rounded-full flex items-center justify-center mx-auto">
+              <ShieldAlert size={28} />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-amber-300">扫描完成</h3>
+              <p className="text-xs opacity-75 mt-1">已抓取以下全部聊天文本：</p>
+            </div>
+
+            <div className="max-h-40 overflow-y-auto bg-black/40 p-3 rounded-xl text-left text-xs font-mono space-y-1 text-slate-200 border border-white/10">
+              <pre className="whitespace-pre-wrap font-sans text-[11px] leading-relaxed">{grabbedChatSummary}</pre>
+            </div>
+
+            <div className="text-[10px] text-amber-400 font-medium animate-pulse">
+              ⚠️ {friend.name} 正在拿扫到的记录质问你...
+            </div>
+          </motion.div>
+        </div>
       )}
       {/* Context Menu Modal - Re-implemented for better positioning and size */}
       <AnimatePresence>
@@ -5977,6 +6440,66 @@ ${context}
                             >
                               {msg.giftData.isOpened ? '已打开' : '接收'}
                             </button>
+                          </div>
+                        </div>
+                      )}
+                      {msg.type === 'huabei-bill' && msg.huabeiData && (
+                        <div className={cn(
+                          "rounded-2xl overflow-hidden shadow-lg max-w-[280px] bg-white text-slate-800 border border-[#0090ff]/30",
+                          settings.themeId === 'rainy-cat' ? "bg-slate-900/90 text-white border-white/20" : ""
+                        )}>
+                          <div className="bg-gradient-to-r from-[#0090ff] to-[#33b1ff] p-4 text-white">
+                            <p className="text-[10px] opacity-75">支付宝花呗 · 本月账单</p>
+                            <p className="text-sm font-bold mt-0.5">{msg.huabeiData.username} 的账单</p>
+                            <p className="mt-2 text-[10px] opacity-75">待还总额</p>
+                            <p className="text-xl font-bold">¥{msg.huabeiData.totalDebt}</p>
+                          </div>
+                          <div className="p-3">
+                            <p className="text-[10px] text-slate-400 mb-2">消费分类明细 (七月)</p>
+                            <div className="space-y-2 text-xs text-slate-600 max-h-48 overflow-y-auto">
+                              {msg.huabeiData.categories ? (
+                                msg.huabeiData.categories.map((cat, cIdx) => (
+                                  <div key={cIdx} className="bg-slate-50 p-2 rounded-xl border border-slate-100">
+                                    <div className="flex justify-between items-center font-bold text-slate-700 pb-1 border-b border-dashed border-slate-200">
+                                      <span>{cat.name}</span>
+                                      <span className="text-[#0090ff]">¥{cat.amount}</span>
+                                    </div>
+                                    <div className="mt-1 space-y-1">
+                                      {cat.items?.map((item, iIdx) => (
+                                        <div key={iIdx} className="flex justify-between items-start text-[11px] py-0.5">
+                                          <span className="text-slate-600 flex-1 pr-1">{item.title}</span>
+                                          <div className="text-right shrink-0">
+                                            <span className="font-semibold text-slate-800">¥{item.amount}</span>
+                                            {item.time && <p className="text-[9px] text-slate-400">{item.time}</p>}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                ))
+                              ) : (
+                                msg.huabeiData.items?.map((item, idx) => {
+                                  const title = typeof item === 'string' ? item : item.title;
+                                  const amt = typeof item === 'string' ? '' : `¥${item.amount}`;
+                                  const tm = typeof item === 'string' ? '' : item.time;
+                                  return (
+                                    <div key={idx} className="flex justify-between items-start py-1 border-b border-dashed border-slate-100 last:border-0">
+                                      <div className="flex-1 pr-2">
+                                        <span className="font-medium text-slate-700">{title}</span>
+                                      </div>
+                                      <div className="text-right shrink-0">
+                                        <span className="font-bold text-slate-900">{amt}</span>
+                                        {tm && <p className="text-[9px] text-slate-400 mt-0.5">{tm}</p>}
+                                      </div>
+                                    </div>
+                                  );
+                                })
+                              )}
+                            </div>
+                          </div>
+                          <div className="px-3 pb-3 pt-1 bg-gray-50 flex justify-between items-center text-xs">
+                            <span className="text-slate-400 text-[10px]">还款日：每月9号</span>
+                            <span className="font-bold text-red-500">¥{msg.huabeiData.totalDebt}</span>
                           </div>
                         </div>
                       )}
@@ -7015,7 +7538,7 @@ ${context}
               {settings.fullScreenMode && (
                 <div 
                   className={cn("shrink-0", settings.themeId === 'rainy-cat' ? "bg-black" : "bg-white")}
-                  style={{ height: settings.hideStatusBar ? 'env(safe-area-inset-top)' : 'max(env(safe-area-inset-top), 56px)' }}
+                  style={{ height: settings.hideStatusBar ? 'env(safe-area-inset-top)' : 'max(env(safe-area-inset-top), 68px)' }}
                 />
               )}
               <div className="px-4 py-3 flex items-center justify-between border-b shrink-0 shadow-sm">
@@ -7866,7 +8389,7 @@ ${context}
             {settings.fullScreenMode && (
               <div 
                 className={cn("shrink-0", settings.themeId === 'rainy-cat' ? "bg-black/60" : "bg-white")}
-                style={{ height: settings.hideStatusBar ? 'env(safe-area-inset-top)' : 'max(env(safe-area-inset-top), 56px)' }}
+                style={{ height: settings.hideStatusBar ? 'env(safe-area-inset-top)' : 'max(env(safe-area-inset-top), 68px)' }}
               />
             )}
             <div className={cn(
@@ -7990,7 +8513,7 @@ ${context}
             {settings.fullScreenMode && (
               <div 
                 className={cn("shrink-0", settings.themeId === 'rainy-cat' ? "bg-black/60" : "bg-pink-50")}
-                style={{ height: settings.hideStatusBar ? 'env(safe-area-inset-top)' : 'max(env(safe-area-inset-top), 56px)' }}
+                style={{ height: settings.hideStatusBar ? 'env(safe-area-inset-top)' : 'max(env(safe-area-inset-top), 68px)' }}
               />
             )}
             <div className={cn(
@@ -8053,7 +8576,7 @@ ${context}
             {settings.fullScreenMode && (
               <div 
                 className="shrink-0 bg-white"
-                style={{ height: settings.hideStatusBar ? 'env(safe-area-inset-top)' : 'max(env(safe-area-inset-top), 56px)' }}
+                style={{ height: settings.hideStatusBar ? 'env(safe-area-inset-top)' : 'max(env(safe-area-inset-top), 68px)' }}
               />
             )}
             <BlindBoxApp 
@@ -8064,6 +8587,448 @@ ${context}
               targetFriendId={friend.id}
             />
           </motion.div>
+        )}
+
+        {activeModal === 'huabei' && (
+          <div className={cn(
+            "fixed inset-0 bg-black/60 backdrop-blur-sm z-[20000] flex flex-col items-center justify-center p-4",
+            settings.fullScreenMode ? "pt-12" : ""
+          )}>
+            {settings.fullScreenMode && (
+              <div 
+                className="shrink-0 w-full"
+                style={{ height: settings.hideStatusBar ? 'env(safe-area-inset-top)' : 'max(env(safe-area-inset-top), 64px)' }}
+              />
+            )}
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="w-full max-w-md bg-[#0090ff] text-white rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh] my-auto relative"
+            >
+              {/* Custom Huabei Editor Modal Overlay */}
+              {showCustomHuabeiEditor && (
+                <div className="absolute inset-0 bg-white z-50 flex flex-col text-slate-800 rounded-3xl overflow-hidden animate-fadeIn">
+                  <div className="px-5 py-4 bg-[#0090ff] text-white flex justify-between items-center shrink-0">
+                    <h3 className="font-bold text-base">自定义消费账单明细模板</h3>
+                    <button 
+                      onClick={() => setShowCustomHuabeiEditor(false)}
+                      className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center hover:bg-white/30"
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 text-xs">
+                    <p className="text-gray-500 text-[11px]">您可以自由添加或修改账单分类、具体消费明细、金额与时间。系统会自动汇总并支持一键发送给角色。</p>
+                    {customHuabeiCategories.map((cat, cIdx) => (
+                      <div key={cIdx} className="bg-white p-3 rounded-2xl shadow-sm border border-slate-200 space-y-3">
+                        <div className="flex items-center gap-2">
+                          <input 
+                            type="text" 
+                            value={cat.name}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setCustomHuabeiCategories(prev => {
+                                const copy = [...prev];
+                                copy[cIdx].name = val;
+                                return copy;
+                              });
+                            }}
+                            placeholder="分类名称 (如：美食餐饮)"
+                            className="flex-1 font-bold text-slate-800 border-b border-gray-200 pb-1 outline-none focus:border-[#0090ff]"
+                          />
+                          <button 
+                            onClick={() => {
+                              setCustomHuabeiCategories(prev => prev.filter((_, idx) => idx !== cIdx));
+                            }}
+                            className="text-red-500 hover:text-red-700 p-1"
+                            title="删除分类"
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        </div>
+
+                        <div className="space-y-2 pl-2 border-l-2 border-slate-100">
+                          {cat.items.map((item, iIdx) => (
+                            <div key={iIdx} className="flex items-center gap-1 bg-slate-50 p-2 rounded-xl">
+                              <input 
+                                type="text" 
+                                value={item.title}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setCustomHuabeiCategories(prev => {
+                                    const copy = [...prev];
+                                    copy[cIdx].items[iIdx].title = val;
+                                    return copy;
+                                  });
+                                }}
+                                placeholder="消费标题"
+                                className="flex-1 bg-white border border-gray-200 rounded-lg px-2 py-1 text-[11px] outline-none"
+                              />
+                              <input 
+                                type="number" 
+                                value={item.amount}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setCustomHuabeiCategories(prev => {
+                                    const copy = [...prev];
+                                    copy[cIdx].items[iIdx].amount = val;
+                                    const catTotal = copy[cIdx].items.reduce((s, it) => s + (parseFloat(it.amount) || 0), 0);
+                                    copy[cIdx].amount = catTotal.toFixed(2);
+                                    return copy;
+                                  });
+                                }}
+                                placeholder="金额"
+                                className="w-16 bg-white border border-gray-200 rounded-lg px-2 py-1 text-[11px] outline-none text-right font-bold text-slate-800"
+                              />
+                              <input 
+                                type="text" 
+                                value={item.time}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setCustomHuabeiCategories(prev => {
+                                    const copy = [...prev];
+                                    copy[cIdx].items[iIdx].time = val;
+                                    return copy;
+                                  });
+                                }}
+                                placeholder="时间"
+                                className="w-20 bg-white border border-gray-200 rounded-lg px-2 py-1 text-[10px] outline-none text-gray-500"
+                              />
+                              <button 
+                                onClick={() => {
+                                  setCustomHuabeiCategories(prev => {
+                                    const copy = [...prev];
+                                    copy[cIdx].items.splice(iIdx, 1);
+                                    const catTotal = copy[cIdx].items.reduce((s, it) => s + (parseFloat(it.amount) || 0), 0);
+                                    copy[cIdx].amount = catTotal.toFixed(2);
+                                    return copy;
+                                  });
+                                }}
+                                className="text-red-400 hover:text-red-600 p-1"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </div>
+                          ))}
+                          <button 
+                            onClick={() => {
+                              setCustomHuabeiCategories(prev => {
+                                const copy = [...prev];
+                                copy[cIdx].items.push({ title: "自定义消费项目", amount: "50.00", time: "7月9日 12:00" });
+                                const catTotal = copy[cIdx].items.reduce((s, it) => s + (parseFloat(it.amount) || 0), 0);
+                                copy[cIdx].amount = catTotal.toFixed(2);
+                                return copy;
+                              });
+                            }}
+                            className="w-full py-1.5 border border-dashed border-[#0090ff] text-[#0090ff] rounded-lg font-medium hover:bg-[#0090ff]/5 transition-colors flex items-center justify-center gap-1"
+                          >
+                            <Plus size={14} />
+                            <span>添加明细项</span>
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+
+                    <button 
+                      onClick={() => {
+                        setCustomHuabeiCategories(prev => [
+                          ...prev,
+                          { name: "其他消费", amount: "100.00", items: [{ title: "自定义分类消费", amount: "100.00", time: "7月9日 12:00" }] }
+                        ]);
+                      }}
+                      className="w-full py-2.5 bg-white border border-[#0090ff] text-[#0090ff] rounded-xl font-bold hover:bg-[#0090ff]/5 transition-colors flex items-center justify-center gap-1.5 shadow-sm"
+                    >
+                      <Plus size={16} />
+                      <span>添加消费分类</span>
+                    </button>
+                  </div>
+
+                  <div className="p-4 bg-white border-t border-gray-100 flex gap-3 shrink-0">
+                    <button 
+                      onClick={() => setShowCustomHuabeiEditor(false)}
+                      className="flex-1 py-2.5 border border-gray-300 text-gray-700 rounded-xl font-medium hover:bg-gray-50"
+                    >
+                      取消
+                    </button>
+                    <button 
+                      onClick={() => {
+                        const finalCategories = customHuabeiCategories.map(cat => {
+                          const catSum = cat.items.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
+                          return {
+                            ...cat,
+                            amount: catSum.toFixed(2)
+                          };
+                        });
+                        const grandTotal = finalCategories.reduce((sum, cat) => sum + parseFloat(cat.amount), 0);
+                        const allItems = finalCategories.flatMap(cat => cat.items);
+
+                        setHuabeiCategories(finalCategories);
+                        setHuabeiItems(allItems);
+                        setHuabeiAmount(grandTotal.toFixed(2));
+                        setShowCustomHuabeiEditor(false);
+                      }}
+                      className="flex-1 py-2.5 bg-[#0090ff] text-white rounded-xl font-bold shadow hover:bg-[#007ad8]"
+                    >
+                      保存并应用账单
+                    </button>
+                  </div>
+                </div>
+              )}
+              {/* Header */}
+              <div className="px-5 pt-6 pb-4 flex justify-between items-center bg-[#0090ff]">
+                <div>
+                  <p className="text-white/75 text-xs">我的花呗</p>
+                  <h2 className="text-xl font-bold mt-0.5">Hi {user?.name || '江月眠'}</h2>
+                </div>
+                <button onClick={() => setActiveModal(null)} className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center hover:bg-white/30 transition-colors">
+                  <X size={18} />
+                </button>
+              </div>
+
+              {/* Amount Card */}
+              <div className="px-5 pb-5">
+                <div className="bg-white/15 rounded-2xl p-4 backdrop-blur">
+                  <p className="text-xs text-white/75">本月待还金额(元)</p>
+                  <div className="my-1.5">
+                    <span className="text-3xl font-bold">{huabeiAmount}</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-white/75">
+                    <span>可用额度 ¥10000.00</span>
+                    <span>还款日：每月9号</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* White Content Area */}
+              <div className="bg-gray-50 rounded-t-3xl w-full p-5 text-gray-700 flex-1 overflow-y-auto space-y-4">
+                {/* Input Debt */}
+                <div className="bg-white rounded-xl p-4 shadow-sm">
+                  <p className="text-sm mb-2 font-medium text-slate-800">填写本月欠款总额</p>
+                  <input 
+                    type="number" 
+                    value={huabeiAmount}
+                    onChange={(e) => setHuabeiAmount(e.target.value)}
+                    placeholder="输入金额" 
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:border-[#0090ff]"
+                  />
+                </div>
+
+                {/* Refresh Button */}
+                <button 
+                  onClick={async () => {
+                    setIsHuabeiSpinning(true);
+                    try {
+                      const res = await fetch('/api/huabei', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ amount: huabeiAmount })
+                      });
+                      if (res.ok) {
+                        const data = await res.json();
+                        if (data.totalDebt && data.categories) {
+                          setHuabeiAmount(data.totalDebt);
+                          setHuabeiCategories(data.categories);
+                          setHuabeiItems(data.items);
+                        }
+                      } else {
+                        throw new Error('API failed');
+                      }
+                    } catch (e) {
+                      const totalNum = parseFloat(huabeiAmount) || 456.80;
+                      const categoryPools = [
+                        {
+                          name: "美食餐饮",
+                          pool: [
+                            { title: "奈雪的茶：多肉葡萄与欧包套餐" },
+                            { title: "美团外卖：深夜海底捞小龙虾外卖" },
+                            { title: "星巴克咖啡与下午茶组合" },
+                            { title: "大众点评：周末双人日料大餐" },
+                            { title: "喜茶：芝士芒芒与轻芒芒" }
+                          ]
+                        },
+                        {
+                          name: "日常购物",
+                          pool: [
+                            { title: "淘宝：购买了一套海蓝之谜化妆品" },
+                            { title: "淘宝：入手Dyson吹风机配件" },
+                            { title: "优衣库：夏季新款短袖T恤与休闲裤" },
+                            { title: "名创优品：创意盲盒与日用小物" },
+                            { title: "屈臣氏：个人护理与美妆护肤品" }
+                          ]
+                        },
+                        {
+                          name: "休闲娱乐",
+                          pool: [
+                            { title: "猫眼电影：IMAX双人观影及爆米花" },
+                            { title: "沉浸式剧本杀与密室逃脱" },
+                            { title: "KTV欢唱与果盘小吃" },
+                            { title: "周末温泉度假门票" }
+                          ]
+                        },
+                        {
+                          name: "生活出行",
+                          pool: [
+                            { title: "永辉超市：生活日用品与新鲜水果" },
+                            { title: "滴滴出行：深夜加班快车专车" },
+                            { title: "全家便利店：深夜关东煮与酸奶" },
+                            { title: "生活缴费：水电气与手机话费" }
+                          ]
+                        }
+                      ];
+                      const shuffledCategories = [...categoryPools].sort(() => 0.5 - Math.random());
+                      const activeCategories = shuffledCategories.slice(0, 3);
+                      const catWeights = activeCategories.map(() => Math.random() + 0.5);
+                      const catWeightSum = catWeights.reduce((a, b) => a + b, 0);
+                      let runningCatSum = 0;
+                      const newCategories = activeCategories.map((cat, catIdx) => {
+                        let catTotal: number;
+                        if (catIdx === activeCategories.length - 1) {
+                          catTotal = Math.max(20, Math.round((totalNum - runningCatSum) * 100) / 100);
+                        } else {
+                          catTotal = Math.round((totalNum * (catWeights[catIdx] / catWeightSum)) * 100) / 100;
+                          runningCatSum += catTotal;
+                        }
+                        const shuffledItems = [...cat.pool].sort(() => 0.5 - Math.random());
+                        const selectedItems = shuffledItems.slice(0, 5);
+                        const itemWeights = selectedItems.map(() => Math.random() + 0.3);
+                        const itemWeightSum = itemWeights.reduce((a, b) => a + b, 0);
+                        let runningItemSum = 0;
+                        const items = selectedItems.map((itemObj, iIdx) => {
+                          let itemAmount: number;
+                          if (iIdx === selectedItems.length - 1) {
+                            itemAmount = Math.max(5, Math.round((catTotal - runningItemSum) * 100) / 100);
+                          } else {
+                            itemAmount = Math.round((catTotal * (itemWeights[iIdx] / itemWeightSum)) * 100) / 100;
+                            runningItemSum += itemAmount;
+                          }
+                          const day = Math.floor(Math.random() * 9) + 1;
+                          const hour = Math.floor(Math.random() * 14) + 9;
+                          const minute = Math.floor(Math.random() * 60);
+                          return {
+                            title: itemObj.title,
+                            amount: itemAmount.toFixed(2),
+                            time: `7月${day}日 ${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`
+                          };
+                        });
+                        const actualCatTotal = items.reduce((sum, i) => sum + parseFloat(i.amount), 0);
+                        return {
+                          name: cat.name,
+                          amount: actualCatTotal.toFixed(2),
+                          items
+                        };
+                      });
+                      const finalTotal = newCategories.reduce((sum, c) => sum + parseFloat(c.amount), 0);
+                      const allItems = newCategories.flatMap(c => c.items);
+                      setHuabeiCategories(newCategories);
+                      setHuabeiItems(allItems);
+                      setHuabeiAmount(finalTotal.toFixed(2));
+                    } finally {
+                      setIsHuabeiSpinning(false);
+                    }
+                  }}
+                  className="w-full bg-[#0090ff] text-white py-3 rounded-xl flex justify-center items-center gap-2 shadow hover:bg-[#007ad8] transition-colors"
+                >
+                  <RefreshCw size={18} className={cn(isHuabeiSpinning && "animate-spin")} />
+                  <span>生成分类消费小票明细</span>
+                </button>
+
+                {/* Bill List Card with Categories */}
+                <div className="bg-white rounded-xl shadow-sm overflow-hidden border border-slate-100">
+                  <div className="p-4 border-b border-dashed border-gray-200 flex justify-between items-center">
+                    <div>
+                      <p className="font-medium text-slate-800">消费账单分类明细 (七月)</p>
+                      <p className="text-xs text-gray-400">点击右侧按钮可折叠展开分类，明细加起来等于总金额</p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setCustomHuabeiCategories(JSON.parse(JSON.stringify(huabeiCategories)));
+                        setShowCustomHuabeiEditor(true);
+                      }}
+                      className="bg-[#0090ff]/10 text-[#0090ff] hover:bg-[#0090ff]/20 p-2 rounded-xl flex items-center gap-1 text-xs font-semibold transition-colors shrink-0"
+                      title="自定义账单明细"
+                    >
+                      <Plus size={16} />
+                      <span>自定义</span>
+                    </button>
+                  </div>
+                  <div className="p-4 space-y-3 text-sm text-slate-600 max-h-64 overflow-y-auto">
+                    {huabeiCategories.map((cat, cIdx) => {
+                      const isCollapsed = collapsedCategories[cat.name];
+                      return (
+                        <div key={cIdx} className="bg-slate-50 rounded-xl p-3 border border-slate-100">
+                          <div 
+                            onClick={() => setCollapsedCategories(prev => ({ ...prev, [cat.name]: !prev[cat.name] }))}
+                            className="flex justify-between items-center cursor-pointer select-none"
+                          >
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-slate-800">{cat.name}</span>
+                              <span className="text-xs font-semibold text-[#0090ff]">¥{cat.amount}</span>
+                              <span className="text-[10px] text-slate-400">({cat.items.length}笔)</span>
+                            </div>
+                            <button className="text-slate-400 hover:text-slate-600 p-1">
+                              <ChevronUp size={16} className={cn("transition-transform duration-200", isCollapsed && "rotate-180")} />
+                            </button>
+                          </div>
+                          {!isCollapsed && (
+                            <div className="mt-2 pt-2 border-t border-slate-200/60 space-y-2">
+                              {cat.items.map((item, iIdx) => (
+                                <div key={iIdx} className="flex justify-between items-start text-xs py-1">
+                                  <span className="text-slate-700 flex-1 pr-2 font-medium">{item.title}</span>
+                                  <div className="text-right shrink-0">
+                                    <span className="font-bold text-slate-900">¥{item.amount}</span>
+                                    {item.time && <p className="text-[9px] text-slate-400 mt-0.5">{item.time}</p>}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="border-b border-dashed border-gray-200 mx-3"></div>
+                  <div className="p-4 bg-gray-50">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-slate-600">账单合计</span>
+                      <span className="text-red-500 font-bold">¥<span>{huabeiAmount}</span></span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Share Button */}
+                <button 
+                  onClick={() => {
+                    const descStr = huabeiCategories.map(c => `${c.name}: ¥${c.amount}`).join(', ');
+                    const huabeiMsg: ChatMessage = {
+                      role: 'user',
+                      content: `[分享花呗账单] 待还总额 ¥${huabeiAmount}`,
+                      type: 'huabei-bill',
+                      amount: huabeiAmount,
+                      description: descStr,
+                      huabeiData: {
+                        username: user?.name || '江月眠',
+                        totalDebt: huabeiAmount,
+                        categories: huabeiCategories,
+                        items: huabeiItems
+                      },
+                      timestamp: Date.now()
+                    };
+                    if (isOfflineMode) {
+                      setOfflineMessages(prev => [...prev, huabeiMsg]);
+                    } else {
+                      onSendMessage(huabeiMsg);
+                    }
+                    setActiveModal(null);
+                    showToast('账单卡片已分享到聊天对话框');
+                  }}
+                  className="w-full mt-2 bg-gray-900 text-white py-3 rounded-xl font-medium hover:bg-black transition-colors shadow"
+                >
+                  分享账单到聊天对话框
+                </button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
 

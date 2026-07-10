@@ -288,6 +288,25 @@ export default function App() {
         summaryText = data.choices[0].message.content;
       }
 
+      if (summaryText) {
+        summaryText = summaryText
+          .replace(/<think>[\s\S]*?<\/think>/gi, '')
+          .replace(/```think[\s\S]*?```/gi, '')
+          .replace(/```reasoning[\s\S]*?```/gi, '');
+
+        const matchIndex = summaryText.search(/(【第|【剧情标题|【核心记忆|一、|二、|1\.\s*人设|#)/);
+        if (matchIndex > 0) {
+          summaryText = summaryText.substring(matchIndex);
+        } else {
+          summaryText = summaryText
+            .replace(/\*\*我的思索过程[\s\S]*?(?=\n\n[一二三四五六七八九十]|【|$)/gi, '')
+            .replace(/\*\*思考过程[\s\S]*?(?=\n\n[一二三四五六七八九十]|【|$)/gi, '')
+            .replace(/作为一个身处[\s\S]*?(?=\n\n[一二三四五六七八九十]|【|$)/gi, '');
+        }
+
+        summaryText = summaryText.trim();
+      }
+
       if (!summaryText) {
         console.error("API returned empty data object or no content:", data);
         const errorMsg = data.error ? (typeof data.error === 'string' ? data.error : JSON.stringify(data.error)) : "API返回内容为空";

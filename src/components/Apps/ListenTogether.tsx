@@ -260,7 +260,7 @@ export default function ListenTogether({ state, setState, friend, user, settings
           {settings.fullScreenMode && (
             <div 
               className="shrink-0 bg-black/40"
-              style={{ height: settings.hideStatusBar ? 'env(safe-area-inset-top)' : 'max(env(safe-area-inset-top), 56px)' }}
+              style={{ height: settings.hideStatusBar ? 'env(safe-area-inset-top)' : 'max(env(safe-area-inset-top), 68px)' }}
             />
           )}
           {/* Custom Background */}

@@ -188,7 +188,6 @@ export const getGeminiClient = (passedSettings?: AppSettings) => {
               model: req.model || modelName,
               messages,
               temperature: req.config?.temperature || undefined,
-              response_format: req.config?.responseMimeType === 'application/json' ? { type: 'json_object' } : undefined,
             };
 
             const response = await fetch(url, {
@@ -1133,7 +1132,9 @@ export default function ParallelUniverseApp({ settings, onBack }: {
           }});
 
       if (!response.text) throw new Error("匹配失败");
-      const charData = JSON.parse(response.text);
+      let resText = response.text || '{}';
+      resText = resText.replace(/```json/g, '').replace(/```/g, '').trim();
+      const charData = JSON.parse(resText);
 
       const matchedInstance: Character = {
         id: 'matched-' + Date.now(),
@@ -1758,11 +1759,12 @@ function AppSettingsPage({ onBack }: { onBack: () => void }) {
   const [modelsList, setModelsList] = useState<string[]>([]);
   const [selectedModel, setSelectedModel] = useState(localStorage.getItem('CUSTOM_GEMINI_MODEL') || 'gemini-2.0-flash');
   const [isTesting, setIsTesting] = useState(false);
+  const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [apiLog, setApiLog] = useState('');
 
-  const handleTestApi = async () => {
+  const handleFetchModels = async () => {
     setIsTesting(true);
-    setApiLog('开始连接 API...\n');
+    setApiLog('开始拉取模型...\n');
     try {
       let globalSettings: AppSettings | null = null;
       try {
@@ -1817,7 +1819,7 @@ function AppSettingsPage({ onBack }: { onBack: () => void }) {
             if (fetchedModels.length > 0) {
               success = true;
               setModelsList(fetchedModels);
-              setApiLog(prev => prev + `连接成功！获取到 ${fetchedModels.length} 个模型。\n`);
+              setApiLog(prev => prev + `拉取成功！获取到 ${fetchedModels.length} 个模型。\n请在下方选择模型后进行测试。`);
               if (!fetchedModels.includes(selectedModel)) {
                 setSelectedModel(fetchedModels[0]);
               }
@@ -1840,6 +1842,83 @@ function AppSettingsPage({ onBack }: { onBack: () => void }) {
       setApiLog(prev => prev + `[错误] 连接失败: ${e instanceof Error ? e.message : String(e)}\n`);
     } finally {
       setIsTesting(false);
+    }
+  };
+
+  const handleTestConnection = async () => {
+    setIsTestingConnection(true);
+    setApiLog('开始测试模型连接...\n');
+    try {
+      let globalSettings: AppSettings | null = null;
+      try {
+        const s = localStorage.getItem('zhouzhou_ji_settings');
+        if (s) globalSettings = JSON.parse(s) as AppSettings;
+      } catch(e) {}
+
+      const url = baseUrl || globalSettings?.baseUrl || 'https://generativelanguage.googleapis.com';
+      const key = apiKey || globalSettings?.apiKey;
+      
+      if (!key) {
+        throw new Error('未找到 API Key。');
+      }
+
+      const cleanUrl = url.replace(/\/+$/, '');
+      const modelToTest = selectedModel || 'gemini-1.5-flash';
+      
+      setApiLog(prev => prev + `测试模型: ${modelToTest}\n`);
+
+      const isGeminiModel = modelToTest.startsWith('gemini');
+      const isGoogleEndpoint = cleanUrl.includes('googleapis.com') || cleanUrl.includes('google');
+      
+      const isOpenAI = cleanUrl.endsWith('/v1') || 
+                       cleanUrl.endsWith('/v1/') || 
+                       !isGoogleEndpoint || 
+                       !isGeminiModel;
+      
+      let testEndpoint = '';
+      let testBody = {};
+      let headers: any = {
+        'Content-Type': 'application/json'
+      };
+
+      if (isOpenAI) {
+        let baseUrlClean = cleanUrl.replace(/\/+$/, '');
+        if (!baseUrlClean.endsWith('/v1') && !baseUrlClean.includes('/v1/')) {
+          baseUrlClean += '/v1';
+        }
+        testEndpoint = `${baseUrlClean}/chat/completions`;
+        headers['Authorization'] = `Bearer ${key}`;
+        testBody = {
+          model: modelToTest,
+          messages: [{ role: 'user', content: 'hello' }],
+          max_tokens: 10
+        };
+      } else {
+        testEndpoint = `${cleanUrl}/v1beta/models/${modelToTest}:generateContent?key=${key}`;
+        testBody = {
+          contents: [{ parts: [{ text: "hello" }] }],
+          generationConfig: { maxOutputTokens: 10 }
+        };
+      }
+
+      setApiLog(prev => prev + `请求路径: ${testEndpoint}\n`);
+      
+      const res = await fetch(testEndpoint, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(testBody)
+      });
+
+      if (res.ok) {
+         setApiLog(prev => prev + `✅ 测试成功！模型可正常调用。`);
+      } else {
+         const errBody = await res.text().catch(() => 'No body');
+         throw new Error(`HTTP ${res.status}: ${errBody}`);
+      }
+    } catch (e) {
+      setApiLog(prev => prev + `❌ [错误] 测试失败: ${e instanceof Error ? e.message : String(e)}\n`);
+    } finally {
+      setIsTestingConnection(false);
     }
   };
 
@@ -1900,9 +1979,9 @@ function AppSettingsPage({ onBack }: { onBack: () => void }) {
                />
              </div>
              <div className="flex gap-2">
-               <button onClick={handleTestApi} disabled={isTesting} className="flex-1 py-3 bg-slate-800 text-white text-sm font-bold rounded-xl active:bg-slate-900 transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+               <button onClick={handleFetchModels} disabled={isTesting} className="flex-1 py-3 bg-slate-800 text-white text-sm font-bold rounded-xl active:bg-slate-900 transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
                  {isTesting ? <RefreshCw size={16} className="animate-spin" /> : <Globe size={16} />}
-                 测试连接与获取模型
+                 获取模型列表
                </button>
              </div>
 
@@ -1920,6 +1999,13 @@ function AppSettingsPage({ onBack }: { onBack: () => void }) {
                  </select>
                </div>
              )}
+
+             <div className="flex gap-2 mt-2">
+               <button onClick={handleTestConnection} disabled={isTestingConnection} className="flex-1 py-3 bg-blue-600 text-white text-sm font-bold rounded-xl active:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2">
+                 {isTestingConnection ? <RefreshCw size={16} className="animate-spin" /> : <Globe size={16} />}
+                 测试选中模型连接
+               </button>
+             </div>
 
              {apiLog && (
                <div className="bg-black/90 p-4 rounded-xl">
@@ -4615,7 +4701,8 @@ ${relevantBooks.map(b => `《${b.title}》: ${b.content}`).join('\n\n')}
         }
       });
 
-      const resText = response.text || '{}';
+      let resText = response.text || '{}';
+      resText = resText.replace(/```json/g, '').replace(/```/g, '').trim();
       const resData = JSON.parse(resText);
       
       // 更新状态
