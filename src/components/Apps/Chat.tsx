@@ -182,7 +182,9 @@ export default function ChatApp({ settings, onBack, onStartCall, externalCallSta
       const lastCheckKey = 'last_moment_check_time';
       const lastCheck = localStorage.getItem(lastCheckKey);
       if (lastCheck === currentTimeStr) return; // Already checked this minute
-      localStorage.setItem(lastCheckKey, currentTimeStr);
+      try {
+        localStorage.setItem(lastCheckKey, currentTimeStr);
+      } catch (e) {}
 
       friends.forEach(f => {
         if (!f.momentsSettings?.autoPostEnabled) return;
@@ -266,22 +268,15 @@ ${context}`;
         friends.forEach(f => {
           if (f.id === newMoment.authorId) return;
           
-          // Check if already commented
+          // Check if already commented (限制角色们互相评论一条)
           const existingComment = newMoment.comments?.find(c => c.authorId === f.id);
           if (existingComment) return;
 
-          if (f.momentsSettings?.autoPostEnabled || Math.random() > 0.3) {
-            const delay = 2000 + Math.random() * 8000;
-            setTimeout(() => {
-              if (Math.random() > 0.4) {
-                toggleLikeMoment(newMoment.id, newMoment.authorId);
-              }
-              if (Math.random() > 0.3) {
-                const authorName = newMoment.authorId === 'user' ? (user?.name ?? '我') : (friends.find(fr => fr.id === newMoment.authorId)?.name || '好友');
-                handleAICommentOnMoment(f, { ...newMoment, authorName }, addCommentToMoment, settings);
-              }
-            }, delay);
-          }
+          const delay = 2000 + Math.random() * 8000;
+          setTimeout(() => {
+            const authorName = newMoment.authorId === 'user' ? (user?.name ?? '我') : (friends.find(fr => fr.id === newMoment.authorId)?.name || '好友');
+            handleAICommentOnMoment(f, { ...newMoment, authorName }, addCommentToMoment, settings);
+          }, delay);
         });
       }, 1000);
     } else {
@@ -2169,6 +2164,7 @@ function CharacterImageSettings({ friend, onUpdateFriend, settings, onClose }: {
       )}
       onClick={(e) => e.stopPropagation()}
     >
+      {settings.fullScreenMode && <div className={cn("h-10 shrink-0", settings.themeId === 'rainy-cat' ? "bg-slate-950" : "bg-slate-50")} />}
       <div className={cn(
         "p-4 border-b flex items-center justify-between sticky top-0 z-10 backdrop-blur-md",
         settings.themeId === 'rainy-cat' ? "bg-slate-900/80 border-white/10" : "bg-white/80 border-slate-200"
@@ -4821,12 +4817,12 @@ ${context}
   };
 
   const features = [
-    { icon: ImageIcon, label: '相册', color: 'text-blue-500', onClick: () => fileInputRef.current?.click() },
-    { icon: Type, label: '文字摄影', color: 'text-cyan-500', onClick: () => setActiveModal('text-photo') },
-    { icon: Video, label: '视频通话', color: 'text-green-500', onClick: () => onStartCall(friend, 'video') },
-    { icon: MapPin, label: '位置', color: 'text-red-500', onClick: () => setActiveModal('location') },
-    { icon: Wallet, label: '转账', color: 'text-orange-600', onClick: () => setActiveModal('transfer') },
-    { icon: Mic, label: '语音输入', color: 'text-blue-600', onClick: () => setActiveModal('voice-input') },
+    { icon: ImageIcon, label: '相册', color: 'text-blue-500', onClick: () => { fileInputRef.current?.click(); setShowFeatures(false); } },
+    { icon: Type, label: '文字摄影', color: 'text-cyan-500', onClick: () => { setActiveModal('text-photo'); setShowFeatures(false); } },
+    { icon: Video, label: '视频通话', color: 'text-green-500', onClick: () => { onStartCall(friend, 'video'); setShowFeatures(false); } },
+    { icon: MapPin, label: '位置', color: 'text-red-500', onClick: () => { setActiveModal('location'); setShowFeatures(false); } },
+    { icon: Wallet, label: '转账', color: 'text-orange-600', onClick: () => { setActiveModal('transfer'); setShowFeatures(false); } },
+    { icon: Mic, label: '语音输入', color: 'text-blue-600', onClick: () => { setActiveModal('voice-input'); setShowFeatures(false); } },
     { 
       icon: Music, 
       label: '一起听', 
@@ -4836,8 +4832,8 @@ ${context}
         setShowFeatures(false);
       } 
     },
-    { icon: Gamepad2, label: '真心话', color: 'text-purple-500', onClick: () => setActiveModal('truth-or-dare') },
-    { icon: ShoppingBag, label: '盲盒', color: 'text-pink-400', onClick: () => setActiveModal('blind-box') },
+    { icon: Gamepad2, label: '真心话', color: 'text-purple-500', onClick: () => { setActiveModal('truth-or-dare'); setShowFeatures(false); } },
+    { icon: ShoppingBag, label: '盲盒', color: 'text-pink-400', onClick: () => { setActiveModal('blind-box'); setShowFeatures(false); } },
     { icon: RefreshCw, label: '重回', color: 'text-emerald-500', onClick: () => { handleGenerate('regenerate'); setShowFeatures(false); } },
     { icon: DoorOpen, 
       label: isOfflineMode ? '线上聊天' : '线下剧情', 
@@ -6398,7 +6394,7 @@ ${context}
       </AnimatePresence>
 
       {/* Bottom Bar */}
-      {!isMultiSelectMode && (
+      {!isMultiSelectMode && activeModal === null && !showOfflineSettings && !(listenTogetherState.isActive && !listenTogetherState.isFolded) && (
         <div className={cn(
           "border-t p-3 pb-6 relative transition-all duration-300 chat-window-footer z-[9999]",
           settings.themeId === 'rainy-cat' ? "bg-white/5 backdrop-blur-xl border-white/10" : (settings.activeChatThemeId ? "bg-transparent border-transparent" : (settings.appBackgroundUrl ? "bg-white/10 backdrop-blur-md border-slate-200/20" : "bg-[#f7f7f7] border-slate-200"))
@@ -7012,10 +7008,16 @@ ${context}
               exit={{ opacity: 0, x: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
               className={cn(
-                "fixed inset-0 z-[1000] flex flex-col pt-8 sm:pt-6",
+                "fixed inset-0 z-[20000] flex flex-col",
                 settings.themeId === 'rainy-cat' ? "bg-black text-white" : "bg-white text-slate-800"
               )}
             >
+              {settings.fullScreenMode && (
+                <div 
+                  className={cn("shrink-0", settings.themeId === 'rainy-cat' ? "bg-black" : "bg-white")}
+                  style={{ height: settings.hideStatusBar ? 'env(safe-area-inset-top)' : 'max(env(safe-area-inset-top), 56px)' }}
+                />
+              )}
               <div className="px-4 py-3 flex items-center justify-between border-b shrink-0 shadow-sm">
                 <div className="flex items-center gap-3">
                   <button 
@@ -7858,9 +7860,15 @@ ${context}
 
         {activeModal === 'location' && (
           <div key="location-modal" className={cn(
-            "fixed inset-0 z-[100] flex flex-col transition-all duration-300",
+            "fixed inset-0 z-[20000] flex flex-col transition-all duration-300",
             settings.themeId === 'rainy-cat' ? "bg-black/60 backdrop-blur-xl text-white" : "bg-white"
           )}>
+            {settings.fullScreenMode && (
+              <div 
+                className={cn("shrink-0", settings.themeId === 'rainy-cat' ? "bg-black/60" : "bg-white")}
+                style={{ height: settings.hideStatusBar ? 'env(safe-area-inset-top)' : 'max(env(safe-area-inset-top), 56px)' }}
+              />
+            )}
             <div className={cn(
               "p-4 border-b flex justify-between items-center",
               settings.themeId === 'rainy-cat' ? "border-white/10" : "border-slate-100"
@@ -7976,9 +7984,15 @@ ${context}
 
         {activeModal === 'music' && (
           <div key="music-modal" className={cn(
-            "fixed inset-0 z-[100] flex flex-col transition-all duration-300",
+            "fixed inset-0 z-[20000] flex flex-col transition-all duration-300",
             settings.themeId === 'rainy-cat' ? "bg-black/60 backdrop-blur-xl text-white" : "bg-pink-50"
           )}>
+            {settings.fullScreenMode && (
+              <div 
+                className={cn("shrink-0", settings.themeId === 'rainy-cat' ? "bg-black/60" : "bg-pink-50")}
+                style={{ height: settings.hideStatusBar ? 'env(safe-area-inset-top)' : 'max(env(safe-area-inset-top), 56px)' }}
+              />
+            )}
             <div className={cn(
               "p-4 border-b flex justify-between items-center",
               settings.themeId === 'rainy-cat' ? "border-white/10" : "border-pink-100"
@@ -8034,8 +8048,14 @@ ${context}
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             exit={{ opacity: 0, scale: 0.95 }}
-            className="fixed inset-0 z-[100]"
+            className="fixed inset-0 z-[20000] flex flex-col"
           >
+            {settings.fullScreenMode && (
+              <div 
+                className="shrink-0 bg-white"
+                style={{ height: settings.hideStatusBar ? 'env(safe-area-inset-top)' : 'max(env(safe-area-inset-top), 56px)' }}
+              />
+            )}
             <BlindBoxApp 
               settings={settings}
               onUpdateSettings={onUpdateSettings}
@@ -8719,6 +8739,31 @@ function FriendMoments({
     if (!commentText.trim()) return;
     const comment = { authorId: 'user', authorName: user?.name ?? '用户', content: commentText, replyToId: replyTo?.id, replyToName: replyTo?.name };
     onAddComment(momentId, authorId, comment);
+
+    const targetFriendId = replyTo && replyTo.id !== 'user' ? replyTo.id : (authorId !== 'user' ? authorId : null);
+    if (targetFriendId) {
+      const friend = friends.find(f => f.id === targetFriendId);
+      if (friend) {
+        setTimeout(() => {
+          handleAIReplyToComment(
+            friend, 
+            user, 
+            `用户在朋友圈对你发表了评论/回复："${commentText}"${replyTo ? `（回复了 ${replyTo.name}）` : ''}`, 
+            (aiReplyContent) => {
+              onAddComment(momentId, authorId, {
+                authorId: friend.id,
+                authorName: friend.name,
+                content: aiReplyContent,
+                replyToId: 'user',
+                replyToName: user?.name ?? '用户'
+              });
+            }, 
+            settings
+          );
+        }, 2000 + Math.random() * 2000);
+      }
+    }
+
     setCommentText(''); setActiveCommentId(null); setReplyTo(null);
   };
 
@@ -8784,7 +8829,14 @@ function FriendMoments({
                 {post.comments && post.comments.length > 0 && (
                   <div className="mt-1 p-2 bg-slate-50 rounded divide-y divide-slate-100">
                     {post.comments.map((c: any, i: number) => (
-                      <div key={i} className="py-1 text-xs">
+                      <div 
+                        key={i} 
+                        onClick={() => {
+                          setActiveCommentId(post.id);
+                          setReplyTo({ id: c.authorId || c.authorName, name: c.authorName });
+                        }}
+                        className="py-1 text-xs cursor-pointer hover:bg-slate-100 rounded px-1 transition-colors"
+                      >
                         <span className="font-bold text-blue-900">{c.authorName}</span>
                         {c.replyToName && <><span className="text-slate-400 mx-1">回复</span><span className="font-bold text-blue-900">{c.replyToName}</span></>}
                         <span className="text-slate-800">: {c.content}</span>
@@ -8848,6 +8900,31 @@ function DiscoverTab({
   const handleSendComment = (momentId: string, authorId: string) => {
     if (!commentText.trim()) return;
     onAddComment(momentId, authorId, { authorId: 'user', authorName: user?.name ?? '用户', content: commentText, replyToId: replyTo?.id, replyToName: replyTo?.name });
+
+    const targetFriendId = replyTo && replyTo.id !== 'user' ? replyTo.id : (authorId !== 'user' ? authorId : null);
+    if (targetFriendId) {
+      const friend = friends.find(f => f.id === targetFriendId);
+      if (friend) {
+        setTimeout(() => {
+          handleAIReplyToComment(
+            friend, 
+            user, 
+            `用户在朋友圈对你发表了评论/回复："${commentText}"${replyTo ? `（回复了 ${replyTo.name}）` : ''}`, 
+            (aiReplyContent) => {
+              onAddComment(momentId, authorId, {
+                authorId: friend.id,
+                authorName: friend.name,
+                content: aiReplyContent,
+                replyToId: 'user',
+                replyToName: user?.name ?? '用户'
+              });
+            }, 
+            settings
+          );
+        }, 2000 + Math.random() * 2000);
+      }
+    }
+
     setCommentText(''); setActiveCommentId(null); setReplyTo(null);
   };
 
@@ -8907,7 +8984,14 @@ function DiscoverTab({
                 {moment.comments && moment.comments.length > 0 && (
                   <div className="mt-1 p-2 bg-slate-50 rounded divide-y divide-slate-100">
                     {moment.comments.map((c: any, i: number) => (
-                      <div key={i} className="py-1 text-[10px]">
+                      <div 
+                        key={i} 
+                        onClick={() => {
+                          setActiveCommentId(moment.id);
+                          setReplyTo({ id: c.authorId || c.authorName, name: c.authorName });
+                        }}
+                        className="py-1 text-[10px] cursor-pointer hover:bg-slate-100 rounded px-1 transition-colors"
+                      >
                         <span className="font-bold text-blue-900">{c.authorName}</span>
                         {c.replyToName && <><span className="text-slate-400 mx-1">回复</span><span className="font-bold text-blue-900">{c.replyToName}</span></>}
                         <span className="text-slate-800">: {c.content}</span>
@@ -11296,10 +11380,6 @@ function AddFriendModal({ onClose, onAdd, settings }: { onClose: () => void, onA
 }
 
 async function handleAICommentOnMoment(friend: Friend, moment: any, onAddComment: (momentId: string, authorId: string, comment: any) => void, settings: AppSettings) {
-  // Rule: each character only once per post
-  const hasCommented = (moment.comments || []).some((c: any) => c.authorId === friend.id);
-  if (hasCommented) return;
-
   const prompt = `你现在是 ${friend?.name ?? '角色'}。你的性格是：${friend?.persona ?? '伙伴'}。
 你的好友 ${moment?.authorName ?? '好友'} 刚刚发布了一条朋友圈：
 内容：${moment?.content ?? ''}

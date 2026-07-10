@@ -464,6 +464,7 @@ export function useFriends() {
   };
 
   const addMoment = (content: string, images?: string[], location?: string, visibility: 'public' | 'selected' | 'excluded' = 'public', visibleTo?: string[], hiddenFrom?: string[], authorId: string = 'user', isTextCard?: boolean, imageDescription?: string) => {
+    const allParticipantIds = ['user', ...friends.map(f => f.id)].filter(id => id !== authorId);
     const newMoment: MomentPost = {
       id: `moment-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       authorId,
@@ -473,7 +474,7 @@ export function useFriends() {
       visibility,
       visibleTo,
       hiddenFrom,
-      likes: [],
+      likes: allParticipantIds,
       comments: [],
       timestamp: Date.now(),
       isTextCard,
@@ -533,13 +534,37 @@ export function useFriends() {
     const newComment = {
       ...comment,
       id: `comment-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      replies: []
+    };
+
+    const processComments = (comments: any[]) => {
+      if (comment.replyToId) {
+        return comments.map(c => {
+          if (c.id === comment.replyToId) {
+            const replies = c.replies || [];
+            if (replies.some((r: any) => r.authorId === comment.authorId)) {
+              return c; // 限制回楼回复一条
+            }
+            return {
+              ...c,
+              replies: [...replies, newComment]
+            };
+          }
+          return c;
+        });
+      } else {
+        if (comments.some((c: any) => c.authorId === comment.authorId)) {
+          return comments; // 限制角色们互相评论一条
+        }
+        return [...comments, newComment];
+      }
     };
 
     if (authorId === 'user') {
       const newMoments = (user.moments || []).map(m => {
         if (m.id === momentId) {
-          return { ...m, comments: [...m.comments, newComment] };
+          return { ...m, comments: processComments(m.comments || []) };
         }
         return m;
       });
@@ -549,7 +574,7 @@ export function useFriends() {
         if (f.id === authorId) {
           const newMoments = (f.moments || []).map(m => {
             if (m.id === momentId) {
-              return { ...m, comments: [...m.comments, newComment] };
+              return { ...m, comments: processComments(m.comments || []) };
             }
             return m;
           });

@@ -255,8 +255,14 @@ export default function ListenTogether({ state, setState, friend, user, settings
           initial={{ opacity: 0, scale: 0.9 }}
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.9 }}
-          className="fixed inset-0 z-[300] bg-black flex flex-col text-white overflow-hidden"
+          className="fixed inset-0 z-[20000] bg-black flex flex-col text-white overflow-hidden"
         >
+          {settings.fullScreenMode && (
+            <div 
+              className="shrink-0 bg-black/40"
+              style={{ height: settings.hideStatusBar ? 'env(safe-area-inset-top)' : 'max(env(safe-area-inset-top), 56px)' }}
+            />
+          )}
           {/* Custom Background */}
           {state.backgroundUrl && (
             <img 
