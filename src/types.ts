@@ -481,10 +481,17 @@ export interface OfflinePlotEntry {
   summary: string;
 }
 
+export interface CoreMemoryEntry {
+  id: string;
+  content: string;
+  timestamp: number;
+}
+
 export interface MemoryStore {
   [friendId: string]: {
     onlineMemories: OnlineMemoryEntry[];
     offlinePlots: OfflinePlotEntry[];
+    coreMemories?: CoreMemoryEntry[];
   };
 }
 

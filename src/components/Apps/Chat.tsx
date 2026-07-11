@@ -3845,6 +3845,13 @@ ${actionRule}
       // 5. Memory Store Memories
       const friendMemoryStore = getFriendMemory(friend.id);
       let memorySection = "";
+      if (friendMemoryStore.coreMemories && friendMemoryStore.coreMemories.length > 0) {
+        memorySection += `【核心设定与绝对记忆】\n(这些是你必须牢记的不可更改的客观事实与核心设定，优先级极高)\n`;
+        friendMemoryStore.coreMemories.forEach((mem: any, index: number) => {
+          memorySection += `${index + 1}. ${mem.content}\n`;
+        });
+        memorySection += `\n`;
+      }
       if (friend.offlineMemory?.summary) {
         memorySection += `【当前/最新线下剧情摘要】\n${friend.offlineMemory.summary}\n\n`;
       }

@@ -13,7 +13,7 @@ interface MemoryAppProps {
 }
 
 export default function MemoryApp({ friends, settings, onBack }: MemoryAppProps) {
-  const { getFriendMemory } = useMemory();
+  const { getFriendMemory, addCoreMemory, deleteCoreMemory } = useMemory();
   const [selectedFriendId, setSelectedFriendId] = useState<string | null>(null);
 
   // Use only friends from main chat app
@@ -28,6 +28,8 @@ export default function MemoryApp({ friends, settings, onBack }: MemoryAppProps)
       <RoleMemoryPage
         friend={selectedFriend as unknown as Friend}
         memory={getFriendMemory(selectedFriend.id)}
+        onAddCoreMemory={(content) => addCoreMemory(selectedFriend.id, content)}
+        onDeleteCoreMemory={(memoryId) => deleteCoreMemory(selectedFriend.id, memoryId)}
         onBack={() => setSelectedFriendId(null)}
       />
     );

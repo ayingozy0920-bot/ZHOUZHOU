@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { MemoryStore, OnlineMemoryEntry, OfflinePlotEntry } from '../types';
+import { MemoryStore, OnlineMemoryEntry, OfflinePlotEntry, CoreMemoryEntry } from '../types';
 
 const STORAGE_KEY = 'zhouzhou_memory_store';
 const MEMORY_UPDATE_EVENT = 'zhouzhou_memory_update';
@@ -49,7 +49,7 @@ export function useMemory() {
 
   const addOnlineMemory = useCallback((friendId: string, content: string, type: 'auto' | 'manual' = 'auto', source: 'chat' | 'weibo' = 'chat') => {
     setMemoryStore(prev => {
-      const friendMemory = prev[friendId] || { onlineMemories: [], offlinePlots: [] };
+      const friendMemory = prev[friendId] || { onlineMemories: [], offlinePlots: [], coreMemories: [] };
       const newEntry: OnlineMemoryEntry = {
         id: Date.now().toString(),
         content,
@@ -61,10 +61,9 @@ export function useMemory() {
         ...prev,
         [friendId]: {
           ...friendMemory,
-          onlineMemories: [newEntry, ...friendMemory.onlineMemories]
+          onlineMemories: [newEntry, ...(friendMemory.onlineMemories || [])]
         }
       };
-      // Async update to avoid dispatching during render if used weirdly, but usually fine.
       setTimeout(() => updateAndBroadcast(newStore), 0);
       return newStore;
     });
@@ -72,7 +71,7 @@ export function useMemory() {
 
   const addOfflinePlot = useCallback((friendId: string, title: string, logs: any[], summary: string) => {
     setMemoryStore(prev => {
-      const friendMemory = prev[friendId] || { onlineMemories: [], offlinePlots: [] };
+      const friendMemory = prev[friendId] || { onlineMemories: [], offlinePlots: [], coreMemories: [] };
       const newEntry: OfflinePlotEntry = {
         id: Date.now().toString(),
         title,
@@ -84,7 +83,43 @@ export function useMemory() {
         ...prev,
         [friendId]: {
           ...friendMemory,
-          offlinePlots: [newEntry, ...friendMemory.offlinePlots]
+          offlinePlots: [newEntry, ...(friendMemory.offlinePlots || [])]
+        }
+      };
+      setTimeout(() => updateAndBroadcast(newStore), 0);
+      return newStore;
+    });
+  }, [updateAndBroadcast]);
+
+  const addCoreMemory = useCallback((friendId: string, content: string) => {
+    setMemoryStore(prev => {
+      const friendMemory = prev[friendId] || { onlineMemories: [], offlinePlots: [], coreMemories: [] };
+      const newEntry: CoreMemoryEntry = {
+        id: Date.now().toString(),
+        content,
+        timestamp: Date.now()
+      };
+      const newStore = {
+        ...prev,
+        [friendId]: {
+          ...friendMemory,
+          coreMemories: [newEntry, ...(friendMemory.coreMemories || [])]
+        }
+      };
+      setTimeout(() => updateAndBroadcast(newStore), 0);
+      return newStore;
+    });
+  }, [updateAndBroadcast]);
+
+  const deleteCoreMemory = useCallback((friendId: string, memoryId: string) => {
+    setMemoryStore(prev => {
+      if (!prev[friendId]) return prev;
+      const friendMemory = prev[friendId];
+      const newStore = {
+        ...prev,
+        [friendId]: {
+          ...friendMemory,
+          coreMemories: (friendMemory.coreMemories || []).filter(m => m.id !== memoryId)
         }
       };
       setTimeout(() => updateAndBroadcast(newStore), 0);
@@ -93,13 +128,20 @@ export function useMemory() {
   }, [updateAndBroadcast]);
 
   const getFriendMemory = useCallback((friendId: string) => {
-    return memoryStore[friendId] || { onlineMemories: [], offlinePlots: [] };
+    const memory = memoryStore[friendId] || { onlineMemories: [], offlinePlots: [], coreMemories: [] };
+    return {
+      onlineMemories: memory.onlineMemories || [],
+      offlinePlots: memory.offlinePlots || [],
+      coreMemories: memory.coreMemories || []
+    };
   }, [memoryStore]);
 
   return {
     memoryStore,
     addOnlineMemory,
     addOfflinePlot,
+    addCoreMemory,
+    deleteCoreMemory,
     getFriendMemory
   };
 }
