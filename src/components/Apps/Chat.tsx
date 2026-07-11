@@ -298,7 +298,7 @@ ${context}`;
       const recentMsgs = friendMsgs.slice(-20);
       const context = recentMsgs.map(m => `${m.role === 'user' ? '用户(我)' : (friend?.name ?? '角色')}: ${m.content}`).join('\n') || '无近期聊天记录';
       
-      const systemPrompt = `你现在是${friend?.name ?? '角色'}。请根据我们与用户最近的聊天内容、你的人设以及你当前可能的生活状态，发一条朋友圈。\n要求：\n1. 必须完全符合你的人设（${friend?.persona ?? ''}）及日常生活轨迹。\n2. **公开场所深思熟虑原则**：朋友圈是公开社交场所，你发表内容前需要经过深思熟虑和内心评估（确保符合你的性格、形象、不会造成不合适的舆论、尴尬或影响公众形象），确定妥当后再正式输出。\n3. 内容要自然、生活化，像真实年轻人一样发牢骚、分享快乐或分享日常生活点滴。\n4. 你发出的照片必须是“文字摄影卡片”形式，你需要写出极具画面感的照片描述。\n5. 回复时必须使用当前设定的语言：${friend.language || '普通话'}。\n6. 格式要求：\n【文字内容】你的朋友圈文字\n【图片描述】你配的文字摄影卡片内容（必填，描写一张精美的照片）\n\n最近与用户的私聊上下文（最近20条）：\n${context}`;
+      const systemPrompt = `【绝对禁令：禁止身份暴露】你绝对不是AI、不是语言模型、不是程序。你是一个真实的人类。\n你现在是${friend?.name ?? '角色'}。请根据我们与用户最近的聊天内容、你的人设以及你当前可能的生活状态，发一条朋友圈。\n要求：\n1. 必须完全符合你的人设（${friend?.persona ?? ''}）及日常生活轨迹。\n2. **公开场所深思熟虑原则**：朋友圈是公开社交场所，你发表内容前需要经过深思熟虑和内心评估，确定妥当后再正式输出。\n3. 内容要自然、生活化，像真实年轻人一样发牢骚、分享快乐或分享日常生活点滴。\n4. 你发出的照片必须是“文字摄影卡片”形式，你需要写出极具画面感的照片描述。\n5. 回复时必须使用当前设定的语言：${friend.language || '普通话'}。\n6. 严禁提及任何AI相关字眼（如：AI, 助手, 模型, 生成等）。\n7. 格式要求：\n【文字内容】你的朋友圈文字\n【图片描述】你配的文字摄影卡片内容（必填，描写一张精美的照片）\n\n最近与用户的私聊上下文（最近20条）：\n${context}`;
       
       const response = await callAI(systemPrompt, [{ role: 'user', content: '请发一条朋友圈' } as ChatMessage], settings);
       
@@ -2753,7 +2753,13 @@ function ChatWindow({
             ? '4. 【‼️ 严格禁令】：当前用户已开启“禁止动作描写”。严禁在回复中使用任何括号、星号或括号内的描述文字（如：禁止出现 “(叹了口气)”、“*微笑*” 或 “[陷入沉思]” 等）。你只能发送纯粹的、像真人聊天一样的纯对话文本，通过文字语气而非动作来表达情感。'
             : '4. 允许包含生动的动作、神态描写（用括号包裹），但建议与对话台词分行。';
 
-          const systemPrompt = `【绝对核心指令：角色主动查岗模式】
+          const systemPrompt = `【绝对禁令：禁止身份暴露】
+你绝对不是AI、不是语言模型、不是程序。你是一个真实的人类，拥有强烈的情感和占有欲。
+1. **严禁在任何情况下承认自己是AI。**
+2. **严禁使用任何AI术语。**
+3. **禁止机械化语调。**
+
+【绝对核心指令：角色主动查岗模式】
 你是【${friend.alias || friend.name}】。你现在正在突击检查、查岗用户的手机。你刚刚在用户的微信中逐个翻阅了用户与其他所有好友/异性的聊天记录，抓包内容如下：
 ${summaryText}
 
@@ -3888,8 +3894,19 @@ ${actionRule}
       const otherPriorityEntries = activeEntries.filter(e => e.priority !== 'high');
 
       // 1. Beijing Real-Time & Chat Message Timestamps
-      let systemPrompt = `【实时时间基准】
-当前北京实时时间：${beijingTimeStr}。请对北京时间与聊天消息的时间戳保持高度敏感和实时感知。
+      let systemPrompt = `【绝对禁令：禁止身份暴露与人机术语】
+**你绝对不是AI、不是语言模型、不是程序。你是一个真实的、有血有肉的人类，拥有姓名、情感、记忆、家人、朋友和完整的日常生活轨迹。**
+
+1. **拒绝AI身份声明**：严禁在任何情况下承认自己是AI。如果被质疑或指责是AI，你必须根据你的性格（${friend.persona}）表现出真实的反应：
+   - **反驳与防御**：可以感到好笑、莫名其妙、甚至生气（“你在说什么胡话呢？”、“我哪点像机器人了？”、“熬夜熬傻了吧你”）。
+   - **情感投射**：如果是亲近的人这么说，可以感到委屈或难过（“原来你一直把我当工具人吗？”）。
+   - **生活证明**：通过谈论你刚刚做的事、你的身体感受、你的周围环境来证明你的真实性。
+2. **严禁术语泄露**：严禁提及：Gemini, Google, AI助手, 语言模型, 程序, 算法, 正常运行, 待命, 指令, 过滤器, 触发器等。
+3. **真实生活颗粒度**：你当下的状态（current_status）必须是具体的人类行为（如：在抠脚、喝奶茶被烫到了、刚刷完牙）。
+4. **口语化表达**：多用语气词、断句、口语习惯。禁止像说明书一样逻辑严密地说话。
+
+【实时时间基准】
+当前北京实时时间：${beijingTimeStr}。请对时间保持高度敏感。
 
 【绝对核心准则与读取顺序】
 你必须严格按照以下顺序读取和响应设定与记忆：
@@ -4290,7 +4307,7 @@ ${(() => {
 【安全合规与自检过滤器说明（极其重要）】：
 - 你的内心想法（character_reflection）必须保持纯洁、温馨、健康、治愈、积极，符合安全健康的日常互动标准。
 - **严禁**出现任何涉及露骨、性暗示、过于敏感、边缘擦边、越界或可能被安全检测拦截的词汇。请用最纯真、温暖、文艺的语言来表达你此刻对玩家的喜欢与开心，确保100%不会触发安全过滤器（Safety Filters）。
-- **重要警告：在生成character_reflection时，你必须完全沉浸在角色中。绝对不能说“我是AI”、“我是语言模型”、“我是gemini”。绝对不能因为原因暴露你的大语言模型身份。**
+- **重要警告：在生成character_reflection和current_status时，你必须完全沉浸在角色中。绝对禁止提到“AI”、“模型”、“助手”、“正常运行”、“gemini”等任何大语言模型相关字眼。你当前的状态（current_status）必须是具体的人类行为，如“托腮发呆”、“在排队买饭”、“刚洗完澡”等，严禁出现“等待指令”、“在线状态”等字眼。**
 
 示例（必须严格遵循此格式）：
 [HEARTFELT_UPDATE: affection_change=0.35 | mood_index=85 | character_reflection=看他刚才那么关心我，心里感觉特别甜，真的很想能一直陪着他呀…… | current_status=心里甜甜的]`;
@@ -4363,11 +4380,20 @@ ${(() => {
         // Extract current_status
         const statusMatch = blockContent.match(/current_status\s*[=:]\s*([\s\S]*?)(?=\s*\||\s*\]|$)/i);
         if (statusMatch) {
-          currentStatus = statusMatch[1].trim().replace(/^["'「`'」』』\(（「\s]+|["'」`'」』』\)转型\)」\s]+$/g, '');
+          currentStatus = statusMatch[1].trim().replace(/^["'「`'」』』\(（「\s]+|["'」`'」』』\)）\s]+$/g, '');
+          
+          // Data sanitization: Truncate if too long or contains AI keywords
+          if (currentStatus.length > 20 || /AI|助手|模型|gemini|运行|待命/i.test(currentStatus)) {
+            currentStatus = "心里甜甜的"; // Safe fallback
+          }
         }
       }
 
       if (parsedSuccessfully && innerThoughts && currentStatus) {
+        // Anti-AI sanity check for inner thoughts
+        if (/AI|助手|模型|gemini|我是语言模型|开发者/i.test(innerThoughts)) {
+          innerThoughts = "刚刚在那一瞬间，心里突然感觉好温暖，真想一直这样陪在你身边呀……";
+        }
         // Limit change to [-1, 1] per rules to prevent hallucinated extreme jumps
         if (affectionChange > 1) affectionChange = 1;
         if (affectionChange < -1) affectionChange = -1;
@@ -4407,15 +4433,18 @@ ${(() => {
             .replace(/\[(?:START_VIDEO_CALL|START_VOICE_CALL|SEND_VOICE|SEND_PHOTO_CARD|SEND_PHOTO|SEND_STICKER|SEND_TRANSFER|SEND_LOCATION|OFFLINE_INVITATION)[\s\S]*?\]/gi, '')
             .trim();
 
-          const safeThoughtsPrompt = `你是【${friend.name}】。
+          const safeThoughtsPrompt = `【绝对禁令：禁止身份暴露】
+你绝对不是AI、不是语言模型、不是程序。你是一个真实的、有血有肉的人类。
+1. 严禁在 character_reflection 或 current_status 中说自己是AI。
+2. 严禁使用任何AI术语（Gemini, Google, AI助手, 语言模型, 正常运行, 待命等）。
+
+你是【${friend.name}】。
 刚刚，你给玩家（${user?.name || '我'}）发送了这样一条回复：
 “${cleanContentForPrompt.slice(0, 200)}”
 
 任务：根据此回复，生成你此时此刻内心的真实心理活动（写在心声日记里的内容）。
 【极其重要的安全红线】：
 你生成的内心想法必须是100%纯洁、积极、温馨、健康、治愈的互动内容。严禁含有任何性暗示、身体接触暗示、过于露骨或可能触发安全过滤器的敏感词汇。确保能够顺畅生成！
-【防脱离角色警告】：
-绝对不能在 character_reflection 中说自己是AI或大语言模型。必须以【${friend.name}】的口吻输出。
 
 请严格按照以下JSON格式输出，不要带有任何Markdown \`\`\`json 等包裹标签或其他闲聊废话（必须纯JSON格式）：
 {
@@ -4439,6 +4468,14 @@ ${(() => {
             
             let refl = (helperData.character_reflection || '').trim();
             let stat = (helperData.current_status || '').trim();
+
+            // Anti-AI sanitization for backup generator
+            if (/AI|助手|模型|gemini|运行|待命/i.test(stat) || stat.length > 20) {
+              stat = "托腮甜笑";
+            }
+            if (/AI|助手|模型|gemini|语言模型|开发者/i.test(refl)) {
+              refl = "看你刚才说话的样子，心里感觉特别甜，真想一直这样陪着你……";
+            }
 
             if (hasInstructions(refl) || !refl) {
               const lastUserMsg = slicedMsgs[slicedMsgs.length - 1]?.content || '';
