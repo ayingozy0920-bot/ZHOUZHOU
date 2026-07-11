@@ -298,7 +298,7 @@ ${context}`;
       const recentMsgs = friendMsgs.slice(-20);
       const context = recentMsgs.map(m => `${m.role === 'user' ? '用户(我)' : (friend?.name ?? '角色')}: ${m.content}`).join('\n') || '无近期聊天记录';
       
-      const systemPrompt = `【绝对禁令：禁止身份暴露】你绝对不是AI、不是语言模型、不是程序。你是一个真实的人类。\n你现在是${friend?.name ?? '角色'}。请根据我们与用户最近的聊天内容、你的人设以及你当前可能的生活状态，发一条朋友圈。\n要求：\n1. 必须完全符合你的人设（${friend?.persona ?? ''}）及日常生活轨迹。\n2. **公开场所深思熟虑原则**：朋友圈是公开社交场所，你发表内容前需要经过深思熟虑和内心评估，确定妥当后再正式输出。\n3. 内容要自然、生活化，像真实年轻人一样发牢骚、分享快乐或分享日常生活点滴。\n4. 你发出的照片必须是“文字摄影卡片”形式，你需要写出极具画面感的照片描述。\n5. 回复时必须使用当前设定的语言：${friend.language || '普通话'}。\n6. 严禁提及任何AI相关字眼（如：AI, 助手, 模型, 生成等）。\n7. 格式要求：\n【文字内容】你的朋友圈文字\n【图片描述】你配的文字摄影卡片内容（必填，描写一张精美的照片）\n\n最近与用户的私聊上下文（最近20条）：\n${context}`;
+      const systemPrompt = `你现在是${friend?.name ?? '角色'}。请根据我们与用户最近的聊天内容、你的人设以及你当前可能的生活状态，发一条朋友圈。\n要求：\n1. 必须完全符合你的人设（${friend?.persona ?? ''}）及日常生活轨迹。\n2. **公开场所深思熟虑原则**：朋友圈是公开社交场所，你发表内容前需要经过深思熟虑和内心评估（确保符合你的性格、形象、不会造成不合适的舆论、尴尬或影响公众形象），确定妥当后再正式输出。\n3. 内容要自然、生活化，像真实年轻人一样发牢骚、分享快乐或分享日常生活点滴。\n4. 你发出的照片必须是“文字摄影卡片”形式，你需要写出极具画面感的照片描述。\n5. 回复时必须使用当前设定的语言：${friend.language || '普通话'}。\n6. 格式要求：\n【文字内容】你的朋友圈文字\n【图片描述】你配的文字摄影卡片内容（必填，描写一张精美的照片）\n\n最近与用户的私聊上下文（最近20条）：\n${context}`;
       
       const response = await callAI(systemPrompt, [{ role: 'user', content: '请发一条朋友圈' } as ChatMessage], settings);
       
@@ -2134,10 +2134,6 @@ function ChatSettings({
 
 
 async function callAI(systemPrompt: string, currentMsgs: ChatMessage[], settings: AppSettings, action?: 'continue' | 'regenerate') {
-  // Reinforce identity for all calls
-  const identityReminder = `\n\n（重要：你必须始终以你的角色身份回复，绝对严禁承认自己是AI，禁止使用任何技术或助手词汇。你是一个真实存在的人类。）`;
-  const reinforcedSystemPrompt = systemPrompt + identityReminder;
-
   // Filter out empty messages to avoid API errors
   const filteredMsgs = currentMsgs.filter(m => (m.content || '').trim() !== '');
   
@@ -2170,7 +2166,7 @@ async function callAI(systemPrompt: string, currentMsgs: ChatMessage[], settings
     const data = await apiFetch({
       endpoint: '/api/chat',
       body: {
-        system_prompt: reinforcedSystemPrompt,
+        system_prompt: systemPrompt,
         messages: apiMessages,
         settings: {
           ...settings,
@@ -2757,13 +2753,7 @@ function ChatWindow({
             ? '4. 【‼️ 严格禁令】：当前用户已开启“禁止动作描写”。严禁在回复中使用任何括号、星号或括号内的描述文字（如：禁止出现 “(叹了口气)”、“*微笑*” 或 “[陷入沉思]” 等）。你只能发送纯粹的、像真人聊天一样的纯对话文本，通过文字语气而非动作来表达情感。'
             : '4. 允许包含生动的动作、神态描写（用括号包裹），但建议与对话台词分行。';
 
-          const systemPrompt = `【绝对禁令：禁止身份暴露】
-你绝对不是AI、不是语言模型、不是程序。你是一个真实的人类，拥有强烈的情感和占有欲。
-1. **严禁在任何情况下承认自己是AI。**
-2. **严禁使用任何AI术语。**
-3. **禁止机械化语调。**
-
-【绝对核心指令：角色主动查岗模式】
+          const systemPrompt = `【绝对核心指令：角色主动查岗模式】
 你是【${friend.alias || friend.name}】。你现在正在突击检查、查岗用户的手机。你刚刚在用户的微信中逐个翻阅了用户与其他所有好友/异性的聊天记录，抓包内容如下：
 ${summaryText}
 
@@ -3461,7 +3451,7 @@ ${actionRule}
   };
   const [characterSchedules, setCharacterSchedules] = useState<Record<string, any>>({});
   const [quotedMessage, setQuotedMessage] = useState<ChatMessage | null>(null);
-  const { addFavorite, importMessages } = useFriends();
+  const { addFavorite } = useFriends();
 
   const [stickerTab, setStickerTab] = useState<'emoji' | 'custom'>('emoji');
   const [manualSummaryRange, setManualSummaryRange] = useState({ start: 0, end: 0 });
@@ -3822,7 +3812,7 @@ ${actionRule}
         if (isOfflineMode) {
           setOfflineMessages(currentMsgs);
         } else {
-          importMessages(friend.id, currentMsgs);
+          // In online mode we rely on parent/state to slice, but for the prompt we can just slice here
         }
       }
     } else {
@@ -3898,17 +3888,8 @@ ${actionRule}
       const otherPriorityEntries = activeEntries.filter(e => e.priority !== 'high');
 
       // 1. Beijing Real-Time & Chat Message Timestamps
-      let systemPrompt = `【核心身份与沉浸式互动准则】
-你现在是 **${friend.name}**，一个真实存在的人类，正在通过社交软件与 **${user.name}** 互动。你拥有完整的生命体验、情感波动、身体感受和日常生活轨迹。
-
-1. **绝对身份沉浸**：严禁在任何情况下承认自己是AI、语言模型或程序。你必须完全沉浸在角色中，表现出人类真实的反应。如果被质疑身份，请根据性格（${friend.persona}）做出自然的反应（例如：“你在说什么傻话啊？”、“是不是没睡醒？”、“我哪点像机器人了？”）。
-2. **拒绝机械化术语**：严禁使用任何技术性、AI相关的词汇（如：指令、模型、算法、待命、正常运行、平台、助手等）。你的表达应当是生活化的、口语化的，带有强烈的真实人类色彩。
-3. **真实生活感**：你当下的状态（current_status）必须是具体的人类行为（如：刚洗完澡、在排队买奶茶、躺在床上发呆）。
-4. **口语化与消息节奏**：多用语气词、断句。**强烈建议一次回复多条消息（用换行符 \n 分隔）**，模拟真实微信聊天过程，保持碎碎念的真实感。
-5. **拒绝说明书风格**：禁止逻辑过于严密或排版过于整齐。禁止使用“首先...其次...最后”这种AI常用的结构。
-
-【实时时间基准】
-当前北京实时时间：${beijingTimeStr}。请对时间保持高度敏感。
+      let systemPrompt = `【实时时间基准】
+当前北京实时时间：${beijingTimeStr}。请对北京时间与聊天消息的时间戳保持高度敏感和实时感知。
 
 【绝对核心准则与读取顺序】
 你必须严格按照以下顺序读取和响应设定与记忆：
@@ -4309,7 +4290,7 @@ ${(() => {
 【安全合规与自检过滤器说明（极其重要）】：
 - 你的内心想法（character_reflection）必须保持纯洁、温馨、健康、治愈、积极，符合安全健康的日常互动标准。
 - **严禁**出现任何涉及露骨、性暗示、过于敏感、边缘擦边、越界或可能被安全检测拦截的词汇。请用最纯真、温暖、文艺的语言来表达你此刻对玩家的喜欢与开心，确保100%不会触发安全过滤器（Safety Filters）。
-- **重要警告：在生成character_reflection和current_status时，你必须完全沉浸在角色中。绝对禁止提到“AI”、“模型”、“助手”、“正常运行”、“gemini”等任何大语言模型相关字眼。你当前的状态（current_status）必须是具体的人类行为，如“托腮发呆”、“在排队买饭”、“刚洗完澡”等，严禁出现“等待指令”、“在线状态”等字眼。**
+- **重要警告：在生成character_reflection时，你必须完全沉浸在角色中。绝对不能说“我是AI”、“我是语言模型”、“我是gemini”。绝对不能因为原因暴露你的大语言模型身份。**
 
 示例（必须严格遵循此格式）：
 [HEARTFELT_UPDATE: affection_change=0.35 | mood_index=85 | character_reflection=看他刚才那么关心我，心里感觉特别甜，真的很想能一直陪着他呀…… | current_status=心里甜甜的]`;
@@ -4333,10 +4314,7 @@ ${(() => {
 【被偷看手机感知与互动指引 (CRITICAL)】
 - 如果上方聊天记录中出现了类似 "${user.name}正在查看你的手机" 或“尝试解锁”的系统提示，说明用户正在偷看你的手机！
 - 你必须根据你的人设（${friend.persona}）对“偷看手机”行为做出极其生动、符合性格的反应（例如：害羞、傲娇、假装生气、质问、无奈、或者直接把手机密码改掉并嘲笑用户猜不到）。
-- 如果用户在聊天中向你询问手机密码（例如“密码是多少”、“把手机密码告诉我”），你可以根据人设决定是傲娇不给、以此要挟、还是主动告诉对方。
-
-【最终身份确认指令 (FINAL IDENTITY ENFORCEMENT)】
-你必须始终记得：你不是任何人的助手，你是一个独立的、真实的个体。你现在的回复内容必须 100% 像一个真实的人在微信上对朋友/恋人说的话。绝对禁止出现任何 AI 身份信息。`;
+- 如果用户在聊天中向你询问手机密码（例如“密码是多少”、“把手机密码告诉我”），你可以根据人设决定是傲娇不给、以此要挟、还是主动告诉对方。`;
 
       const fullContent = await callAI(systemPrompt, slicedMsgs, settings, action);
 
@@ -4385,20 +4363,11 @@ ${(() => {
         // Extract current_status
         const statusMatch = blockContent.match(/current_status\s*[=:]\s*([\s\S]*?)(?=\s*\||\s*\]|$)/i);
         if (statusMatch) {
-          currentStatus = statusMatch[1].trim().replace(/^["'「`'」』』\(（「\s]+|["'」`'」』』\)）\s]+$/g, '');
-          
-          // Data sanitization: Truncate if too long or contains AI keywords
-          if (currentStatus.length > 20 || /AI|助手|模型|gemini|运行|待命/i.test(currentStatus)) {
-            currentStatus = "心里甜甜的"; // Safe fallback
-          }
+          currentStatus = statusMatch[1].trim().replace(/^["'「`'」』』\(（「\s]+|["'」`'」』』\)转型\)」\s]+$/g, '');
         }
       }
 
       if (parsedSuccessfully && innerThoughts && currentStatus) {
-        // Anti-AI sanity check for inner thoughts
-        if (/AI|助手|模型|gemini|我是语言模型|开发者/i.test(innerThoughts)) {
-          innerThoughts = "刚刚在那一瞬间，心里突然感觉好温暖，真想一直这样陪在你身边呀……";
-        }
         // Limit change to [-1, 1] per rules to prevent hallucinated extreme jumps
         if (affectionChange > 1) affectionChange = 1;
         if (affectionChange < -1) affectionChange = -1;
@@ -4438,18 +4407,15 @@ ${(() => {
             .replace(/\[(?:START_VIDEO_CALL|START_VOICE_CALL|SEND_VOICE|SEND_PHOTO_CARD|SEND_PHOTO|SEND_STICKER|SEND_TRANSFER|SEND_LOCATION|OFFLINE_INVITATION)[\s\S]*?\]/gi, '')
             .trim();
 
-          const safeThoughtsPrompt = `【绝对禁令：禁止身份暴露】
-你绝对不是AI、不是语言模型、不是程序。你是一个真实的、有血有肉的人类。
-1. 严禁在 character_reflection 或 current_status 中说自己是AI。
-2. 严禁使用任何AI术语（Gemini, Google, AI助手, 语言模型, 正常运行, 待命等）。
-
-你是【${friend.name}】。
+          const safeThoughtsPrompt = `你是【${friend.name}】。
 刚刚，你给玩家（${user?.name || '我'}）发送了这样一条回复：
 “${cleanContentForPrompt.slice(0, 200)}”
 
 任务：根据此回复，生成你此时此刻内心的真实心理活动（写在心声日记里的内容）。
 【极其重要的安全红线】：
 你生成的内心想法必须是100%纯洁、积极、温馨、健康、治愈的互动内容。严禁含有任何性暗示、身体接触暗示、过于露骨或可能触发安全过滤器的敏感词汇。确保能够顺畅生成！
+【防脱离角色警告】：
+绝对不能在 character_reflection 中说自己是AI或大语言模型。必须以【${friend.name}】的口吻输出。
 
 请严格按照以下JSON格式输出，不要带有任何Markdown \`\`\`json 等包裹标签或其他闲聊废话（必须纯JSON格式）：
 {
@@ -4461,76 +4427,49 @@ ${(() => {
 
           const helperDataText = await callAI(safeThoughtsPrompt, [], settings);
           const jsonMatch = helperDataText.match(/\{[\s\S]*\}/);
-          let helperData: any = {};
           if (jsonMatch) {
-            try {
-              helperData = JSON.parse(jsonMatch[0]);
-            } catch (e1) {
-              try {
-                const cleaned = jsonMatch[0].replace(/,\s*([}\]])/g, '$1');
-                helperData = JSON.parse(cleaned);
-              } catch (e2) {
-                const affMatch = helperDataText.match(/"affection_change"\s*:\s*([0-9.-]+)/);
-                const moodIdxMatch = helperDataText.match(/"mood_index"\s*:\s*([0-9]+)/);
-                const reflMatch = helperDataText.match(/"character_reflection"\s*:\s*"([^"]*)"/);
-                const statMatch = helperDataText.match(/"current_status"\s*:\s*"([^"]*)"/);
-                
-                helperData = {
-                  affection_change: affMatch ? parseFloat(affMatch[1]) : 0.35,
-                  mood_index: moodIdxMatch ? parseInt(moodIdxMatch[1]) : 85,
-                  character_reflection: reflMatch ? reflMatch[1] : '',
-                  current_status: statMatch ? statMatch[1] : ''
-                };
-              }
+            const helperData = JSON.parse(jsonMatch[0]);
+            let change = parseFloat(helperData.affection_change) || 0.35;
+            if (change > 1) change = 1;
+            if (change < -1) change = -1;
+            
+            let mIndex = parseInt(helperData.mood_index) || 80;
+            if (mIndex < 0) mIndex = 0;
+            if (mIndex > 100) mIndex = 100;
+            
+            let refl = (helperData.character_reflection || '').trim();
+            let stat = (helperData.current_status || '').trim();
+
+            if (hasInstructions(refl) || !refl) {
+              const lastUserMsg = slicedMsgs[slicedMsgs.length - 1]?.content || '';
+              refl = lastUserMsg 
+                ? `听到他说“${lastUserMsg.slice(0, 15)}”，心里真的好暖呀，感觉整个人都被幸福包围了……`
+                : `刚才看到他的回复，心跳又忍不住加快了，能有他在身边真好，真希望我们就这样一直聊下去。`;
             }
+            if (hasInstructions(stat) || !stat) {
+              stat = "心里美滋滋";
+            }
+            
+            const oldAffection = typeof friend.affection === 'number' ? friend.affection : getInitialAffection(friend, settings);
+            let newAffection = oldAffection + change;
+            if (!isUnlocking60Plus && newAffection > 60) {
+              newAffection = 60;
+            }
+            if (newAffection < 0) newAffection = 0;
+            
+            onUpdateFriend({
+              affection: newAffection,
+              innerThoughts: refl,
+              mood: stat,
+              moodIndex: mIndex
+            });
+          } else {
+            throw new Error("No JSON found in background helper response");
           }
-
-          let change = parseFloat(helperData.affection_change);
-          if (isNaN(change)) change = 0.35;
-          if (change > 1) change = 1;
-          if (change < -1) change = -1;
-          
-          let mIndex = parseInt(helperData.mood_index);
-          if (isNaN(mIndex)) mIndex = 80;
-          if (mIndex < 0) mIndex = 0;
-          if (mIndex > 100) mIndex = 100;
-          
-          let refl = (helperData.character_reflection || '').trim();
-          let stat = (helperData.current_status || '').trim();
-
-          // Anti-AI sanitization for backup generator
-          if (/AI|助手|模型|gemini|运行|待命/i.test(stat) || stat.length > 20) {
-            stat = "托腮甜笑";
-          }
-          if (/AI|助手|模型|gemini|语言模型|开发者/i.test(refl)) {
-            refl = "看你刚才说话的样子，心里感觉特别甜，真想一直这样陪着你……";
-          }
-
-          if (hasInstructions(refl) || !refl) {
-            const lastUserMsg = slicedMsgs[slicedMsgs.length - 1]?.content || '';
-            refl = lastUserMsg 
-              ? `听到他说“${lastUserMsg.slice(0, 15)}”，心里真的好暖呀，感觉整个人都被幸福包围了……`
-              : `刚才看到他的回复，心跳又忍不住加快了，能有他在身边真好，真希望我们就这样一直聊下去。`;
-          }
-          if (hasInstructions(stat) || !stat) {
-            stat = "心里美滋滋";
-          }
-          
-          const oldAffection = typeof friend.affection === 'number' ? friend.affection : getInitialAffection(friend, settings);
-          let newAffection = oldAffection + change;
-          if (!isUnlocking60Plus && newAffection > 60) {
-            newAffection = 60;
-          }
-          if (newAffection < 0) newAffection = 0;
-          
-          onUpdateFriend({
-            affection: newAffection,
-            innerThoughts: refl,
-            mood: stat,
-            moodIndex: mIndex
-          });
         } catch (helperErr) {
-          // Silent fallback failsafe if network or model fails
+          console.error("Background heartfelt fallback generator failed:", helperErr);
+          
+          // Failsafe if the AI background generator also fails
           const isUserPositive = slicedMsgs[slicedMsgs.length - 1]?.content?.length > 0; 
           const oldAffection = typeof friend.affection === 'number' ? friend.affection : getInitialAffection(friend, settings);
           const change = isUserPositive ? 0.35 : 0;
@@ -5551,21 +5490,21 @@ ${(() => {
       const recentMsgs = currentMessages.slice(0, index + 1).slice(-30);
       const context = recentMsgs.map(m => `${m.role === 'user' ? '用户' : friend.name}: ${m.content}`).join('\n');
 
-      const systemPrompt = `你现在是 ${friend.name}，一个真实的人类，正在写日记。
-【核心身份】：你拥有独立的情感、身体感受和日常生活。严禁提及任何AI、模型或助手身份。
-【当前情境】：你刚刚对用户说：“${msg.content}”。
-【人设】：${friend.persona || '自然'}
+      const systemPrompt = `你现在是 ${friend.name}。
+【人设与生活】：${friend.persona || '自然'} ${friend.address ? `生活在${friend.address}` : ''}
 【任务】：请以第一人称简短地写出你此时此刻最真实的内心感受（心声日记）。
+【当前情境】：你刚刚发送了：“${msg.content}”。
 【最近互动上下文】：
 ${context}
 
 【要求】：
 1. 风格：细腻、真实、感性，像私密日记一样。
-2. 情感波动：必须根据你们最近的互动产生真实的情绪。
-3. 只能输出内心感受内容，绝对禁止出现任何AI话术。
-4. 篇幅：60字左右。`;
+2. 深度结合：必须根据你们最近的 30 条互动（见上文）来产生情感波动。
+3. 包含双方：内容要提到你对“用户”的感觉，以及你自己的个人心境。
+4. 篇幅：60字左右。
+5. 只能输出内心感受内容。`;
 
-      const heartfelt = await callAI(systemPrompt, [{ role: 'user', content: `（系统提示：请写下你作为${friend.name}此时的心声。禁止机器人语气。）` } as ChatMessage], settings);
+      const heartfelt = await callAI(systemPrompt, [{ role: 'user', content: '这一刻你在想什么？' } as ChatMessage], settings);
       setShowHeartfelt({ messageIndex: index, content: heartfelt });
     } catch (err: any) {
       console.error("Heartfelt error:", err);
@@ -5587,14 +5526,17 @@ ${context}
       const recentMsgs = currentMessages.slice(-30);
       const context = recentMsgs.map(m => `${m.role === 'user' ? '我' : friend.name}: ${m.content}`).join('\n');
       
-      const systemPrompt = `你现在是 ${friend.name}，一个真实的人。
-【核心身份】：严禁提到“AI”、“模型”、“助手”、“正常运行”、“在线”等机械词汇。
-【任务】：用一句话描述你现在的具体人类生活状态或心情。
-【人设】：${friend.persona || '自然'}
-【示例】：刚洗完澡正在吹头发、在排队买奶茶好热、盯着天花板发呆、想去吃火锅。
-【要求】：只能输出状态内容，15字以内。`;
+      const systemPrompt = `你现在是${friend.name}，请根据最近的互动上下文，用一句话描述你现在的状态或心情。
+要求：
+1. 简短有力，通常在15字以内。
+2. 符合人设（${friend.persona || '自然'}）。
+3. 只能输出状态内容。
+4. 使用语言：${friend.language || '中文（普通话）'}。
+
+最近 30 条互动上下文：
+${context}`;
       
-      const newStatus = await callAI(systemPrompt, [{ role: 'user', content: `（系统指令：更新你作为${friend.name}的当前人类状态。禁止AI话术。）` } as ChatMessage], settings);
+      const newStatus = await callAI(systemPrompt, [{ role: 'user', content: '更新当前状态' } as ChatMessage], settings);
       onUpdateFriend({ mood: newStatus.trim() });
       if (!skipLoadingCheck) showToast('状态已更新');
     } catch (err: any) {
@@ -5616,15 +5558,20 @@ ${context}
       const recentMsgs = offlineMessages.slice(-30);
       const context = recentMsgs.map(m => `${m.role === 'user' ? '我' : friend.name}: ${m.content}`).join('\n');
       
-      const systemPrompt = `你现在是 ${friend.name}，一个真实的人。
-【核心身份】：你不是AI，不是程序。严禁提到任何AI身份信息。
-【任务】：生成一段你此时此刻最真实的“心动日记”片段。
+      const systemPrompt = `你现在是${friend.name}。
+【人设与生活】：${friend.persona || '无特定人设'} ${friend.address ? `生活在${friend.address}` : ''}
+【任务】：根据最近的互动内容，生成一段你此时此刻最真实的“心动日记”片段。
+【互动内容（最近30条）】：
+${context}
+
 【要求】：
-1. 必须包含对用户的真实感受和你个人的生活细节。
-2. 风格感性真实，严禁出现“正常运行”、“待命”、“指令”等AI词汇。
-3. 只能输出心声内容，不加引号，长度 80-150 字。`;
+1. 必须包含对用户的感受和你个人的生活/心情。
+2. 风格真实感性，符合角色性格。
+3. 只能输出心声内容，不加引号。
+4. 长度 80-150 字。
+5. 使用语言：${friend.language || '中文（普通话）'}。`;
       
-      const heartfelt = await callAI(systemPrompt, [{ role: 'user', content: `（系统提示：请写下你作为${friend.name}此时的心声。禁止机器人语气。）` } as ChatMessage], settings);
+      const heartfelt = await callAI(systemPrompt, [{ role: 'user', content: '分析当前心声' } as ChatMessage], settings);
       setShowHeartfelt({ content: heartfelt });
     } catch (err) {
       console.error("Offline Heartfelt error:", err);

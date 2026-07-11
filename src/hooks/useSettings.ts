@@ -268,9 +268,6 @@ export function useSettings() {
           }
 
           setSettings(finalSettings);
-          try {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(finalSettings));
-          } catch (e) {}
         }
       } catch (e) {
         console.error('Failed to load settings:', e);
@@ -286,8 +283,8 @@ export function useSettings() {
     const newSettings = { ...settings, ...updates };
     setSettings(newSettings);
     try {
+      // 仅保存到 idb，避免 localStorage 空间不足导致崩溃
       await set(STORAGE_KEY, newSettings);
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(newSettings));
     } catch (e) {
       console.error('Failed to save settings:', e);
     }

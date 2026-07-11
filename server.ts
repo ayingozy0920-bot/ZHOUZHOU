@@ -128,13 +128,6 @@ async function startServer() {
   // API 路由
   app.post("/api/chat", async (req, res) => {
     const { system_prompt, messages, settings } = req.body;
-
-    console.log(`[API Chat] Model: ${settings?.modelName || 'default'}, System Prompt Length: ${system_prompt?.length || 0}`);
-    if (system_prompt && system_prompt.length > 500) {
-      console.log(`[API Chat] System Prompt Snippet: ${system_prompt.substring(0, 500)}...`);
-    } else {
-      console.log(`[API Chat] System Prompt: ${system_prompt}`);
-    }
     
     try {
       // Pre-resolve all image messages to base64 structure
@@ -155,7 +148,7 @@ async function startServer() {
       if (baseUrl) {
         try {
           baseUrl = baseUrl.replace(/\/+$/, '');
-          const isOpenAI = !baseUrl.includes('generativelanguage.googleapis.com');
+          const isOpenAI = true;
           
           if (isOpenAI) {
             let url = baseUrl;
@@ -192,9 +185,6 @@ async function startServer() {
               })
             ];
 
-            const rawModel = settings.modelName || settings.model || 'gpt-3.5-turbo';
-            const cleanedModel = rawModel.replace(/^\[[^\]]+\]\s*/g, '').trim() || rawModel;
-
             const response = await fetch(url, {
               method: 'POST',
               headers: {
@@ -202,7 +192,7 @@ async function startServer() {
                 'Authorization': `Bearer ${apiKey}`
               },
               body: JSON.stringify({
-                model: cleanedModel,
+                model: settings.modelName || settings.model || 'gpt-3.5-turbo',
                 messages: openaiMessages,
                 temperature: settings.temperature || 0.7,
                 max_tokens: settings.maxTokens || 1000
@@ -215,8 +205,7 @@ async function startServer() {
               return res.status(response.status).json({ error: errText || `Proxy error ${response.status}` });
             } else {
               const data: any = await response.json();
-              const content = data.choices?.[0]?.message?.content || '';
-              return res.json({ text: content });
+              return res.json({ text: data.choices?.[0]?.message?.content || '' });
             }
           }
         } catch (proxyErr: any) {
