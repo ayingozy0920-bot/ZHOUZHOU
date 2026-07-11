@@ -71,8 +71,6 @@
     height: 100vh !important;
     height: 100dvh !important;
     margin: 0 !important;
-    padding-top: max(env(safe-area-inset-top), 34px) !important;
-    padding-bottom: max(env(safe-area-inset-bottom), 15px) !important;
     box-sizing: border-box !important;
     z-index: 999999 !important;
     border-radius: 0 !important;

@@ -1250,8 +1250,8 @@ ${recentMemories}
               ) : (
                 <span className={cn(
                   "text-sm font-bold tracking-tight",
-                  settings.themeId === 'normal' && !settings.fullScreenMode ? "text-white" : 
-                  settings.themeId === 'normal' ? "text-slate-900" : "text-white"
+                  settings.themeId === 'normal' ? "text-white" : 
+                  settings.themeId === 'pink-cat' ? "text-slate-900" : "text-white"
                 )}>
                   {time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
                 </span>
@@ -1272,20 +1272,20 @@ ${recentMemories}
               ) : (
                 <div className={cn(
                   "flex items-center gap-1.5",
-                  (settings.themeId === 'normal' || settings.themeId === 'pink-cat') && !settings.fullScreenMode ? "text-white" : 
-                  (settings.themeId === 'normal' || settings.themeId === 'pink-cat') ? "text-slate-900" : "text-white"
+                  settings.themeId === 'normal' ? "text-white" : 
+                  settings.themeId === 'pink-cat' ? "text-slate-900" : "text-white"
                 )}>
                   <Signal size={14} />
                   <Wifi size={14} />
                   <div className={cn(
                     "relative w-6 h-3 border rounded-sm flex items-center px-0.5",
-                    (settings.themeId === 'normal' || settings.themeId === 'pink-cat') && !settings.fullScreenMode ? "border-white/60" : 
-                    (settings.themeId === 'normal' || settings.themeId === 'pink-cat') ? "border-slate-900/40" : "border-white/60"
+                    settings.themeId === 'normal' ? "border-white/60" : 
+                    settings.themeId === 'pink-cat' ? "border-slate-900/40" : "border-white/60"
                   )}>
                     <div className={cn(
                       "h-full rounded-px",
-                      (settings.themeId === 'normal' || settings.themeId === 'pink-cat') && !settings.fullScreenMode ? "bg-white" : 
-                      (settings.themeId === 'normal' || settings.themeId === 'pink-cat') ? "bg-slate-900" : "bg-white"
+                      settings.themeId === 'normal' ? "bg-white" : 
+                      settings.themeId === 'pink-cat' ? "bg-slate-900" : "bg-white"
                     )} style={{ width: '80%' }} />
                   </div>
                   <span className="text-[11px] font-bold">80%</span>
@@ -1316,7 +1316,7 @@ ${recentMemories}
           <div 
           className="flex-1 relative overflow-hidden flex flex-col"
           style={{ 
-            marginTop: settings.hideStatusBar ? 0 : 'max(env(safe-area-inset-top), 34px)',
+            marginTop: settings.hideStatusBar ? 'env(safe-area-inset-top)' : 'max(env(safe-area-inset-top), 34px)',
             transform: 'translateZ(0)',
             height: '100%'
           }}
