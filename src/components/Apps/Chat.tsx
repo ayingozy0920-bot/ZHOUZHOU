@@ -4461,57 +4461,76 @@ ${(() => {
 
           const helperDataText = await callAI(safeThoughtsPrompt, [], settings);
           const jsonMatch = helperDataText.match(/\{[\s\S]*\}/);
+          let helperData: any = {};
           if (jsonMatch) {
-            const helperData = JSON.parse(jsonMatch[0]);
-            let change = parseFloat(helperData.affection_change) || 0.35;
-            if (change > 1) change = 1;
-            if (change < -1) change = -1;
-            
-            let mIndex = parseInt(helperData.mood_index) || 80;
-            if (mIndex < 0) mIndex = 0;
-            if (mIndex > 100) mIndex = 100;
-            
-            let refl = (helperData.character_reflection || '').trim();
-            let stat = (helperData.current_status || '').trim();
-
-            // Anti-AI sanitization for backup generator
-            if (/AI|助手|模型|gemini|运行|待命/i.test(stat) || stat.length > 20) {
-              stat = "托腮甜笑";
+            try {
+              helperData = JSON.parse(jsonMatch[0]);
+            } catch (e1) {
+              try {
+                const cleaned = jsonMatch[0].replace(/,\s*([}\]])/g, '$1');
+                helperData = JSON.parse(cleaned);
+              } catch (e2) {
+                const affMatch = helperDataText.match(/"affection_change"\s*:\s*([0-9.-]+)/);
+                const moodIdxMatch = helperDataText.match(/"mood_index"\s*:\s*([0-9]+)/);
+                const reflMatch = helperDataText.match(/"character_reflection"\s*:\s*"([^"]*)"/);
+                const statMatch = helperDataText.match(/"current_status"\s*:\s*"([^"]*)"/);
+                
+                helperData = {
+                  affection_change: affMatch ? parseFloat(affMatch[1]) : 0.35,
+                  mood_index: moodIdxMatch ? parseInt(moodIdxMatch[1]) : 85,
+                  character_reflection: reflMatch ? reflMatch[1] : '',
+                  current_status: statMatch ? statMatch[1] : ''
+                };
+              }
             }
-            if (/AI|助手|模型|gemini|语言模型|开发者/i.test(refl)) {
-              refl = "看你刚才说话的样子，心里感觉特别甜，真想一直这样陪着你……";
-            }
-
-            if (hasInstructions(refl) || !refl) {
-              const lastUserMsg = slicedMsgs[slicedMsgs.length - 1]?.content || '';
-              refl = lastUserMsg 
-                ? `听到他说“${lastUserMsg.slice(0, 15)}”，心里真的好暖呀，感觉整个人都被幸福包围了……`
-                : `刚才看到他的回复，心跳又忍不住加快了，能有他在身边真好，真希望我们就这样一直聊下去。`;
-            }
-            if (hasInstructions(stat) || !stat) {
-              stat = "心里美滋滋";
-            }
-            
-            const oldAffection = typeof friend.affection === 'number' ? friend.affection : getInitialAffection(friend, settings);
-            let newAffection = oldAffection + change;
-            if (!isUnlocking60Plus && newAffection > 60) {
-              newAffection = 60;
-            }
-            if (newAffection < 0) newAffection = 0;
-            
-            onUpdateFriend({
-              affection: newAffection,
-              innerThoughts: refl,
-              mood: stat,
-              moodIndex: mIndex
-            });
-          } else {
-            throw new Error("No JSON found in background helper response");
           }
-        } catch (helperErr) {
-          console.error("Background heartfelt fallback generator failed:", helperErr);
+
+          let change = parseFloat(helperData.affection_change);
+          if (isNaN(change)) change = 0.35;
+          if (change > 1) change = 1;
+          if (change < -1) change = -1;
           
-          // Failsafe if the AI background generator also fails
+          let mIndex = parseInt(helperData.mood_index);
+          if (isNaN(mIndex)) mIndex = 80;
+          if (mIndex < 0) mIndex = 0;
+          if (mIndex > 100) mIndex = 100;
+          
+          let refl = (helperData.character_reflection || '').trim();
+          let stat = (helperData.current_status || '').trim();
+
+          // Anti-AI sanitization for backup generator
+          if (/AI|助手|模型|gemini|运行|待命/i.test(stat) || stat.length > 20) {
+            stat = "托腮甜笑";
+          }
+          if (/AI|助手|模型|gemini|语言模型|开发者/i.test(refl)) {
+            refl = "看你刚才说话的样子，心里感觉特别甜，真想一直这样陪着你……";
+          }
+
+          if (hasInstructions(refl) || !refl) {
+            const lastUserMsg = slicedMsgs[slicedMsgs.length - 1]?.content || '';
+            refl = lastUserMsg 
+              ? `听到他说“${lastUserMsg.slice(0, 15)}”，心里真的好暖呀，感觉整个人都被幸福包围了……`
+              : `刚才看到他的回复，心跳又忍不住加快了，能有他在身边真好，真希望我们就这样一直聊下去。`;
+          }
+          if (hasInstructions(stat) || !stat) {
+            stat = "心里美滋滋";
+          }
+          
+          const oldAffection = typeof friend.affection === 'number' ? friend.affection : getInitialAffection(friend, settings);
+          let newAffection = oldAffection + change;
+          if (!isUnlocking60Plus && newAffection > 60) {
+            newAffection = 60;
+          }
+          if (newAffection < 0) newAffection = 0;
+          
+          onUpdateFriend({
+            affection: newAffection,
+            innerThoughts: refl,
+            mood: stat,
+            moodIndex: mIndex
+          });
+        } catch (helperErr) {
+          // Silent fallback failsafe if network or model fails
           const isUserPositive = slicedMsgs[slicedMsgs.length - 1]?.content?.length > 0; 
           const oldAffection = typeof friend.affection === 'number' ? friend.affection : getInitialAffection(friend, settings);
           const change = isUserPositive ? 0.35 : 0;

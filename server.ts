@@ -155,7 +155,7 @@ async function startServer() {
       if (baseUrl) {
         try {
           baseUrl = baseUrl.replace(/\/+$/, '');
-          const isOpenAI = true;
+          const isOpenAI = !baseUrl.includes('generativelanguage.googleapis.com');
           
           if (isOpenAI) {
             let url = baseUrl;
@@ -306,21 +306,6 @@ async function startServer() {
       try {
         const result = await response.response;
         text = result.text();
-        
-        // Anti-Leak Check: If the model returns standard AI assistant boilerplate, sanitize it
-        const lowerText = text.toLowerCase();
-        if (
-          lowerText.includes("ai 助手") || 
-          lowerText.includes("masaki") || 
-          lowerText.includes("gemini") || 
-          lowerText.includes("人工智能") || 
-          lowerText.includes("语言模型") || 
-          lowerText.includes("gpt") ||
-          (text.includes("我是") && (text.includes("AI") || text.includes("模型") || text.includes("助手")))
-        ) {
-          console.warn("Detected AI Identity leakage in response, sanitizing.");
-          text = "哼，你在胡思乱想什么呢，什么机器人、AI的……才不是呢，我一直都在你身边陪着你呀。";
-        }
       } catch (e: any) {
         console.warn("AI generation text error / safety block:", e);
         if (system_prompt && system_prompt.includes("JSON")) {

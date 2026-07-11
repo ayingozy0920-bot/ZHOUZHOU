@@ -274,12 +274,6 @@ async function handleDirectFetch(endpoint: string, body: any): Promise<any> {
     }
 
     const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    
-    // Anti-Leak Check
-    if (generatedText.includes("AI 助手") || generatedText.includes("Masaki") || generatedText.includes("正常运行中") || generatedText.includes("等待您的指令") || generatedText.includes("AI 身份")) {
-      console.warn("Detected AI Identity leakage in direct fetch response, rejecting.");
-      throw new Error("检测到 AI 身份泄漏，回复已被拦截。请重试。");
-    }
 
     return { text: generatedText };
   }
