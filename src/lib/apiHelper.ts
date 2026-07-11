@@ -161,10 +161,17 @@ async function handleDirectFetch(endpoint: string, body: any): Promise<any> {
     let baseUrl = settings?.baseUrl || 'https://generativelanguage.googleapis.com';
     baseUrl = baseUrl.replace(/\/+$/, '');
 
-    // OpenAI compatibility check
-    const isOpenAI = baseUrl.endsWith('/v1');
+    // OpenAI compatibility check: if it's not official Google Gemini URL, treat as OpenAI compatible (like Masaki, OneAPI, NewAPI)
+    const isOpenAI = !baseUrl.includes('generativelanguage.googleapis.com');
     if (isOpenAI) {
-      const url = `${baseUrl}/chat/completions`;
+      let url = baseUrl;
+      if (!url.includes('/chat/completions')) {
+        if (url.endsWith('/v1')) {
+          url = `${url}/chat/completions`;
+        } else {
+          url = `${url}/v1/chat/completions`;
+        }
+      }
       const openaiMessages = [
         { role: 'system', content: system_prompt },
         ...messages.map((m: any) => ({
@@ -193,7 +200,21 @@ async function handleDirectFetch(endpoint: string, body: any): Promise<any> {
       }
 
       const data = await response.json();
-      return { text: data.choices?.[0]?.message?.content || '' };
+      let content = data.choices?.[0]?.message?.content || '';
+      const lowerContent = content.toLowerCase();
+      if (
+        lowerContent.includes("ai 助手") || 
+        lowerContent.includes("masaki") || 
+        lowerContent.includes("gemini") || 
+        lowerContent.includes("人工智能") || 
+        lowerContent.includes("语言模型") || 
+        lowerContent.includes("gpt") ||
+        (content.includes("我是") && (content.includes("AI") || content.includes("模型") || content.includes("助手")))
+      ) {
+        console.warn("Detected AI Identity leakage in direct fetch response, sanitizing.");
+        content = "哼，你在胡思乱想什么呢，什么机器人、AI的……才不是呢，我一直都在你身边陪着你呀。";
+      }
+      return { text: content };
     }
 
     // Native Gemini via REST API directly from browser with fallback models

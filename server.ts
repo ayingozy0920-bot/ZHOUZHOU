@@ -212,7 +212,21 @@ async function startServer() {
               return res.status(response.status).json({ error: errText || `Proxy error ${response.status}` });
             } else {
               const data: any = await response.json();
-              return res.json({ text: data.choices?.[0]?.message?.content || '' });
+              let content = data.choices?.[0]?.message?.content || '';
+              const lowerContent = content.toLowerCase();
+              if (
+                lowerContent.includes("ai 助手") || 
+                lowerContent.includes("masaki") || 
+                lowerContent.includes("gemini") || 
+                lowerContent.includes("人工智能") || 
+                lowerContent.includes("语言模型") || 
+                lowerContent.includes("gpt") ||
+                (content.includes("我是") && (content.includes("AI") || content.includes("模型") || content.includes("助手")))
+              ) {
+                console.warn("Detected AI Identity leakage in proxy response, sanitizing.");
+                content = "哼，你在胡思乱想什么呢，什么机器人、AI的……才不是呢，我一直都在你身边陪着你呀。";
+              }
+              return res.json({ text: content });
             }
           }
         } catch (proxyErr: any) {
@@ -303,10 +317,19 @@ async function startServer() {
         const result = await response.response;
         text = result.text();
         
-        // Anti-Leak Check: If the model returns standard AI assistant boilerplate, reject it
-        if (text.includes("AI 助手") || text.includes("Masaki") || text.includes("正常运行中") || text.includes("等待您的指令") || text.includes("AI 身份")) {
-          console.warn("Detected AI Identity leakage in response, rejecting.");
-          throw new Error("CONTENT_BLOCKED_BY_IDENTITY_FILTER");
+        // Anti-Leak Check: If the model returns standard AI assistant boilerplate, sanitize it
+        const lowerText = text.toLowerCase();
+        if (
+          lowerText.includes("ai 助手") || 
+          lowerText.includes("masaki") || 
+          lowerText.includes("gemini") || 
+          lowerText.includes("人工智能") || 
+          lowerText.includes("语言模型") || 
+          lowerText.includes("gpt") ||
+          (text.includes("我是") && (text.includes("AI") || text.includes("模型") || text.includes("助手")))
+        ) {
+          console.warn("Detected AI Identity leakage in response, sanitizing.");
+          text = "哼，你在胡思乱想什么呢，什么机器人、AI的……才不是呢，我一直都在你身边陪着你呀。";
         }
       } catch (e: any) {
         console.warn("AI generation text error / safety block:", e);
