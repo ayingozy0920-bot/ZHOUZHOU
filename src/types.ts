@@ -511,9 +511,11 @@ export interface ChatMessage {
   timestamp: number;
   translation?: string; // for voice translation
   hideTranslation?: boolean;
-  quote?: ChatMessage;
+  quote?: { sender: string; content: string };
   innerThought?: string; // for AI's inner thoughts
   isNarration?: boolean;
+  isRecalled?: boolean;
+  recalledContent?: string;
   cardText?: string;
   location?: string; // for photo_card or location message
   date?: string; // for photo_card
@@ -591,8 +593,6 @@ export interface ChatMessage {
     confirms?: string[]; // list of member IDs/names who confirmed
     declines?: string[]; // list of member IDs/names who declined
   };
-  isRecalled?: boolean;
-  recalledContent?: string;
   isMergedForward?: boolean;
   mergedMessages?: Array<{ senderName: string; content: string; timestamp: number }>;
 }

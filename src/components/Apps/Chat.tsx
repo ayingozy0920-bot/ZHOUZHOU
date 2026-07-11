@@ -67,7 +67,8 @@ import {
   Cpu,
   ZoomIn,
   ZoomOut,
-  RotateCcw
+  RotateCcw,
+  Wrench
 } from 'lucide-react';
 import { AppSettings, Friend, ChatMessage, OfflineMemory, ListenTogetherState, AppId, ChatTheme, OfflineConfig, GroupChat } from '../../types';
 import { CCDPhotoCard } from './CCDPhotoCard';
@@ -2510,27 +2511,63 @@ const getPureStickerUrl = (content: string, customStickers: any[] = []) => {
   if (!content) return null;
   const trimmed = content.trim();
   
-  // Pattern 1: [表情: 描述] or [发送了表情: 描述]
+  // Pattern 1: [表情: 描述/ID] or [发送了表情: 描述/ID]
   const match1 = trimmed.match(/^\[(?:发送了)?表情:\s*(.*?)\]$/);
-  if (match1) {
-    const desc = match1[1];
-    const foundSticker = customStickers.find((s: any) => s.description && (s.description.includes(desc) || desc.includes(s.description)));
-    if (foundSticker) {
-      return { url: foundSticker.url, desc };
-    }
-  }
-
-  // Pattern 2: [SEND_STICKER:ID]
+  // Pattern 2: [SEND_STICKER:ID/描述]
   const match2 = trimmed.match(/^\[SEND_STICKER:\s*(.*?)\]$/);
-  if (match2) {
-    const id = match2[1];
-    const foundSticker = customStickers.find((s: any) => s.id === id);
-    if (foundSticker) {
-      return { url: foundSticker.url, desc: foundSticker.description || id };
+  
+  const value = (match1 ? match1[1] : (match2 ? match2[1] : null))?.trim();
+  
+  if (value) {
+    // 1. Try find by exact ID
+    let found = customStickers.find((s: any) => s.id === value);
+    // 2. Try find by description (exact or contains)
+    if (!found) {
+      found = customStickers.find((s: any) => s.description && (s.description === value || s.description.includes(value) || value.includes(s.description)));
+    }
+    // 3. Try find by partial ID
+    if (!found && value.length > 3) {
+      found = customStickers.find((s: any) => s.id && (s.id.includes(value) || value.includes(s.id)));
+    }
+    
+    if (found) {
+      return { url: found.url, desc: found.description || value };
     }
   }
   
   return null;
+};
+
+/**
+ * Extracts a sticker from content that might have other text
+ */
+const getStickerFromContent = (content: string, customStickers: any[] = []) => {
+  if (!content) return null;
+  // Support both command formats anywhere in the message
+  const match = content.match(/\[(?:SEND_STICKER:|发送了表情:|表情:)\s*([^,\]]+).*?\]/);
+  if (match) {
+    const value = match[1].trim();
+    let found = customStickers.find((s: any) => s.id === value);
+    if (!found) {
+      found = customStickers.find((s: any) => s.description && (s.description === value || s.description.includes(value) || value.includes(s.description)));
+    }
+    if (!found && value.length > 3) {
+      found = customStickers.find((s: any) => s.id && (s.id.includes(value) || value.includes(s.id)));
+    }
+    
+    if (found) {
+      return { url: found.url, desc: found.description || value, rawTag: match[0] };
+    }
+  }
+  return null;
+};
+
+/**
+ * Strips sticker tags from content
+ */
+const stripStickerTags = (content: string) => {
+  if (!content) return "";
+  return content.replace(/\[(?:SEND_STICKER:|发送了表情:|表情:)\s*([^,\]]+).*?\]/g, '').trim();
 };
 
 const renderMessageTimestamp = (msg: any, prevMsg?: any) => {
@@ -2815,6 +2852,8 @@ ${actionRule}
       return () => clearTimeout(timer);
     }
   }, [isSpotChecking, spotCheckStep, spotCheckItems]);
+  const [recalledMessageToView, setRecalledMessageToView] = useState<ChatMessage | null>(null);
+
   const [isLoading, setIsLoading] = useState(false);
   const [showFeatures, setShowFeatures] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -3091,9 +3130,12 @@ ${actionRule}
     setLocationPoints(newPoints);
     try {
       localStorage.setItem(`map_points_${friend.id}`, JSON.stringify(newPoints));
-    } catch (e) {
+    } catch (e: any) {
       console.warn("Failed to save map points to localStorage:", e);
-      // If it's a QuotaExceededError, we might want to clear some space or just ignore
+      if (e.name === 'QuotaExceededError' || e.message?.toLowerCase().includes('quota')) {
+        // Try to recover by clearing some points or just informing
+        // For now, we'll just not crash and keep it in memory
+      }
     }
   };
 
@@ -3467,6 +3509,38 @@ ${actionRule}
     setActiveModal(null);
   };
 
+  const handleRepairRendering = (index: number) => {
+    const msgs = isOfflineMode ? offlineMessages : messages;
+    const msg = msgs[index];
+    if (!msg) return;
+
+    // Check for stickers
+    const stickerData = getStickerFromContent(msg.content, settings.customStickers || []);
+    if (stickerData) {
+      const updates = {
+        type: 'sticker' as const,
+        mediaUrl: stickerData.url,
+        // If it's a pure sticker but was text, we ensure it renders as sticker
+      };
+      if (isOfflineMode) {
+        const newMsgs = [...offlineMessages];
+        newMsgs[index] = { ...msg, ...updates };
+        setOfflineMessages(newMsgs);
+      } else {
+        onUpdateMessage(friend.id, index, updates);
+      }
+      showToast('格式修复成功');
+    } else {
+      // Refresh rendering by adding a tiny change if needed, or just re-triggering update
+      if (isOfflineMode) {
+        setOfflineMessages([...offlineMessages]);
+      } else {
+        onUpdateMessage(friend.id, index, { timestamp: msg.timestamp });
+      }
+      showToast('渲染已刷新');
+    }
+  };
+
   const handleEndOfflineMode = async (summary?: string) => {
     setIsEndingOffline(true);
     try {
@@ -3585,7 +3659,7 @@ ${actionRule}
       role: 'user', 
       content: input, 
       type: 'text',
-      quote: quotedMessage || undefined,
+      quote: quotedMessage ? { sender: quotedMessage.role === 'user' ? '你' : friend.name, content: quotedMessage.content } : undefined,
       timestamp: Date.now() 
     };
 
@@ -4147,13 +4221,22 @@ ${(() => {
       const contextLimit = friend.memorySettings?.contextLimit || 50;
       const slicedMsgs = currentMsgs.slice(-contextLimit);
 
+      // Add Character Capability awareness
+      systemPrompt += `\n\n【系统设定：特殊互动功能】
+1. **引用回复**：你可以引用用户或你之前的某条消息。只需在回复开头包含 [QUOTE: 消息索引] 标签。
+   - 示例：[QUOTE: 5] 这一句我也这么觉得！
+   - 注意：索引 i 代表历史记录中的第 i 条消息（从0开始）。
+2. **消息撤回**：如果你发现之前发错了，可以撤回它并重新发送。使用标签 [RECALL_MESSAGE: 消息索引]。
+   - 示例：[RECALL_MESSAGE: 12] 对不起刚才发错啦，其实我想说……
+   - 撤回后，用户会看到“${friend.name}撤回了一条消息”，但用户可以通过点击查看内容。你不需要知道用户能看见。
+3. **表情包使用**：发送表情包时使用 [SEND_STICKER:表情包ID]。`;
+
       // Add Sticker awareness
       if (!isOfflineMode && settings.customStickers && settings.customStickers.length > 0) {
-        systemPrompt += `\n\n【系统设定：通用表情包库】\n你可以使用用户导入的表情包。发送表情包时请务必使用指令：[SEND_STICKER:表情包ID]。\n所有表情包对你均可用：\n`;
+        systemPrompt += `\n\n【表情包库】\n`;
         settings.customStickers.forEach(s => {
           systemPrompt += `- ID: ${s.id}, 描述: ${s.description || '无描述'}\n`;
         });
-        systemPrompt += `请根据语境选择合适的表情包，并严格使用 ID 代码。`;
       }
 
       // Final Force for Offline Plot Mode
@@ -4679,8 +4762,46 @@ ${(() => {
         .replace(/\[CHANGE_PHONE_PASSCODE:[\s\S]*?(?:\]|$)/gi, '')
         .replace(/\[(?:START_VIDEO_CALL|START_VOICE_CALL|SEND_VOICE|SEND_PHOTO_CARD|SEND_PHOTO|SEND_STICKER|SEND_TRANSFER|SEND_LOCATION|OFFLINE_INVITATION|START_LISTEN|START_TRUTH|HUABEI_REPAY)[\s\S]*?\]/gi, '')
         .replace(/\[(?:MEITUAN_BUY|TAOBAO_BUY):[\s\S]*?(?:\]|$)/gi, '')
+        .replace(/\[RECALL_MESSAGE:\s*(\d+)\]/gi, '')
+        .replace(/\[QUOTE:\s*(\d+)\]/gi, '')
         .replace(/\[\/?(?:INNER_MONOLOGUE|STATUS|OUTFIT)\]/gi, '')
         .trim();
+
+      // Handle AI Recall command
+      const recallMatch = fullContent.match(/\[RECALL_MESSAGE:\s*(\d+)\]/i);
+      if (recallMatch) {
+        const recallIndex = parseInt(recallMatch[1]);
+        if (!isNaN(recallIndex) && recallIndex >= 0 && recallIndex < currentMessages.length) {
+          const targetMsg = currentMessages[recallIndex];
+          if (targetMsg && targetMsg.role === 'assistant' && !targetMsg.isRecalled) {
+            handleRecall(recallIndex);
+          }
+        }
+      }
+
+      // Handle AI Quote command
+      let aiQuote: any = undefined;
+      const quoteMatch = fullContent.match(/\[QUOTE:\s*(\d+)\]/i);
+      if (quoteMatch) {
+        const quoteIndex = parseInt(quoteMatch[1]);
+        // Only quote recent user messages (last 2 rounds)
+        const userMessages = currentMessages
+          .map((m, idx) => ({ ...m, originalIndex: idx }))
+          .filter(m => m.role === 'user');
+        
+        // recentUserMessages: [latestUserMsg, secondLatestUserMsg]
+        const recentUserMessages = userMessages.slice(-2).reverse();
+        
+        if (!isNaN(quoteIndex) && quoteIndex >= 0 && quoteIndex < recentUserMessages.length) {
+          const quotedMsg = recentUserMessages[quoteIndex];
+          if (quotedMsg) {
+            aiQuote = {
+              content: quotedMsg.content.slice(0, 50) + (quotedMsg.content.length > 50 ? '...' : ''),
+              sender: user.name
+            };
+          }
+        }
+      }
 
       // Extracted inner monologue/status/outfit for offline cards
       let assistantInnerMonologue = '';
@@ -4819,7 +4940,8 @@ ${(() => {
           innerThought: i === messageCandidates.length - 1 ? innerThoughts : undefined,
           innerMonologue: candidate.innerMonologue,
           status: candidate.status,
-          outfit: candidate.outfit
+          outfit: candidate.outfit,
+          quote: i === 0 ? aiQuote : undefined
         };
 
         if (isOfflineMode) {
@@ -5467,7 +5589,9 @@ ${context}
           ...msg, 
           role: 'system', 
           content: msg.role === 'user' ? '你撤回了一条消息' : `${friend.name}撤回了一条消息`,
-          type: 'text' 
+          type: 'text',
+          isRecalled: true,
+          recalledContent: msg.content
         };
         setOfflineMessages(newMsgs);
       }
@@ -5477,7 +5601,9 @@ ${context}
         onUpdateMessage(friend.id, index, { 
           role: 'system', 
           content: msg.role === 'user' ? '你撤回了一条消息' : `${friend.name}撤回了一条消息`,
-          type: 'text' 
+          type: 'text',
+          isRecalled: true,
+          recalledContent: msg.content
         });
       }
     }
@@ -6000,7 +6126,7 @@ ${context}
                     "bg-[#333333]/95 backdrop-blur-xl rounded-2xl shadow-2xl p-3.5 border border-white/10",
                     isTop ? "-translate-y-full" : ""
                   )}>
-                    <div className="grid grid-cols-4 gap-y-5 gap-x-1">
+                    <div className="grid grid-cols-5 gap-y-5 gap-x-1">
                       {[
                         { label: '复制', icon: Copy, onClick: () => {
                           const msg = currentMessages[contextMenu.messageIndex];
@@ -6012,7 +6138,9 @@ ${context}
                         { label: '删除', icon: Trash2, onClick: () => handleDelete(contextMenu.messageIndex) },
                         { label: '翻译', icon: Globe, onClick: () => handleTranslate(contextMenu.messageIndex) },
                         { label: '引用', icon: Quote, onClick: () => handleReply(contextMenu.messageIndex) },
-                        { label: isOfflineMode ? '编辑' : '心声', icon: isOfflineMode ? Edit3 : Brain, onClick: () => isOfflineMode ? handleStartEdit(contextMenu.messageIndex) : handleHeartfelt(contextMenu.messageIndex) },
+                        { label: '编辑', icon: Edit3, onClick: () => handleStartEdit(contextMenu.messageIndex) },
+                        { label: '格式', icon: Wrench, onClick: () => handleRepairRendering(contextMenu.messageIndex) },
+                        { label: '心声', icon: Brain, onClick: () => handleHeartfelt(contextMenu.messageIndex) },
                         { label: '多选', icon: ListChecks, onClick: () => {
                           setIsMultiSelectMode(true);
                           setSelectedMessages([contextMenu.messageIndex]);
@@ -6281,11 +6409,22 @@ ${context}
             if (msg.role === 'system') {
               return (
                 <div key={msgKey} className="flex justify-center my-2">
-                  <span className={cn(
-                    "px-3 py-1 rounded-full text-[10px] transition-all duration-300",
-                    settings.themeId === 'rainy-cat' ? "bg-white/5 text-white/40" : "bg-black/5 text-slate-400"
-                  )}>
+                  <span 
+                    onClick={() => {
+                      if (msg.isRecalled && msg.recalledContent) {
+                        setRecalledMessageToView(msg);
+                      }
+                    }}
+                    className={cn(
+                      "px-3 py-1 rounded-full text-[10px] transition-all duration-300",
+                      settings.themeId === 'rainy-cat' ? "bg-white/5 text-white/40" : "bg-black/5 text-slate-400",
+                      msg.isRecalled && "cursor-pointer hover:bg-black/10 dark:hover:bg-white/10"
+                    )}
+                  >
                     {msg.content}
+                    {msg.isRecalled && (
+                      <span className="ml-1 opacity-60 underline">点击查看</span>
+                    )}
                   </span>
                 </div>
               );
@@ -6411,14 +6550,17 @@ ${context}
                         {selectedMessages.includes(i) && <Check size={12} strokeWidth={4} />}
                       </div>
                     )}
-                  {msg.quote && (
-                    <div className="mb-2 p-2 bg-black/5 rounded border-l-2 border-slate-300 text-[10px] opacity-60 italic">
-                      {msg.quote.content}
-                    </div>
-                  )}
-                  {msg.innerThought && (
-                    <HeartVoiceCard content={msg.innerThought} avatar={friend.avatar} />
-                  )}
+                    {msg.quote && (
+                      <div className={cn(
+                        "mb-1 px-2 py-1 bg-black/5 dark:bg-white/5 rounded border-l-2 border-slate-300 text-[10px] opacity-60 italic",
+                        msg.role === 'user' ? "mr-1 text-right" : "ml-1 text-left"
+                      )}>
+                        {(msg.quote as any).sender}: {(msg.quote as any).content}
+                      </div>
+                    )}
+                    {msg.innerThought && (
+                      <HeartVoiceCard content={msg.innerThought} avatar={friend.avatar} />
+                    )}
                   {msg.type === 'offline-invitation' && msg.invitationData && (
                     <OfflineInvitationCard 
                       data={msg.invitationData} 
@@ -6595,7 +6737,7 @@ ${context}
                     </div>
                   ) : (
                     <>
-                      {(!msg.type || msg.type === 'text') && !getPureStickerUrl(msg.content, settings.customStickers || []) && (
+                      {(!msg.type || msg.type === 'text') && !getPureStickerUrl(msg.content, settings.customStickers || []) && stripStickerTags(msg.content) && (
                         <div 
                           className={cn(
                             "flex flex-col gap-1", 
@@ -6616,7 +6758,7 @@ ${context}
                             return {};
                           })()}
                         >
-                          <div>{msg.content}</div>
+                          <div>{stripStickerTags(msg.content)}</div>
                           {msg.translation && !msg.hideTranslation && (
                             <div 
                               className="mt-1 pt-1 border-t border-black/10 text-xs italic opacity-70 cursor-pointer hover:opacity-100"
@@ -6639,7 +6781,7 @@ ${context}
                           )}
                         </div>
                       )}
-                      {(!msg.type || msg.type === 'text') && getPureStickerUrl(msg.content, settings.customStickers || []) && (
+                      {(!msg.type || msg.type === 'text') && getStickerFromContent(msg.content, settings.customStickers || []) && (
                         <div 
                           className="px-1 py-1 cursor-pointer active:opacity-90 transition-all duration-300 flex flex-col items-center gap-1"
                           onClick={(e) => {
@@ -6648,13 +6790,13 @@ ${context}
                               longPressTriggeredRef.current = false;
                               return;
                             }
-                            const sData = getPureStickerUrl(msg.content, settings.customStickers || []);
+                            const sData = getStickerFromContent(msg.content, settings.customStickers || []);
                             sData?.desc && setSelectedDescription(sData.desc);
                           }}
                         >
                           <img 
                             referrerPolicy="no-referrer"  
-                            src={getPureStickerUrl(msg.content, settings.customStickers || [])?.url} 
+                            src={getStickerFromContent(msg.content, settings.customStickers || [])?.url} 
                             alt="sticker" 
                             className="max-w-[120px] max-h-[120px] object-contain rounded-md"  
                           />
@@ -13707,6 +13849,50 @@ function VisibilitySelectorModal({ friends, visibility, visibleTo, hiddenFrom, o
           </button>
         </div>
       </div>
+    </motion.div>
+  );
+}
+
+function RecalledMessageModal({ message, settings, friend, onClose }: { message: ChatMessage, settings: AppSettings, friend: Friend, onClose: () => void }) {
+  return (
+    <motion.div 
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onClick={onClose}
+      className="fixed inset-0 z-[200000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6"
+    >
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.9, y: 20 }}
+        onClick={(e) => e.stopPropagation()}
+        className={cn(
+          "w-full max-w-xs rounded-3xl p-6 shadow-2xl transition-all duration-300 border",
+          settings.themeId === 'rainy-cat' ? "bg-black/80 border-white/10 text-white" : "bg-white border-slate-200"
+        )}
+      >
+        <div className="flex items-center gap-2 mb-4 opacity-50">
+          <RotateCcw size={16} />
+          <span className="text-xs font-bold uppercase tracking-wider">撤回的消息内容</span>
+        </div>
+        
+        <div className="max-h-[40vh] overflow-y-auto mb-6">
+          <p className="text-sm leading-relaxed whitespace-pre-wrap text-slate-700 dark:text-slate-200 italic">
+            “{message.recalledContent || message.content}”
+          </p>
+        </div>
+
+        <button
+          onClick={onClose}
+          className={cn(
+            "w-full py-3 rounded-2xl font-bold transition-all active:scale-95 text-sm",
+            settings.themeId === 'rainy-cat' ? "bg-white/10 hover:bg-white/20" : "bg-slate-100 hover:bg-slate-200"
+          )}
+        >
+          我知道了
+        </button>
+      </motion.div>
     </motion.div>
   );
 }
