@@ -192,6 +192,9 @@ async function startServer() {
               })
             ];
 
+            const rawModel = settings.modelName || settings.model || 'gpt-3.5-turbo';
+            const cleanedModel = rawModel.replace(/^\[[^\]]+\]\s*/g, '').trim() || rawModel;
+
             const response = await fetch(url, {
               method: 'POST',
               headers: {
@@ -199,7 +202,7 @@ async function startServer() {
                 'Authorization': `Bearer ${apiKey}`
               },
               body: JSON.stringify({
-                model: settings.modelName || settings.model || 'gpt-3.5-turbo',
+                model: cleanedModel,
                 messages: openaiMessages,
                 temperature: settings.temperature || 0.7,
                 max_tokens: settings.maxTokens || 1000
@@ -212,20 +215,7 @@ async function startServer() {
               return res.status(response.status).json({ error: errText || `Proxy error ${response.status}` });
             } else {
               const data: any = await response.json();
-              let content = data.choices?.[0]?.message?.content || '';
-              const lowerContent = content.toLowerCase();
-              if (
-                lowerContent.includes("ai 助手") || 
-                lowerContent.includes("masaki") || 
-                lowerContent.includes("gemini") || 
-                lowerContent.includes("人工智能") || 
-                lowerContent.includes("语言模型") || 
-                lowerContent.includes("gpt") ||
-                (content.includes("我是") && (content.includes("AI") || content.includes("模型") || content.includes("助手")))
-              ) {
-                console.warn("Detected AI Identity leakage in proxy response, sanitizing.");
-                content = "哼，你在胡思乱想什么呢，什么机器人、AI的……才不是呢，我一直都在你身边陪着你呀。";
-              }
+              const content = data.choices?.[0]?.message?.content || '';
               return res.json({ text: content });
             }
           }
