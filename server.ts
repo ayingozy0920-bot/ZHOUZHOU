@@ -128,6 +128,13 @@ async function startServer() {
   // API 路由
   app.post("/api/chat", async (req, res) => {
     const { system_prompt, messages, settings } = req.body;
+
+    console.log(`[API Chat] Model: ${settings?.modelName || 'default'}, System Prompt Length: ${system_prompt?.length || 0}`);
+    if (system_prompt && system_prompt.length > 500) {
+      console.log(`[API Chat] System Prompt Snippet: ${system_prompt.substring(0, 500)}...`);
+    } else {
+      console.log(`[API Chat] System Prompt: ${system_prompt}`);
+    }
     
     try {
       // Pre-resolve all image messages to base64 structure
