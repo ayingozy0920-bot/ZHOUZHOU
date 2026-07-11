@@ -1185,7 +1185,7 @@ ${recentMemories}
           )}
         style={{ 
           background: settings.themeId === 'pink-cat' ? '#fffafb' : settings.themeId === 'ocean-blue' ? '#f0f9ff' : '#000',
-          paddingBottom: 'max(env(safe-area-inset-bottom), 15px)',
+          paddingBottom: settings.fullScreenMode ? '0px' : 'max(env(safe-area-inset-bottom), 15px)',
           boxSizing: 'border-box',
           transform: 'translateZ(0)' // Traps Portals and fixed elements within the shell
         }}
