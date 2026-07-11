@@ -1241,7 +1241,7 @@ ${recentMemories}
         {!settings.hideStatusBar && (
           <div className={cn(
             "w-full flex items-center justify-between px-4 z-[100001] pointer-events-none transition-all duration-500 system-bar",
-            "absolute top-0 left-0 right-0 bg-black/20 backdrop-blur-md"
+            "relative flex-shrink-0 bg-black/20 backdrop-blur-md"
           )} style={{ height: 'max(env(safe-area-inset-top), 34px)', minHeight: '24px' }}>
             {/* Left: Time */}
             <div className="flex items-center justify-start h-full flex-col justify-center">
@@ -1316,7 +1316,7 @@ ${recentMemories}
           <div 
           className="flex-1 relative overflow-hidden flex flex-col"
           style={{ 
-            marginTop: settings.hideStatusBar ? 'env(safe-area-inset-top)' : 'max(env(safe-area-inset-top), 34px)',
+            marginTop: (settings.hideStatusBar && settings.fullScreenMode) ? 'env(safe-area-inset-top)' : '0px',
             transform: 'translateZ(0)',
             height: '100%'
           }}

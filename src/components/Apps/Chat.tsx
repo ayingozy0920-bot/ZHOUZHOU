@@ -2140,7 +2140,7 @@ async function callAI(systemPrompt: string, currentMsgs: ChatMessage[], settings
   const filteredMsgs = currentMsgs.filter(m => (m.content || '').trim() !== '');
   
   // Prepare messages for the server
-  const apiMessages = filteredMsgs.map(m => {
+  const apiMessages: any[] = filteredMsgs.map(m => {
     let role: 'model' | 'user' = m.role === 'assistant' ? 'model' : 'user';
     let text = m.content || '';
     
@@ -2150,7 +2150,12 @@ async function callAI(systemPrompt: string, currentMsgs: ChatMessage[], settings
       text = `（旁白/动作描写：${text}）`;
     }
     
-    return { role, parts: [{ text }] };
+    return { 
+      role, 
+      type: m.type, 
+      mediaUrl: m.mediaUrl, 
+      parts: [{ text }] 
+    };
   });
 
   if (action === 'continue') {
