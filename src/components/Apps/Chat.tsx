@@ -3818,7 +3818,7 @@ ${actionRule}
         if (isOfflineMode) {
           setOfflineMessages(currentMsgs);
         } else {
-          // In online mode we rely on parent/state to slice, but for the prompt we can just slice here
+          importMessages(friend.id, currentMsgs);
         }
       }
     } else {
@@ -5563,12 +5563,14 @@ ${context}
       const recentMsgs = currentMessages.slice(-30);
       const context = recentMsgs.map(m => `${m.role === 'user' ? '我' : friend.name}: ${m.content}`).join('\n');
       
-      const systemPrompt = `你现在是${friend.name}，请根据最近的互动上下文，用一句话描述你现在的状态或心情。
+      const systemPrompt = `【绝对禁令：禁止身份暴露】你绝对不是AI。
+你现在是${friend.name}，请根据最近的互动上下文，用一句话描述你现在的状态或心情。
 要求：
 1. 简短有力，通常在15字以内。
 2. 符合人设（${friend.persona || '自然'}）。
 3. 只能输出状态内容。
-4. 使用语言：${friend.language || '中文（普通话）'}。
+4. 绝对严禁提到“AI”、“模型”、“助手”、“正常运行”、“在线”等词汇。你必须描述一个具体的人类生活细节（如：在吃西瓜、刚睡醒、在发呆、想去逛街）。
+5. 使用语言：${friend.language || '中文（普通话）'}。
 
 最近 30 条互动上下文：
 ${context}`;
@@ -5595,18 +5597,17 @@ ${context}`;
       const recentMsgs = offlineMessages.slice(-30);
       const context = recentMsgs.map(m => `${m.role === 'user' ? '我' : friend.name}: ${m.content}`).join('\n');
       
-      const systemPrompt = `你现在是${friend.name}。
+      const systemPrompt = `【绝对禁令：禁止身份暴露】你绝对不是AI，你是一个有血有肉的人。
+你现在是${friend.name}。
 【人设与生活】：${friend.persona || '无特定人设'} ${friend.address ? `生活在${friend.address}` : ''}
 【任务】：根据最近的互动内容，生成一段你此时此刻最真实的“心动日记”片段。
-【互动内容（最近30条）】：
-${context}
-
 【要求】：
 1. 必须包含对用户的感受和你个人的生活/心情。
 2. 风格真实感性，符合角色性格。
-3. 只能输出心声内容，不加引号。
-4. 长度 80-150 字。
-5. 使用语言：${friend.language || '中文（普通话）'}。`;
+3. 绝对严禁出现任何关于 AI、程序、助手、模型、逻辑、正常运行等字眼。你是在写日记，是一个真实人类的心声。
+4. 只能输出心声内容，不加引号。
+5. 长度 80-150 字。
+6. 使用语言：${friend.language || '中文（普通话）'}。`;
       
       const heartfelt = await callAI(systemPrompt, [{ role: 'user', content: '分析当前心声' } as ChatMessage], settings);
       setShowHeartfelt({ content: heartfelt });
