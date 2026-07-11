@@ -481,17 +481,10 @@ export interface OfflinePlotEntry {
   summary: string;
 }
 
-export interface CoreMemoryEntry {
-  id: string;
-  content: string;
-  timestamp: number;
-}
-
 export interface MemoryStore {
   [friendId: string]: {
     onlineMemories: OnlineMemoryEntry[];
     offlinePlots: OfflinePlotEntry[];
-    coreMemories?: CoreMemoryEntry[];
   };
 }
 
@@ -511,11 +504,9 @@ export interface ChatMessage {
   timestamp: number;
   translation?: string; // for voice translation
   hideTranslation?: boolean;
-  quote?: { sender: string; content: string };
+  quote?: ChatMessage;
   innerThought?: string; // for AI's inner thoughts
   isNarration?: boolean;
-  isRecalled?: boolean;
-  recalledContent?: string;
   cardText?: string;
   location?: string; // for photo_card or location message
   date?: string; // for photo_card
@@ -593,6 +584,8 @@ export interface ChatMessage {
     confirms?: string[]; // list of member IDs/names who confirmed
     declines?: string[]; // list of member IDs/names who declined
   };
+  isRecalled?: boolean;
+  recalledContent?: string;
   isMergedForward?: boolean;
   mergedMessages?: Array<{ senderName: string; content: string; timestamp: number }>;
 }

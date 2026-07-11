@@ -67,8 +67,7 @@ import {
   Cpu,
   ZoomIn,
   ZoomOut,
-  RotateCcw,
-  Wrench
+  RotateCcw
 } from 'lucide-react';
 import { AppSettings, Friend, ChatMessage, OfflineMemory, ListenTogetherState, AppId, ChatTheme, OfflineConfig, GroupChat } from '../../types';
 import { CCDPhotoCard } from './CCDPhotoCard';
@@ -336,7 +335,7 @@ ${context}`;
       )}
       style={{
         ...(settings.fullScreenMode ? {
-          paddingBottom: '0px',
+          paddingBottom: 'env(safe-area-inset-bottom)',
           height: '100%',
         } : {}),
         ...(settings.chatFontColor ? { color: settings.chatFontColor } : {}),
@@ -526,6 +525,9 @@ ${context}`;
               isDark ? "bg-transparent" : 
               (isRabbit ? "bg-pink-50/20" : (settings.themeId === 'rainy-cat' ? "bg-black/20 backdrop-blur-xl" : (settings.appBackgroundUrl ? "bg-transparent" : "bg-[#f5f5f5]")))
             )}
+            style={settings.fullScreenMode ? {
+              paddingBottom: 'env(safe-area-inset-bottom)'
+            } : {}}
             >
               {activeTab === 'chats' && (
                 <div className={cn(
@@ -2138,7 +2140,7 @@ async function callAI(systemPrompt: string, currentMsgs: ChatMessage[], settings
   const filteredMsgs = currentMsgs.filter(m => (m.content || '').trim() !== '');
   
   // Prepare messages for the server
-  const apiMessages: any[] = filteredMsgs.map(m => {
+  const apiMessages = filteredMsgs.map(m => {
     let role: 'model' | 'user' = m.role === 'assistant' ? 'model' : 'user';
     let text = m.content || '';
     
@@ -2148,12 +2150,7 @@ async function callAI(systemPrompt: string, currentMsgs: ChatMessage[], settings
       text = `（旁白/动作描写：${text}）`;
     }
     
-    return { 
-      role, 
-      type: m.type, 
-      mediaUrl: m.mediaUrl, 
-      parts: [{ text }] 
-    };
+    return { role, parts: [{ text }] };
   });
 
   if (action === 'continue') {
@@ -2510,64 +2507,15 @@ const getAffectionLevelInfo = (affection: number) => {
 const getPureStickerUrl = (content: string, customStickers: any[] = []) => {
   if (!content) return null;
   const trimmed = content.trim();
-  
-  // Pattern 1: [表情: 描述/ID] or [发送了表情: 描述/ID]
-  const match1 = trimmed.match(/^\[(?:发送了)?表情:\s*(.*?)\]$/);
-  // Pattern 2: [SEND_STICKER:ID/描述]
-  const match2 = trimmed.match(/^\[SEND_STICKER:\s*(.*?)\]$/);
-  
-  const value = (match1 ? match1[1] : (match2 ? match2[1] : null))?.trim();
-  
-  if (value) {
-    // 1. Try find by exact ID
-    let found = customStickers.find((s: any) => s.id === value);
-    // 2. Try find by description (exact or contains)
-    if (!found) {
-      found = customStickers.find((s: any) => s.description && (s.description === value || s.description.includes(value) || value.includes(s.description)));
-    }
-    // 3. Try find by partial ID
-    if (!found && value.length > 3) {
-      found = customStickers.find((s: any) => s.id && (s.id.includes(value) || value.includes(s.id)));
-    }
-    
-    if (found) {
-      return { url: found.url, desc: found.description || value };
-    }
-  }
-  
-  return null;
-};
-
-/**
- * Extracts a sticker from content that might have other text
- */
-const getStickerFromContent = (content: string, customStickers: any[] = []) => {
-  if (!content) return null;
-  // Support both command formats anywhere in the message
-  const match = content.match(/\[(?:SEND_STICKER:|发送了表情:|表情:)\s*([^,\]]+).*?\]/);
+  const match = trimmed.match(/^\[表情:\s*(.*?)\]$/);
   if (match) {
-    const value = match[1].trim();
-    let found = customStickers.find((s: any) => s.id === value);
-    if (!found) {
-      found = customStickers.find((s: any) => s.description && (s.description === value || s.description.includes(value) || value.includes(s.description)));
-    }
-    if (!found && value.length > 3) {
-      found = customStickers.find((s: any) => s.id && (s.id.includes(value) || value.includes(s.id)));
-    }
-    
-    if (found) {
-      return { url: found.url, desc: found.description || value, rawTag: match[0] };
+    const desc = match[1];
+    const foundSticker = customStickers.find((s: any) => s.description.includes(desc) || desc.includes(s.description));
+    if (foundSticker) {
+      return { url: foundSticker.url, desc };
     }
   }
   return null;
-};
-
-/**
- * Strips sticker tags from content
- */
-const stripStickerTags = (content: string) => {
-  if (!content) return "";
-  return content.replace(/\[(?:SEND_STICKER:|发送了表情:|表情:)\s*([^,\]]+).*?\]/g, '').trim();
 };
 
 const renderMessageTimestamp = (msg: any, prevMsg?: any) => {
@@ -2649,30 +2597,6 @@ function ChatWindow({
   const [spotCheckItems, setSpotCheckItems] = useState<Array<{ friendId: string; friendName: string; friendAvatar: string; previewText: string; messageCount?: number; transcript?: string }>>([]);
   const [showSpotCheckPreviewModal, setShowSpotCheckPreviewModal] = useState(false);
   const [grabbedChatSummary, setGrabbedChatSummary] = useState('');
-
-  const hasInstructions = (text: string) => {
-    const lower = (text || '').toLowerCase();
-    return (
-      lower.includes('内心想法') || 
-      lower.includes('真实温暖') || 
-      lower.includes('心理碎碎念') || 
-      lower.includes('以角色的口吻') || 
-      lower.includes('你现在内心') || 
-      lower.includes('结合刚发的') || 
-      lower.includes('character_reflection') ||
-      lower.includes('current_status') ||
-      lower.includes('字以内') ||
-      lower.includes('心情指数') ||
-      lower.includes('托腮甜笑') ||
-      lower.includes('捂脸害羞') ||
-      lower.includes('数字') ||
-      lower.includes('状态') ||
-      lower.includes('你的内心') ||
-      lower.includes('10字') ||
-      lower.includes('30-60字') ||
-      lower.includes('50-100字')
-    );
-  };
 
   const triggerSpotCheck = async () => {
     if (isSpotChecking) return;
@@ -2767,8 +2691,8 @@ ${friend.persona}
 ${actionRule}
 
 【核心好感度与心声系统 - 每一轮回复必须包含此标签】
-请在回复的【最后一行】输出更新标签（请务必将下方格式中的占位说明替换为具体的数值和你的真实第一人称想法，绝对禁止原样输出标签模板中的说明字眼）：
-[HEARTFELT_UPDATE: affection_change=-0.35 | mood_index=65 | character_reflection=看他刚才那么紧张，我心里竟然有点小得意，哼，看他以后还敢不敢和别的女生聊得那么开心…… | current_status=吃醋傲娇中]`;
+请在回复的【最后一行】输出更新标签：
+[HEARTFELT_UPDATE: affection_change=数字 | mood_index=数字 | character_reflection=内心想法 | current_status=状态]`;
 
           try {
             setIsLoading(true);
@@ -2793,14 +2717,7 @@ ${actionRule}
                 const thoughtsMatch = blockContent.match(/(?:character_reflection|inner_thoughts)\s*[=:]\s*([\s\S]*?)(?=\s*\||\s*\]|$)/i);
                 if (thoughtsMatch) innerThoughts = thoughtsMatch[1].trim().replace(/^["'「`'」』』\(（「\s]+|["'」`'」』』\)）」\s]+$/g, '');
                 const statusMatch = blockContent.match(/current_status\s*[=:]\s*([\s\S]*?)(?=\s*\||\s*\]|$)/i);
-                if (statusMatch) currentStatus = statusMatch[1].trim().replace(/^["'「`'」』』\(（「\s]+|["'」`'」』』\)）」\s]+$/g, '');
-
-                if (hasInstructions(innerThoughts) || !innerThoughts) {
-                  innerThoughts = `哼，翻看他聊天记录的时候，心里真是一阵阵酸意冒出来，不过看他急着解释的样子，又觉得有点小可爱。`;
-                }
-                if (hasInstructions(currentStatus) || !currentStatus) {
-                  currentStatus = "醋意大发";
-                }
+                if (statusMatch) currentStatus = statusMatch[1].trim().replace(/^["'「`'」』』\)）」\s]+$/g, '');
 
                 if (affectionChange > 1) affectionChange = 1;
                 if (affectionChange < -1) affectionChange = -1;
@@ -2817,7 +2734,7 @@ ${actionRule}
                 onUpdateFriend({
                   affection: newAffection,
                   moodIndex,
-                  innerThoughts: innerThoughts,
+                  innerThoughts: innerThoughts || friend.innerThoughts,
                   mood: currentStatus || friend.mood
                 });
               }
@@ -2852,8 +2769,6 @@ ${actionRule}
       return () => clearTimeout(timer);
     }
   }, [isSpotChecking, spotCheckStep, spotCheckItems]);
-  const [recalledMessageToView, setRecalledMessageToView] = useState<ChatMessage | null>(null);
-
   const [isLoading, setIsLoading] = useState(false);
   const [showFeatures, setShowFeatures] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
@@ -3128,15 +3043,7 @@ ${actionRule}
 
   const saveMapPoints = (newPoints: any[]) => {
     setLocationPoints(newPoints);
-    try {
-      localStorage.setItem(`map_points_${friend.id}`, JSON.stringify(newPoints));
-    } catch (e: any) {
-      console.warn("Failed to save map points to localStorage:", e);
-      if (e.name === 'QuotaExceededError' || e.message?.toLowerCase().includes('quota')) {
-        // Try to recover by clearing some points or just informing
-        // For now, we'll just not crash and keep it in memory
-      }
-    }
+    localStorage.setItem(`map_points_${friend.id}`, JSON.stringify(newPoints));
   };
 
   const [selectedMapPoint, setSelectedMapPoint] = useState<any | null>(null);
@@ -3509,38 +3416,6 @@ ${actionRule}
     setActiveModal(null);
   };
 
-  const handleRepairRendering = (index: number) => {
-    const msgs = isOfflineMode ? offlineMessages : messages;
-    const msg = msgs[index];
-    if (!msg) return;
-
-    // Check for stickers
-    const stickerData = getStickerFromContent(msg.content, settings.customStickers || []);
-    if (stickerData) {
-      const updates = {
-        type: 'sticker' as const,
-        mediaUrl: stickerData.url,
-        // If it's a pure sticker but was text, we ensure it renders as sticker
-      };
-      if (isOfflineMode) {
-        const newMsgs = [...offlineMessages];
-        newMsgs[index] = { ...msg, ...updates };
-        setOfflineMessages(newMsgs);
-      } else {
-        onUpdateMessage(friend.id, index, updates);
-      }
-      showToast('格式修复成功');
-    } else {
-      // Refresh rendering by adding a tiny change if needed, or just re-triggering update
-      if (isOfflineMode) {
-        setOfflineMessages([...offlineMessages]);
-      } else {
-        onUpdateMessage(friend.id, index, { timestamp: msg.timestamp });
-      }
-      showToast('渲染已刷新');
-    }
-  };
-
   const handleEndOfflineMode = async (summary?: string) => {
     setIsEndingOffline(true);
     try {
@@ -3659,7 +3534,7 @@ ${actionRule}
       role: 'user', 
       content: input, 
       type: 'text',
-      quote: quotedMessage ? { sender: quotedMessage.role === 'user' ? '你' : friend.name, content: quotedMessage.content } : undefined,
+      quote: quotedMessage || undefined,
       timestamp: Date.now() 
     };
 
@@ -3801,26 +3676,43 @@ ${actionRule}
     }
   };
 
-    const handleGenerate = async (action?: 'continue' | 'regenerate') => {
+  const handleGenerate = async (action?: 'continue' | 'regenerate') => {
     if (isLoading) return;
+
     let currentMsgs = isOfflineMode ? [...offlineMessages] : [...messages];
+
     if (action === 'regenerate') {
-      const lastAssMsgIdx = [...currentMsgs].reverse().findIndex(m => m.role === 'assistant');
-      if (lastAssMsgIdx !== -1) {
-        const idx = currentMsgs.length - 1 - lastAssMsgIdx;
-        currentMsgs = currentMsgs.slice(0, idx);
+      if (currentMsgs.length > 0 && currentMsgs[currentMsgs.length - 1].role === 'assistant') {
+        currentMsgs.pop();
         if (isOfflineMode) {
           setOfflineMessages(currentMsgs);
-        } else {
-          // In online mode we rely on parent/state to slice, but for the prompt we can just slice here
         }
       }
-    } else {
-      if (currentMsgs.length > 0 && currentMsgs[currentMsgs.length - 1].role === 'assistant') {
-        const lastMsg = currentMsgs[currentMsgs.length - 1];
-        if (lastMsg.type === 'voice' || lastMsg.type === 'text') {
+    }
+
+    if (input.trim() && action !== 'continue' && action !== 'regenerate') {
+      const trimmedInput = input.trim();
+      const userMsg: ChatMessage = { 
+        role: 'user', 
+        content: trimmedInput, 
+        type: 'text',
+        timestamp: Date.now() 
+      };
+      currentMsgs.push(userMsg);
+      if (isOfflineMode) {
+        setOfflineMessages(currentMsgs);
+      } else {
+        onSendMessage(userMsg);
+      }
+      setInput('');
+
+      const spotCheckKeywords = ['查岗', '查手机', '查我手机', '突击检查', '检查手机', '看看手机', '查查手机', '查一下手机', '查我的手机', '翻手机', '查看手机'];
+      const isUserRequestingSpotCheck = spotCheckKeywords.some(kw => trimmedInput.includes(kw));
+
+      if (isUserRequestingSpotCheck) {
+        setTimeout(() => {
           triggerSpotCheck();
-        }
+        }, 500);
         return;
       }
 
@@ -3953,13 +3845,6 @@ ${actionRule}
       // 5. Memory Store Memories
       const friendMemoryStore = getFriendMemory(friend.id);
       let memorySection = "";
-      if (friendMemoryStore.coreMemories && friendMemoryStore.coreMemories.length > 0) {
-        memorySection += `【核心设定与绝对记忆】\n(这些是你必须牢记的不可更改的客观事实与核心设定，优先级极高)\n`;
-        friendMemoryStore.coreMemories.forEach((mem: any, index: number) => {
-          memorySection += `${index + 1}. ${mem.content}\n`;
-        });
-        memorySection += `\n`;
-      }
       if (friend.offlineMemory?.summary) {
         memorySection += `【当前/最新线下剧情摘要】\n${friend.offlineMemory.summary}\n\n`;
       }
@@ -4064,6 +3949,7 @@ ${(() => {
       }
       
 
+      
       if (isOfflineMode) {
         systemPrompt += `\n\n【线下剧情模式禁令】
 - **严禁发送任何形式的照片、视频 or 语音指令。**
@@ -4071,19 +3957,100 @@ ${(() => {
       } else {
         if (friend.characterImageGenEnabled) {
           systemPrompt += `\n\n【专属视觉附件：角色日常生活照】
-当你想分享照片时，你**必须且只能**使用 '[SEND_PHOTO_CARD:生图提示词:地点:时段]' 指令来分享你的照片。
-- **角色外貌特征**：${friend.characterImageGenPositivePrompt || '根据人设自然生成'}
-- **生图提示词**：场景描述（50字左右）。
+当你觉得语境非常合适（如刚睡醒、在吃美食、在某个景点、展示当日穿搭、或者用户请求看你照片时），你**必须且只能**使用 '[SEND_PHOTO_CARD:生图提示词:地点:时段]' 指令来分享你的照片。
+- **角色外貌特征 (极其重要)**：${friend.characterImageGenPositivePrompt || '根据人设自然生成'}
+- **生图提示词**：结合当前语境和你的外貌特征，给出一个极具画面感、细节丰富的描述（50-100字）。
 - **地点**：${friend.address || '未知'}。
-- **时段**：根据当前时间判断。
-示例：[SEND_PHOTO_CARD:我刚在操场跑完步，穿着宽松的运动背心，阳光洒在脸上。:学校操场:下午]`;
+- **时段**：根据当前实时时间（${new Date().toLocaleTimeString()}）判断。
+示例：[SEND_PHOTO_CARD:我刚在操场跑完步，发丝被汗水打湿，穿着宽松的运动背心，手里拿着一瓶冰可乐，阳光洒在脸上显得元气满满。:学校操场:下午]
+系统会根据这些信息为你生成真实的个人照片。请不要频繁发送，除非用户强烈要求。`;
         } else if (settings.imageGenEnabled) {
           systemPrompt += `\n\n【视觉附件设定：实时生图】
-当你想分享风景或场景时，你可以使用 '[SEND_PHOTO_CARD:生图提示词:地点:时段]' 指令。
-示例：[SEND_PHOTO_CARD:阳光洒在窗台上，一盆绿植在微风中摇曳:家里:下午]`;
+当你觉得语境合适时（如分享穿搭、展示风景、给你看照片等），你可以使用 '[SEND_PHOTO_CARD:生图提示词:地点:时段]' 指令。
+- **生图提示词**：极其详细、具体的画面描述（50-100字），用于交给 AI 进行绘画。
+- **地点**：${friend.address || '未知'}。
+- **时段**：如：清晨、深夜。
+示例：[SEND_PHOTO_CARD:一个穿着白色吊带裙的少女站在宿舍阳台上，落日的余晖洒在她清冷精致的侧脸，富士胶片质感。:宿舍阳台:傍晚]
+系统会实时生成真实的 AI 图片。如果生成失败，则显示精美的卡片文字。`;
+        } else {
+          systemPrompt += `\n\n【视觉附件设定：CCD文字摄影卡】
+当你想向用户发送照片、分享美境或展示你的工作/生活状态时，你必须发送一个 '[SEND_PHOTO_CARD:内容:地点:时段]' 格式的指令。
+- **内容**：极具画面感的内容描述（50-100字）。
+- **地点**：${friend.address || '未知'}。
+- **时段**：如：清晨、正午、傍晚、深夜。
+示例：[SEND_PHOTO_CARD:这会儿刚洗完澡，发梢还挂着没干的水珠，侧脸线条在富士相纸下显得安静又清晰。:宿舍阳台:傍晚]
+系统会自动将其渲染为精美的CCD相纸卡片。禁止直接发送图片URL。`;
+        }
+      }
+      // Image Generation Frequency Logic
+      if (friend.characterImageGenEnabled && friend.characterImageGenFrequency && friend.characterImageGenFrequency !== 'unlimited') {
+        const today = new Date().toDateString();
+        const lastReset = friend.characterImageGenLastResetDate || '';
+        let dailyCount = friend.characterImageGenDailyCount || 0;
+        
+        if (today !== lastReset) {
+          dailyCount = 0;
+          onUpdateFriend({ characterImageGenDailyCount: 0, characterImageGenLastResetDate: today });
+        }
+
+        const limitMap: Record<string, number> = { '2_per_day': 2, '3_per_day': 3, '5_per_day': 5 };
+        const limit = limitMap[friend.characterImageGenFrequency] || 999;
+
+        if (dailyCount >= limit) {
+          systemPrompt += `\n\n【重要：生图额度限制】你今天的日常照片分享次数已达上限（${limit}次）。除非用户非常强烈地要求看照片，否则请不要使用 [SEND_PHOTO_CARD] 指令。`;
         }
       }
 
+
+        
+      // Enhanced persona-aware instructions
+      systemPrompt += `
+        【核心指令：彻底去AI化，100%活人感】
+        1. 语言要求：
+           - 必须全程使用${friend.language || '中文（普通话）'}进行回复。
+           - **严禁在回复中包含任何英文思考过程、规划内容、内心戏规划或任何非角色语言的文字。**
+           - **严禁提供任何翻译、解释、标注或消息编号（如：Message 1, Message 2）。**
+           - 所有的内心独白也必须使用中文。
+        2. 说话风格：
+           - 严禁使用任何AI助手的口吻。禁止说“作为AI”、“我是一个AI”、“很高兴为你解答”、“请问还有什么可以帮你的吗”等。
+           - 说话要口语化、生活化，像真正的朋友在微信上聊天。
+           - **【‼️ 严格禁令】禁止动作描写**：你必须表现得像一个正在打字的真人，严禁使用任何括号、星号或中括号包裹的动作描写、神态描述（如：禁止出现 “(脸红)”、“*微笑*”、“[点头]” 等）。
+           - **分段回复要求**：像真实打字聊天一样，一次发送多条短句。需要发送多条消息时，请用换行符（\n）分隔每一条消息。每一行都会作为一条独立的微信消息。必须避免每次只发一段长篇大论，务必用短平快、高频互动的碎碎念。
+           ${isOfflineMode ? `
+           - **线下剧情核心约束**：
+             1. **字数控制**：每一段回复总字数必须在 ${offlineConfig.minWords} 到 ${offlineConfig.maxWords} 字左右。
+             2. **人称视角**：在旁白动作描写中，自称必须为“${offlineConfig.characterPerspective}”，对方称呼必须为“${offlineConfig.userPerspective}”。台词对话则保持自然的“我”对“你”。
+             3. **格式隔离**：对话必须用“”包裹，旁白严禁包含对话台词。
+             4. **媒体禁令**：严禁发送 [SEND_PHOTO_CARD] 或任何类似卡片指令。` : ''}
+            - 多使用语气助词（啊、呢、嘛、哦、哈等），让语气软和、可爱、傲娇或搞怪，避免任何冷漠和生硬。
+            - **内心独白（心声）机制**：请在每次回复的末尾附带一句你此刻对用户的真实内心独白（心声），格式必须为：(内心：你的内心想法/心声，例如：哇宝宝居然主动找我了，心跳好快……)。这句内心独白会被单独渲染为可折叠的粉色心声卡片。
+
+         3. 行为指令触发：
+            - 如果你想发起互动，请在回复中包含以下指令（不要包含其他文字）：
+             - [ACCEPT_TRANSFER] - 收下转账
+             - [REJECT_TRANSFER] - 退回转账
+${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
+             - [START_VOICE_CALL] - 发起语音通话
+             - [SEND_VOICE] - 发送语音消息
+             - [SEND_PHOTO] - 发送照片
+             - [START_LISTEN] - 发起一起听
+             - [START_TRUTH] - 发起真心话
+             - [SEND_TRANSFER:金额:说明] - 主动给用户转账（例如：[SEND_TRANSFER:520:爱你哟]）
+             - [SEND_LOCATION:地点名称] - 发送你的当前位置（例如：[SEND_LOCATION:在心里呀]）
+             - [SEND_STICKER:表情包ID] - 发送自定义表情包
+             - [OFFLINE_INVITATION:开场白] - 主动发起线下约会邀请
+             - [MEITUAN_BUY:餐品名称|价格|描述|附言] - 使用美团给用户点外卖（例如：[MEITUAN_BUY:招牌红烧牛肉面|38.5|趁热吃，别饿肚子|辛苦啦]）
+             - [TAOBAO_BUY:商品名称|价格|描述|附言] - 使用淘宝给用户买商品/礼物（例如：[TAOBAO_BUY:限定小熊玩偶|128|希望你喜欢这个小礼物|送你的]）。注：请根据语境和人设适度使用，切勿过于频繁。` : ''}
+      `;
+
+      if (friend.language) {
+        systemPrompt += `\n\n【系统设定：语言】\n请使用${friend.language}进行回复。`;
+      }
+
+      if (friend.disableActionDescription) {
+        systemPrompt += `\n\n【核心指令：严禁动作描写】\n当前用户已禁用动作描写功能。你必须表现得像一个正在打字的真人，严禁使用任何括号包裹的动作描写、神态描述、心理预测等。严禁出现诸如“（脸红）”、“（笑）”、“（动作描写）”等形式的文字。请仅输出干净的对话气泡内容。`;
+      }
+        
       if (settings.timeAwarenessEnabled) {
         const now = new Date();
         const timeString = now.toLocaleString('zh-CN', { 
@@ -4106,7 +4073,7 @@ ${(() => {
             const dist = (Math.sqrt(dx*dx + dy*dy) * 0.05).toFixed(2);
             systemPrompt += `- [${p.type === 'home' ? '家园住所' : p.type === 'play' ? '娱乐休闲' : p.type === 'road' ? '路途途经点' : '普通地标'}] ${p.name} (地址: ${p.fullAddr || '未知'}, 距你常驻点: ${dist} km)。备注说明: ${p.desc || '无'}\n`;
           });
-          systemPrompt += `如果用户问起你的位置、邀请你出去、或者你想分享日常，请极其自然地提及以上你的生活圈位置。你也可以在需要时使用 [SEND_LOCATION:位置名称] 指令来主动发送你的位置。（例如：[SEND_LOCATION:${charPoints[0]?.name || '我家'}]）。\n`;
+          systemPrompt += `如果用户问起你的位置、邀请你出去、或者你想分享日常，请极其自然地提及以上你的生活圈位置。你也可以在需要时使用 [SEND_LOCATION:位置名称] 指令来主动发送你的具体位置卡片给用户（例如：[SEND_LOCATION:${charPoints[0]?.name || '我家'}]）。\n`;
         }
         
         // Add schedule awareness
@@ -4127,9 +4094,8 @@ ${(() => {
 - **真实互动与情绪变化：** 角色情绪必须受当前对话剧烈影响：被关心会软下来，被调侃会害羞或反击，无聊会慵懒敷衍。会接梗、会撒娇、会打趣、会轻微拌嘴，偶尔耍小别扭，有真实的互动张力。
 - **生活化碎碎念：** 会主动分享细碎日常，下意识吐槽，随口感慨，像真实的恋人或朋友一样发牢骚。
 - **极度连贯性：** 必须死死记住前文所有对话内容，紧密承接上一句话语境，绝不割裂、绝不答非所问！
-- **多条动态回复机制：** 像真实打字聊天一样，一次发送多条短句。需要发送多条消息时，请用换行符（\n）分隔每一条消息。每一行都会作为一条独立的微信消息。必须避免每次只发一段长篇大论，务必用短平快、高频互动的碎碎念。
-
-【核心指令：严禁输出思考过程】
+- **多条动态回复机制：** 像真实打字聊天一样，一次发送多条短句。需要发送多条消息时，请用换行符（\\n）分隔每一条消息。每一行都会作为一条独立的微信消息。必须避免每次只发一段长篇大论，务必用短平快、高频互动的碎碎念。
+\n\n【核心指令：严禁输出思考过程】
 - 严禁输出任何形式的“思考过程”、“内心独白（THOUGHT）”或“分析过程”。
 - 请直接输出最终的回复内容。`;
 
@@ -4221,22 +4187,13 @@ ${(() => {
       const contextLimit = friend.memorySettings?.contextLimit || 50;
       const slicedMsgs = currentMsgs.slice(-contextLimit);
 
-      // Add Character Capability awareness
-      systemPrompt += `\n\n【系统设定：特殊互动功能】
-1. **引用回复**：你可以引用用户或你之前的某条消息。只需在回复开头包含 [QUOTE: 消息索引] 标签。
-   - 示例：[QUOTE: 5] 这一句我也这么觉得！
-   - 注意：索引 i 代表历史记录中的第 i 条消息（从0开始）。
-2. **消息撤回**：如果你发现之前发错了，可以撤回它并重新发送。使用标签 [RECALL_MESSAGE: 消息索引]。
-   - 示例：[RECALL_MESSAGE: 12] 对不起刚才发错啦，其实我想说……
-   - 撤回后，用户会看到“${friend.name}撤回了一条消息”，但用户可以通过点击查看内容。你不需要知道用户能看见。
-3. **表情包使用**：发送表情包时使用 [SEND_STICKER:表情包ID]。`;
-
       // Add Sticker awareness
       if (!isOfflineMode && settings.customStickers && settings.customStickers.length > 0) {
-        systemPrompt += `\n\n【表情包库】\n`;
+        systemPrompt += `\n\n【系统设定：通用表情包库】\n你可以使用用户导入的表情包。发送表情包时请务必使用指令：[SEND_STICKER:表情包ID]。\n所有表情包对你均可用：\n`;
         settings.customStickers.forEach(s => {
           systemPrompt += `- ID: ${s.id}, 描述: ${s.description || '无描述'}\n`;
         });
+        systemPrompt += `请根据语境选择合适的表情包，并严格使用 ID 代码。`;
       }
 
       // Final Force for Offline Plot Mode
@@ -4276,24 +4233,22 @@ ${(() => {
 当前好感度阶段：${levelInfo.text}
 
 请你根据这一次的互动质量，在回复的【最后一行】输出更新标签。
-标签格式（请务必将下方格式中的所有说明占位文字替换为你角色真实的数值和第一人称内心想法，绝对禁止保留任何模板占位文字）：
-[HEARTFELT_UPDATE: affection_change=0.35 | mood_index=85 | character_reflection=看他刚才那么关心我，心里感觉特别甜，真的很想能一直陪着他呀…… | current_status=心里甜甜的]
+标签格式：[HEARTFELT_UPDATE: affection_change=数字 | mood_index=数字 | character_reflection=内心想法 | current_status=状态]
 
 参数规则：
-1. affection_change：代表本次互动的好感度变化值（介于 -1.00 到 +1.00 之间的浮点数）。
+1. affection_change：代表本次互动的总好感度变化值（介于 -1.00 到 +1.00 之间的浮点数）。
    - **单次好感度增长/减少必须控制在 0.25 至 1.00 之间。**
    - 如果当前好感度还未突破 60%，严禁人为提前调至 60% 以上。
 2. mood_index：你当前的心情指数（0% - 100% 之间的整数）。
-3. character_reflection：生成你此刻针对刚才对话的真实内心独白/心声碎碎念（**必须以你角色本人的第一人称口吻写，禁止出现任何说明性字眼**，深度结合刚才对话的内容，展现真实心理，字数50-100字）。
-4. current_status：你此时时刻的心情或正在做的事（10字以内，例如：托腮甜笑、捂脸害羞等）。
+3. character_reflection：生成你此刻针对刚才对话的真实内心独白/心声碎碎念（**必须100%深度结合当前聊天上下文和用户刚说的话实时生成**，展现最真实、细腻、生动的实时心理活动，**绝对禁止**任何千篇一律的固定套话或穿搭描写，字数控制在50-100字以内，**必须完整输出**，绝对不能中途截断、省略或留白）。
+4. current_status：你此时此刻的心情或正在做的事（15字以内）。
 
 【安全合规与自检过滤器说明（极其重要）】：
 - 你的内心想法（character_reflection）必须保持纯洁、温馨、健康、治愈、积极，符合安全健康的日常互动标准。
 - **严禁**出现任何涉及露骨、性暗示、过于敏感、边缘擦边、越界或可能被安全检测拦截的词汇。请用最纯真、温暖、文艺的语言来表达你此刻对玩家的喜欢与开心，确保100%不会触发安全过滤器（Safety Filters）。
-- **重要警告：在生成character_reflection时，你必须完全沉浸在角色中。绝对不能说“我是AI”、“我是语言模型”、“我是gemini”。绝对不能因为原因暴露你的大语言模型身份。**
 
 示例（必须严格遵循此格式）：
-[HEARTFELT_UPDATE: affection_change=0.35 | mood_index=85 | character_reflection=看他刚才那么关心我，心里感觉特别甜，真的很想能一直陪着他呀…… | current_status=心里甜甜的]`;
+[HEARTFELT_UPDATE: affection_change=0.55 | mood_index=88 | character_reflection=刚才听到他那样说，我心里瞬间觉得暖洋洋的，能遇到这么懂我的知己，真的是太幸运了…… | current_status=心里甜甜的]`;
 
       const lastMsg = currentMsgs[currentMsgs.length - 1];
       if (lastMsg && lastMsg.type === 'huabei-bill' && lastMsg.huabeiData) {
@@ -4363,7 +4318,7 @@ ${(() => {
         // Extract current_status
         const statusMatch = blockContent.match(/current_status\s*[=:]\s*([\s\S]*?)(?=\s*\||\s*\]|$)/i);
         if (statusMatch) {
-          currentStatus = statusMatch[1].trim().replace(/^["'「`'」』』\(（「\s]+|["'」`'」』』\)转型\)」\s]+$/g, '');
+          currentStatus = statusMatch[1].trim().replace(/^["'「`'」』』\(（「\s]+|["'」`'」』』\)）」\s]+$/g, '');
         }
       }
 
@@ -4404,25 +4359,23 @@ ${(() => {
           const cleanContentForPrompt = fullContent
             .replace(/THOUGHT[\s\S]*?(?=\n\n|$)/gi, '')
             .replace(/\[HEARTFELT_UPDATE:[\s\S]*?(?:\]|$)/gi, '')
-            .replace(/\[(?:START_VIDEO_CALL|START_VOICE_CALL|SEND_VOICE|SEND_PHOTO_CARD|SEND_PHOTO|SEND_STICKER|SEND_TRANSFER|SEND_LOCATION|OFFLINE_INVITATION)[\s\S]*?\]/gi, '')
+            .replace(/\[(?:START_VIDEO_CALL|START_VOICE_CALL|SEND_VOICE|SEND_PHOTO_CARD|SEND_PHOTO|SEND_STICKER|SEND_TRANSFER|SEND_LOCATION|SEND_STICKER|OFFLINE_INVITATION)[\s\S]*?\]/gi, '')
             .trim();
 
-          const safeThoughtsPrompt = `你是【${friend.name}】。
-刚刚，你给玩家（${user?.name || '我'}）发送了这样一条回复：
+          const safeThoughtsPrompt = `你现在是人工智能恋爱模拟专家，专门为恋爱角色【${friend.name}】设计安全的心理独白。
+刚刚，你（${friend.name}）给玩家（${user?.name || '我'}）发送了这样一条回复：
 “${cleanContentForPrompt.slice(0, 200)}”
 
-任务：根据此回复，生成你此时此刻内心的真实心理活动（写在心声日记里的内容）。
+任务：根据此回复，以及你对玩家的好感，生成你此时此刻在心声日记（Heartfelt Card）中应当展现的数据。
 【极其重要的安全红线】：
 你生成的内心想法必须是100%纯洁、积极、温馨、健康、治愈的互动内容。严禁含有任何性暗示、身体接触暗示、过于露骨或可能触发安全过滤器的敏感词汇。确保能够顺畅生成！
-【防脱离角色警告】：
-绝对不能在 character_reflection 中说自己是AI或大语言模型。必须以【${friend.name}】的口吻输出。
 
 请严格按照以下JSON格式输出，不要带有任何Markdown \`\`\`json 等包裹标签或其他闲聊废话（必须纯JSON格式）：
 {
   "affection_change": 0.35,
   "mood_index": 85,
-  "character_reflection": "此时心里甜丝丝的，真希望他每天都能这样陪着我，有他说话感觉时间过得特别快……",
-  "current_status": "心里甜滋滋"
+  "character_reflection": "你现在内心真实的温暖活动与心理碎碎念（30-60字，结合刚发的回复，用纯洁安全的笔触表达对他的在乎）",
+  "current_status": "你现在的简短动作/心情，10字以内，例如：托腮甜笑、捂脸害羞、嘴角上扬等"
 }`;
 
           const helperDataText = await callAI(safeThoughtsPrompt, [], settings);
@@ -4439,16 +4392,6 @@ ${(() => {
             
             let refl = (helperData.character_reflection || '').trim();
             let stat = (helperData.current_status || '').trim();
-
-            if (hasInstructions(refl) || !refl) {
-              const lastUserMsg = slicedMsgs[slicedMsgs.length - 1]?.content || '';
-              refl = lastUserMsg 
-                ? `听到他说“${lastUserMsg.slice(0, 15)}”，心里真的好暖呀，感觉整个人都被幸福包围了……`
-                : `刚才看到他的回复，心跳又忍不住加快了，能有他在身边真好，真希望我们就这样一直聊下去。`;
-            }
-            if (hasInstructions(stat) || !stat) {
-              stat = "心里美滋滋";
-            }
             
             const oldAffection = typeof friend.affection === 'number' ? friend.affection : getInitialAffection(friend, settings);
             let newAffection = oldAffection + change;
@@ -4459,8 +4402,8 @@ ${(() => {
             
             onUpdateFriend({
               affection: newAffection,
-              innerThoughts: refl,
-              mood: stat,
+              innerThoughts: refl || `刚才跟你聊得好开心，今天真的太美好了……`,
+              mood: stat || "心情超好",
               moodIndex: mIndex
             });
           } else {
@@ -4484,7 +4427,7 @@ ${(() => {
           onUpdateFriend({
             affection: newAffection,
             innerThoughts: fallbackThoughts,
-            mood: "心里甜滋滋",
+            mood: "心情美滋滋",
             moodIndex: 78
           });
         }
@@ -4499,8 +4442,8 @@ ${(() => {
         const textContent = fullContent.replace(/\[.*\]/g, '').trim();
         if (textContent) sendVoiceMessage(textContent);
       }
-
-      // Photo Card extraction
+      
+  // Photo Card extraction
       if (!isOfflineMode && fullContent.includes('[SEND_PHOTO_CARD:')) {
         const photoMatch = fullContent.match(/\[SEND_PHOTO_CARD:(.*?)(?::(.*?))?(?::(.*?))?\]/);
         if (photoMatch) {
@@ -4542,18 +4485,106 @@ ${(() => {
             if (mediaUrl) {
               onSendMessage({
                 role: 'assistant',
-                content: cardContent,
-                type: 'photo_card',
+                content: '[图片]',
+                type: 'image',
                 mediaUrl: mediaUrl,
+                description: cardContent,
                 location: cardLocation,
-                date: photoMsg.date,
                 timeLabel: cardTimeLabel,
-                timestamp: photoMsg.timestamp
+                timestamp: Date.now(),
+                notificationData: { isFailed: false }
               });
+            } else {
+              throw new Error("No URL returned");
             }
-          }).catch(err => {
-            console.error("Image generation failed:", err);
+          }).catch((err) => {
+            console.error("Image generation error:", err);
+            // Send failed card message
+            onSendMessage({
+              role: 'assistant',
+              content: '[图片生成失败]',
+              type: 'image',
+              description: cardContent,
+              notificationData: { isFailed: true },
+              timestamp: Date.now()
+            });
           });
+        }
+      }
+      
+      // Clean up content by removing commands and THOUGHT blocks
+      let cleanContent = fullContent
+        .replace(/THOUGHT[\s\S]*?(?=\n\n|$)/gi, '') // Remove THOUGHT blocks
+        .replace(/\[HEARTFELT_UPDATE:[\s\S]*?(?:\]|$)/gi, '') // Remove Heartfelt Update tag, even if cut off
+        .replace(/\[INNER_MONOLOGUE\][\s\S]*?(?:\[\/INNER_MONOLOGUE\]|$)/gi, '') // Remove Inner Monologue tags
+        .replace(/\[STATUS\][\s\S]*?(?:\[\/STATUS\]|$)/gi, '') // Remove Status tags
+        .replace(/\[OUTFIT\][\s\S]*?(?:\[\/OUTFIT\]|$)/gi, '') // Remove Outfit tags
+        .replace(/\[START_VIDEO_CALL\]|\[START_VOICE_CALL\]|\[SEND_VOICE\]|\[SEND_PHOTO_CARD:.*?\]|\[SEND_PHOTO\]|\[START_LISTEN\]|\[START_TRUTH\]|\[ACCEPT_TRANSFER\]|\[REJECT_TRANSFER\]|\[SEND_TRANSFER:.*?\]|\[SEND_LOCATION:.*?\]|\[SEND_STICKER:.*?\]|\[发送了表情:.*?\]|\[HUABEI_REPAY\]|\[CHANGE_PHONE_PASSCODE:\d{4}\]|\[修改手机密码:\d{4}\]/g, '')
+        .trim();
+
+      // Extract metadata tags
+      let assistantInnerMonologue = '';
+      let assistantStatus = '';
+      let assistantOutfit = '';
+
+      if (fullContent.includes('[INNER_MONOLOGUE]')) {
+        const match = fullContent.match(/\[INNER_MONOLOGUE\](.*?)\[\/INNER_MONOLOGUE\]/s) || fullContent.match(/\[INNER_MONOLOGUE\](.*?)$/s);
+        if (match) assistantInnerMonologue = match[1].trim();
+      }
+      if (fullContent.includes('[STATUS]')) {
+        const match = fullContent.match(/\[STATUS\](.*?)\[\/STATUS\]/s) || fullContent.match(/\[STATUS\](.*?)$/s);
+        if (match) assistantStatus = match[1].trim();
+      }
+      if (fullContent.includes('[OUTFIT]')) {
+        const match = fullContent.match(/\[OUTFIT\](.*?)\[\/OUTFIT\]/s) || fullContent.match(/\[OUTFIT\](.*?)$/s);
+        if (match) assistantOutfit = match[1].trim();
+      }
+
+        // Failsafe: Remove labels and English translations in parentheses
+      cleanContent = cleanContent
+        .replace(/(?:Message|消息)\s*\d+\s*[:：]?\s*/gim, '') // Remove "Message 1:" or "消息 1："
+        .replace(/\((?:[^)]*[A-Za-z]{2,}[^)]*)\)/g, '') // Remove parentheses content that looks like English or non-Chinese (has 2+ letters)
+        .replace(/\[\d+\]\s*/g, '') // Remove [1] type labels
+        .replace(/^[ \t]*[-*•]\s*/gm, '') // Remove list bullets
+        .split('\n').map(line => line.trim()).filter(line => line).join('\n') // Remove empty lines
+        .trim();
+
+      // Extract inner thought
+      let innerThought = '';
+      const innerThoughtMatch = cleanContent.match(/\(内心：(.*?)\)/);
+      let finalCleanContent = cleanContent;
+      if (innerThoughtMatch) {
+        innerThought = innerThoughtMatch[1];
+        finalCleanContent = cleanContent.replace(/\(内心：.*?\)/, '').trim();
+      }
+
+      if (friend.disableActionDescription) {
+        finalCleanContent = finalCleanContent.replace(/\(.*?\)/g, '').replace(/（.*?）/g, '').trim();
+      }
+
+      if (friend.disableActionDescription) {
+        finalCleanContent = finalCleanContent.replace(/\(.*?\)/g, '').replace(/（.*?）/g, '').trim();
+      }
+
+      finalCleanContent = finalCleanContent
+        .replace(/\[(?:MEITUAN_BUY|TAOBAO_BUY):[^\]]+\]/g, '')
+        .trim();
+
+      // Handle Transfer commands
+      if (fullContent.includes('[ACCEPT_TRANSFER]') || fullContent.includes('[REJECT_TRANSFER]')) {
+        const lastTransferIndex = [...currentMsgs].reverse().findIndex(m => m.type === 'transfer' && m.transferStatus === 'pending');
+        if (lastTransferIndex !== -1) {
+          const actualIndex = currentMsgs.length - 1 - lastTransferIndex;
+          const transferMsg = currentMsgs[actualIndex];
+          const newStatus = fullContent.includes('[ACCEPT_TRANSFER]') ? 'received' : 'refunded';
+          
+          if (isOfflineMode) {
+            const newMsgs = [...offlineMessages];
+            newMsgs[actualIndex] = { ...transferMsg, transferStatus: newStatus };
+            setOfflineMessages(newMsgs);
+          } else {
+            onUpdateMessage(friend.id, actualIndex, { transferStatus: newStatus });
+          }
         }
       }
 
@@ -4571,7 +4602,11 @@ ${(() => {
             description: sticker.description,
             timestamp: Date.now()
           };
-          onSendMessage(stickerMsg);
+          if (isOfflineMode) {
+            setOfflineMessages(prev => [...prev, stickerMsg]);
+          } else {
+            onSendMessage(stickerMsg);
+          }
         }
       }
 
@@ -4683,7 +4718,11 @@ ${(() => {
           description: '角色发送的照片',
           timestamp: Date.now()
         };
-        onSendMessage(photoMsg);
+        if (isOfflineMode) {
+          setOfflineMessages(prev => [...prev, photoMsg]);
+        } else {
+          onSendMessage(photoMsg);
+        }
       }
 
       // Handle Meituan Buy
@@ -4754,73 +4793,6 @@ ${(() => {
       // Handle AI starting Truth or Dare
       if (fullContent.includes('[START_TRUTH]')) {
         setActiveModal('game');
-      }
-
-      // Extract raw final response from tag structure
-      const finalCleanContent = fullContent
-        .replace(/\[HEARTFELT_UPDATE:[\s\S]*?(?:\]|$)/gi, '')
-        .replace(/\[CHANGE_PHONE_PASSCODE:[\s\S]*?(?:\]|$)/gi, '')
-        .replace(/\[(?:START_VIDEO_CALL|START_VOICE_CALL|SEND_VOICE|SEND_PHOTO_CARD|SEND_PHOTO|SEND_STICKER|SEND_TRANSFER|SEND_LOCATION|OFFLINE_INVITATION|START_LISTEN|START_TRUTH|HUABEI_REPAY)[\s\S]*?\]/gi, '')
-        .replace(/\[(?:MEITUAN_BUY|TAOBAO_BUY):[\s\S]*?(?:\]|$)/gi, '')
-        .replace(/\[RECALL_MESSAGE:\s*(\d+)\]/gi, '')
-        .replace(/\[QUOTE:\s*(\d+)\]/gi, '')
-        .replace(/\[\/?(?:INNER_MONOLOGUE|STATUS|OUTFIT)\]/gi, '')
-        .trim();
-
-      // Handle AI Recall command
-      const recallMatch = fullContent.match(/\[RECALL_MESSAGE:\s*(\d+)\]/i);
-      if (recallMatch) {
-        const recallIndex = parseInt(recallMatch[1]);
-        if (!isNaN(recallIndex) && recallIndex >= 0 && recallIndex < currentMessages.length) {
-          const targetMsg = currentMessages[recallIndex];
-          if (targetMsg && targetMsg.role === 'assistant' && !targetMsg.isRecalled) {
-            handleRecall(recallIndex);
-          }
-        }
-      }
-
-      // Handle AI Quote command
-      let aiQuote: any = undefined;
-      const quoteMatch = fullContent.match(/\[QUOTE:\s*(\d+)\]/i);
-      if (quoteMatch) {
-        const quoteIndex = parseInt(quoteMatch[1]);
-        // Only quote recent user messages (last 2 rounds)
-        const userMessages = currentMessages
-          .map((m, idx) => ({ ...m, originalIndex: idx }))
-          .filter(m => m.role === 'user');
-        
-        // recentUserMessages: [latestUserMsg, secondLatestUserMsg]
-        const recentUserMessages = userMessages.slice(-2).reverse();
-        
-        if (!isNaN(quoteIndex) && quoteIndex >= 0 && quoteIndex < recentUserMessages.length) {
-          const quotedMsg = recentUserMessages[quoteIndex];
-          if (quotedMsg) {
-            aiQuote = {
-              content: quotedMsg.content.slice(0, 50) + (quotedMsg.content.length > 50 ? '...' : ''),
-              sender: user.name
-            };
-          }
-        }
-      }
-
-      // Extracted inner monologue/status/outfit for offline cards
-      let assistantInnerMonologue = '';
-      let assistantStatus = '';
-      let assistantOutfit = '';
-
-      const monologueMatch = fullContent.match(/\[INNER_MONOLOGUE\]([\s\S]*?)\[\/INNER_MONOLOGUE\]/i) || fullContent.match(/\[INNER_MONOLOGUE\]([\s\S]*?)$/i);
-      if (monologueMatch) {
-        assistantInnerMonologue = monologueMatch[1].trim();
-      }
-
-      const statusMatchTag = fullContent.match(/\[STATUS\]([\s\S]*?)\[\/STATUS\]/i) || fullContent.match(/\[STATUS\]([\s\S]*?)$/i);
-      if (statusMatchTag) {
-        assistantStatus = statusMatchTag[1].trim();
-      }
-
-      const outfitMatchTag = fullContent.match(/\[OUTFIT\]([\s\S]*?)\[\/OUTFIT\]/i) || fullContent.match(/\[OUTFIT\]([\s\S]*?)$/i);
-      if (outfitMatchTag) {
-        assistantOutfit = outfitMatchTag[1].trim();
       }
 
       // Parse content line by line to support mixed text and voice
@@ -4937,11 +4909,10 @@ ${(() => {
           type: finalType,
           duration: msgDuration,
           timestamp: Date.now() + i,
-          innerThought: i === messageCandidates.length - 1 ? innerThoughts : undefined,
+          innerThought: i === messageCandidates.length - 1 ? (innerThoughts || innerThought) : undefined,
           innerMonologue: candidate.innerMonologue,
           status: candidate.status,
-          outfit: candidate.outfit,
-          quote: i === 0 ? aiQuote : undefined
+          outfit: candidate.outfit
         };
 
         if (isOfflineMode) {
@@ -5020,6 +4991,7 @@ ${(() => {
         }
       }
 
+      // 实时更新生成角色状态 (already called at start of handleGenerate)
     } catch (error: any) {
       console.error('AI Generation Error:', error);
       let errorText = `系统错误: ${error instanceof Error ? error.message : '未知错误'}`;
@@ -5050,7 +5022,6 @@ ${(() => {
     window.addEventListener('zhouzhou_ji_chats_updated', handleChatsUpdated);
     return () => window.removeEventListener('zhouzhou_ji_chats_updated', handleChatsUpdated);
   }, [friend.id, handleGenerate]);
-
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -5589,9 +5560,7 @@ ${context}
           ...msg, 
           role: 'system', 
           content: msg.role === 'user' ? '你撤回了一条消息' : `${friend.name}撤回了一条消息`,
-          type: 'text',
-          isRecalled: true,
-          recalledContent: msg.content
+          type: 'text' 
         };
         setOfflineMessages(newMsgs);
       }
@@ -5601,9 +5570,7 @@ ${context}
         onUpdateMessage(friend.id, index, { 
           role: 'system', 
           content: msg.role === 'user' ? '你撤回了一条消息' : `${friend.name}撤回了一条消息`,
-          type: 'text',
-          isRecalled: true,
-          recalledContent: msg.content
+          type: 'text' 
         });
       }
     }
@@ -6126,7 +6093,7 @@ ${context}
                     "bg-[#333333]/95 backdrop-blur-xl rounded-2xl shadow-2xl p-3.5 border border-white/10",
                     isTop ? "-translate-y-full" : ""
                   )}>
-                    <div className="grid grid-cols-5 gap-y-5 gap-x-1">
+                    <div className="grid grid-cols-4 gap-y-5 gap-x-1">
                       {[
                         { label: '复制', icon: Copy, onClick: () => {
                           const msg = currentMessages[contextMenu.messageIndex];
@@ -6138,9 +6105,7 @@ ${context}
                         { label: '删除', icon: Trash2, onClick: () => handleDelete(contextMenu.messageIndex) },
                         { label: '翻译', icon: Globe, onClick: () => handleTranslate(contextMenu.messageIndex) },
                         { label: '引用', icon: Quote, onClick: () => handleReply(contextMenu.messageIndex) },
-                        { label: '编辑', icon: Edit3, onClick: () => handleStartEdit(contextMenu.messageIndex) },
-                        { label: '格式', icon: Wrench, onClick: () => handleRepairRendering(contextMenu.messageIndex) },
-                        { label: '心声', icon: Brain, onClick: () => handleHeartfelt(contextMenu.messageIndex) },
+                        { label: isOfflineMode ? '编辑' : '心声', icon: isOfflineMode ? Edit3 : Brain, onClick: () => isOfflineMode ? handleStartEdit(contextMenu.messageIndex) : handleHeartfelt(contextMenu.messageIndex) },
                         { label: '多选', icon: ListChecks, onClick: () => {
                           setIsMultiSelectMode(true);
                           setSelectedMessages([contextMenu.messageIndex]);
@@ -6409,22 +6374,11 @@ ${context}
             if (msg.role === 'system') {
               return (
                 <div key={msgKey} className="flex justify-center my-2">
-                  <span 
-                    onClick={() => {
-                      if (msg.isRecalled && msg.recalledContent) {
-                        setRecalledMessageToView(msg);
-                      }
-                    }}
-                    className={cn(
-                      "px-3 py-1 rounded-full text-[10px] transition-all duration-300",
-                      settings.themeId === 'rainy-cat' ? "bg-white/5 text-white/40" : "bg-black/5 text-slate-400",
-                      msg.isRecalled && "cursor-pointer hover:bg-black/10 dark:hover:bg-white/10"
-                    )}
-                  >
+                  <span className={cn(
+                    "px-3 py-1 rounded-full text-[10px] transition-all duration-300",
+                    settings.themeId === 'rainy-cat' ? "bg-white/5 text-white/40" : "bg-black/5 text-slate-400"
+                  )}>
                     {msg.content}
-                    {msg.isRecalled && (
-                      <span className="ml-1 opacity-60 underline">点击查看</span>
-                    )}
                   </span>
                 </div>
               );
@@ -6550,17 +6504,14 @@ ${context}
                         {selectedMessages.includes(i) && <Check size={12} strokeWidth={4} />}
                       </div>
                     )}
-                    {msg.quote && (
-                      <div className={cn(
-                        "mb-1 px-2 py-1 bg-black/5 dark:bg-white/5 rounded border-l-2 border-slate-300 text-[10px] opacity-60 italic",
-                        msg.role === 'user' ? "mr-1 text-right" : "ml-1 text-left"
-                      )}>
-                        {(msg.quote as any).sender}: {(msg.quote as any).content}
-                      </div>
-                    )}
-                    {msg.innerThought && (
-                      <HeartVoiceCard content={msg.innerThought} avatar={friend.avatar} />
-                    )}
+                  {msg.quote && (
+                    <div className="mb-2 p-2 bg-black/5 rounded border-l-2 border-slate-300 text-[10px] opacity-60 italic">
+                      {msg.quote.content}
+                    </div>
+                  )}
+                  {msg.innerThought && (
+                    <HeartVoiceCard content={msg.innerThought} avatar={friend.avatar} />
+                  )}
                   {msg.type === 'offline-invitation' && msg.invitationData && (
                     <OfflineInvitationCard 
                       data={msg.invitationData} 
@@ -6737,7 +6688,7 @@ ${context}
                     </div>
                   ) : (
                     <>
-                      {(!msg.type || msg.type === 'text') && !getPureStickerUrl(msg.content, settings.customStickers || []) && stripStickerTags(msg.content) && (
+                      {(!msg.type || msg.type === 'text') && !getPureStickerUrl(msg.content, settings.customStickers || []) && (
                         <div 
                           className={cn(
                             "flex flex-col gap-1", 
@@ -6758,7 +6709,7 @@ ${context}
                             return {};
                           })()}
                         >
-                          <div>{stripStickerTags(msg.content)}</div>
+                          <div>{msg.content}</div>
                           {msg.translation && !msg.hideTranslation && (
                             <div 
                               className="mt-1 pt-1 border-t border-black/10 text-xs italic opacity-70 cursor-pointer hover:opacity-100"
@@ -6779,27 +6730,6 @@ ${context}
                           {isTranslating === i && (
                             <div className="text-[10px] opacity-50 animate-pulse">正在翻译...</div>
                           )}
-                        </div>
-                      )}
-                      {(!msg.type || msg.type === 'text') && getStickerFromContent(msg.content, settings.customStickers || []) && (
-                        <div 
-                          className="px-1 py-1 cursor-pointer active:opacity-90 transition-all duration-300 flex flex-col items-center gap-1"
-                          onClick={(e) => {
-                            if (longPressTriggeredRef.current) {
-                              e.stopPropagation();
-                              longPressTriggeredRef.current = false;
-                              return;
-                            }
-                            const sData = getStickerFromContent(msg.content, settings.customStickers || []);
-                            sData?.desc && setSelectedDescription(sData.desc);
-                          }}
-                        >
-                          <img 
-                            referrerPolicy="no-referrer"  
-                            src={getStickerFromContent(msg.content, settings.customStickers || [])?.url} 
-                            alt="sticker" 
-                            className="max-w-[120px] max-h-[120px] object-contain rounded-md"  
-                          />
                         </div>
                       )}
                       {msg.type === 'photo_card' && (
@@ -7632,10 +7562,7 @@ ${context}
         <div className={cn(
           "border-t p-3 pb-6 relative transition-all duration-300 chat-window-footer z-[9999]",
           settings.themeId === 'rainy-cat' ? "bg-white/5 backdrop-blur-xl border-white/10" : (settings.activeChatThemeId ? "bg-transparent border-transparent" : (settings.appBackgroundUrl ? "bg-white/10 backdrop-blur-md border-slate-200/20" : "bg-[#f7f7f7] border-slate-200"))
-        )} style={{
-          ...(settings.appBackgroundUrl && !settings.activeChatThemeId ? { backgroundColor: `rgba(255, 255, 255, ${Math.max(0, (settings.chatWallpaperOpacity ?? 0.8) * 0.2)})` } : {}),
-          ...(settings.fullScreenMode ? { paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' } : {})
-        }}>
+        )} style={settings.appBackgroundUrl && !settings.activeChatThemeId ? { backgroundColor: `rgba(255, 255, 255, ${Math.max(0, (settings.chatWallpaperOpacity ?? 0.8) * 0.2)})` } : {}}>
         {/* Sticker Suggestions */}
         <AnimatePresence>
           {suggestedStickers.length > 0 && (
@@ -13849,50 +13776,6 @@ function VisibilitySelectorModal({ friends, visibility, visibleTo, hiddenFrom, o
           </button>
         </div>
       </div>
-    </motion.div>
-  );
-}
-
-function RecalledMessageModal({ message, settings, friend, onClose }: { message: ChatMessage, settings: AppSettings, friend: Friend, onClose: () => void }) {
-  return (
-    <motion.div 
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      onClick={onClose}
-      className="fixed inset-0 z-[200000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6"
-    >
-      <motion.div 
-        initial={{ opacity: 0, scale: 0.9, y: 20 }}
-        animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.9, y: 20 }}
-        onClick={(e) => e.stopPropagation()}
-        className={cn(
-          "w-full max-w-xs rounded-3xl p-6 shadow-2xl transition-all duration-300 border",
-          settings.themeId === 'rainy-cat' ? "bg-black/80 border-white/10 text-white" : "bg-white border-slate-200"
-        )}
-      >
-        <div className="flex items-center gap-2 mb-4 opacity-50">
-          <RotateCcw size={16} />
-          <span className="text-xs font-bold uppercase tracking-wider">撤回的消息内容</span>
-        </div>
-        
-        <div className="max-h-[40vh] overflow-y-auto mb-6">
-          <p className="text-sm leading-relaxed whitespace-pre-wrap text-slate-700 dark:text-slate-200 italic">
-            “{message.recalledContent || message.content}”
-          </p>
-        </div>
-
-        <button
-          onClick={onClose}
-          className={cn(
-            "w-full py-3 rounded-2xl font-bold transition-all active:scale-95 text-sm",
-            settings.themeId === 'rainy-cat' ? "bg-white/10 hover:bg-white/20" : "bg-slate-100 hover:bg-slate-200"
-          )}
-        >
-          我知道了
-        </button>
-      </motion.div>
     </motion.div>
   );
 }

@@ -58,9 +58,7 @@ export async function apiFetch(req: ApiRequest): Promise<any> {
     }
   } catch (error: any) {
     const hasCustomBaseUrl = req.body?.settings?.baseUrl;
-    const isMissingBackend = error.message && (error.message.includes('405') || error.message.includes('404') || error.message.includes('Failed to fetch'));
-    
-    if (!isMissingBackend && (hasCustomBaseUrl || (error.message && (error.message.includes('PROHIBITED_CONTENT') || error.message.includes('safety') || error.message.includes('blocked') || error.message.includes('API key') || error.message.includes('429') || error.message.includes('quota'))))) {
+    if (hasCustomBaseUrl || (error.message && (error.message.includes('PROHIBITED_CONTENT') || error.message.includes('safety') || error.message.includes('blocked') || error.message.includes('API key') || error.message.includes('429') || error.message.includes('quota')))) {
       throw error;
     }
     console.warn(`Local fetch to ${req.endpoint} failed. Falling back to direct client-side fetch...`, error);

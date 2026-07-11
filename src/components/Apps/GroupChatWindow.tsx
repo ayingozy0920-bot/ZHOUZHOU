@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { 
   ChevronLeft, Send, Plus, Image as ImageIcon, Smile, Sparkles, 
   MoreHorizontal, Users, Trash2, Camera, Palette, Globe, Type, Mic, Heart, X, Award, Gift, CircleDollarSign,
-  Cpu, BookOpen, Check, RefreshCw, Bell, Crown, Code, Quote, Edit3, RotateCcw, CheckSquare, Copy, Loader2, Share2, Wrench
+  Cpu, BookOpen, Check, RefreshCw, Bell, Crown, Code, Quote, Edit3, RotateCcw, CheckSquare, Copy, Loader2, Share2
 } from 'lucide-react';
 import { GroupChat, Friend, ChatMessage, UserProfile, AppSettings, Sticker } from '../../types';
 import { apiFetch } from '../../lib/apiHelper';
@@ -219,7 +219,7 @@ const renderMessageBlocks = (
     }
 
     // 2. Logic for text and standalone stickers
-    const parts = sec.content.split(/(\[(?:表情|发送了表情|SEND_STICKER):\s*.*?\])/g);
+    const parts = sec.content.split(/(\[(?:表情|发送了表情):\s*.*?\])/g);
     const validParts = parts.filter(p => p && p.trim());
     if (validParts.length === 0) return null;
 
@@ -231,14 +231,6 @@ const renderMessageBlocks = (
           alt="avatar"
         />
         <div className={cn("max-w-[70%] flex flex-col", isUser ? "items-end" : "items-start")}>
-          {quote && (
-            <div className={cn(
-              "mb-1 px-2 py-1 bg-black/5 dark:bg-white/5 rounded border-l-2 border-slate-300 text-[10px] opacity-60 italic max-w-full",
-              isUser ? "mr-1 text-right" : "ml-1 text-left"
-            )}>
-              {(quote as any).sender}: {(quote as any).content}
-            </div>
-          )}
           {((!isUser && description) || (isUser && memberTitle)) && (
             <div className={cn("flex items-center gap-1.5 mb-0.5", isUser ? "flex-row-reverse mr-1" : "flex-row ml-1")}>
               {!isUser && <span className="text-[10px] opacity-60">{description}</span>}
@@ -253,23 +245,20 @@ const renderMessageBlocks = (
             </div>
           )}
           {parts.map((part, partIdx) => {
-            const matchEmoji = part.match(/\[(?:表情|发送了表情|SEND_STICKER):\s*(.*?)\]/);
+            const matchEmoji = part.match(/\[(?:表情|发送了表情):\s*(.*?)\]/);
             if (matchEmoji) {
-              const value = matchEmoji[1].trim();
-              let foundSticker = customStickers.find(s => s.id === value);
-              if (!foundSticker) {
-                foundSticker = customStickers.find(s => s.description && (s.description === value || s.description.includes(value) || value.includes(s.description)));
-              }
+              const desc = matchEmoji[1];
+              const foundSticker = customStickers.find(s => s.description.includes(desc) || desc.includes(s.description));
               if (foundSticker) {
-                return (
-                  <div key={`${secIdx}-${partIdx}`} className="max-w-[140px] my-1.5 rounded-xl overflow-hidden bg-transparent">
-                    <img src={foundSticker.url} alt={foundSticker.description || 'sticker'} className="w-full object-cover" referrerPolicy="no-referrer" />
-                  </div>
-                );
+                 return (
+                   <div key={`${secIdx}-${partIdx}`} className="max-w-[140px] my-1.5 rounded-xl overflow-hidden bg-transparent">
+                     <img src={foundSticker.url} alt={desc} className="w-full object-cover" referrerPolicy="no-referrer" />
+                   </div>
+                 );
               }
               return (
                 <div key={`${secIdx}-${partIdx}`} className="my-1.5">
-                  <span className="text-slate-500 opacity-60 text-xs">{part}</span>
+                  <span className="inline-block bg-slate-100 dark:bg-slate-800 text-slate-500 text-xs px-2 py-1 rounded-md">[{desc}]</span>
                 </div>
               );
             }
@@ -306,49 +295,12 @@ const renderMessageBlocks = (
 const getPureStickerUrl = (content: string, customStickers: Sticker[] = []) => {
   if (!content) return null;
   const trimmed = content.trim();
-  
-  // Pattern 1: [表情: 描述/ID] or [发送了表情: 描述/ID]
-  const match1 = trimmed.match(/^\[(?:发送了)?表情:\s*(.*?)\]$/);
-  // Pattern 2: [SEND_STICKER:ID/描述]
-  const match2 = trimmed.match(/^\[SEND_STICKER:\s*(.*?)\]$/);
-  
-  const value = (match1 ? match1[1] : (match2 ? match2[1] : null))?.trim();
-  
-  if (value) {
-    // 1. Try find by exact ID
-    let found = customStickers.find(s => s.id === value);
-    // 2. Try find by description (exact or contains)
-    if (!found) {
-      found = customStickers.find(s => s.description && (s.description === value || s.description.includes(value) || value.includes(s.description)));
-    }
-    // 3. Try find by partial ID
-    if (!found && value.length > 3) {
-      found = customStickers.find(s => s.id && (s.id.includes(value) || value.includes(s.id)));
-    }
-    
-    if (found) {
-      return { url: found.url, desc: found.description || value };
-    }
-  }
-  
-  return null;
-};
-
-const getStickerFromContent = (content: string, customStickers: Sticker[] = []) => {
-  if (!content) return null;
-  const match = content.match(/\[(?:SEND_STICKER:|发送了表情:|表情:)\s*([^,\]]+).*?\]/);
+  const match = trimmed.match(/^\[表情:\s*(.*?)\]$/);
   if (match) {
-    const value = match[1].trim();
-    let found = customStickers.find(s => s.id === value);
-    if (!found) {
-      found = customStickers.find(s => s.description && (s.description === value || s.description.includes(value) || value.includes(s.description)));
-    }
-    if (!found && value.length > 3) {
-      found = customStickers.find(s => s.id && (s.id.includes(value) || value.includes(s.id)));
-    }
-    
-    if (found) {
-      return { url: found.url, desc: found.description || value, rawTag: match[0] };
+    const desc = match[1];
+    const foundSticker = customStickers.find(s => s.description.includes(desc) || desc.includes(s.description));
+    if (foundSticker) {
+      return { url: foundSticker.url, desc };
     }
   }
   return null;
@@ -449,7 +401,6 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
   const [showForwardModal, setShowForwardModal] = useState(false);
   const [flippedMessageIds, setFlippedMessageIds] = useState<Set<string>>(new Set());
   const [showFullMergedModal, setShowFullMergedModal] = useState<Array<{ senderName: string; content: string; timestamp: number }> | null>(null);
-  const [recalledMessageToView, setRecalledMessageToView] = useState<ChatMessage | null>(null);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   const [isParsingCard, setIsParsingCard] = useState(false);
@@ -611,28 +562,6 @@ export const GroupChatWindow: React.FC<GroupChatWindowProps> = ({
     }
   };
 
-  const handleRepairRendering = (index: number) => {
-    const msg = messages[index];
-    if (!msg) return;
-
-    const stickerData = getStickerFromContent(msg.content, settings.customStickers || []);
-    if (stickerData) {
-      const updates = {
-        type: 'sticker' as const,
-        mediaUrl: stickerData.url,
-      };
-      if (onUpdateMessage) {
-        onUpdateMessage(index, updates);
-      }
-      alert('格式修复成功');
-    } else {
-      if (onUpdateMessage) {
-        onUpdateMessage(index, { timestamp: msg.timestamp });
-      }
-      alert('渲染已刷新');
-    }
-  };
-
   const handleSendOpening = () => {
     if (!openingTitle.trim() || !openingContent.trim()) return;
     
@@ -760,7 +689,7 @@ ${historyText}`;
       role: 'user',
       content: inputText.trim(),
       timestamp: Date.now(),
-      quote: quotedMsg ? { sender: quotedMsg.role === 'user' ? user.name : (quotedMsg.description || '成员'), content: quotedMsg.content } : undefined,
+      quote: quotedMsg ? quotedMsg : undefined,
     };
     onSendMessage(msg);
     setInputText('');
@@ -1039,9 +968,7 @@ ${historyText}`;
     - "amount": 红包总金额 (如 10.5)
     - "count": 红包个数
     - "message": 红包祝福语
-- "announcementDecision": 可选，"confirm" 或 "decline" (用于对群公告表态)
-- "quoteIndex": 可选，引用的消息索引（数字）
-- "recallIndex": 可选，要撤回的之前消息索引（数字，仅限撤回自己刚才发的消息）`;
+- "announcementDecision": 可选，"confirm" 或 "decline" (用于对群公告表态)`;
 
       const data = await apiFetch({
         body: {
@@ -1106,17 +1033,6 @@ ${historyText}`;
             isNarration: rep.messageType === 'narration',
             type: isRedPacket ? 'red-packet' : (isSticker ? 'sticker' : 'text'),
             timestamp: Date.now() + i * 500,
-            quote: (() => {
-              if (rep.quoteIndex === undefined) return undefined;
-              const userMsgs = messages.filter(m => m.role === 'user');
-              const recentUserMsgs = userMsgs.slice(-2).reverse();
-              const target = recentUserMsgs[rep.quoteIndex];
-              if (!target) return undefined;
-              return {
-                sender: user.name,
-                content: target.content.slice(0, 50) + (target.content.length > 50 ? '...' : '')
-              } as any;
-            })(),
             redPacketData: isRedPacket ? {
               id: Math.random().toString(36).substr(2, 9),
               packetType: 'random',
@@ -1131,15 +1047,6 @@ ${historyText}`;
             } : undefined
           };
           onSendMessage(groupMsg);
-
-          if (rep.recallIndex !== undefined && messages[rep.recallIndex]) {
-            const target = messages[rep.recallIndex];
-            if (target && target.description === member.name && !target.isRecalled) {
-              if (onUpdateMessage) {
-                onUpdateMessage(rep.recallIndex, { isRecalled: true, recalledContent: target.content });
-              }
-            }
-          }
 
           // If there is an announcementDecision, update the latest group-announcement message
           if (rep.announcementDecision) {
@@ -2015,17 +1922,41 @@ ${historyText}`;
                 <div className="flex-1 min-w-0">
                   {renderMessageTimestamp(msg, prevMsg)}
                   {msg.isRecalled ? (() => {
+                    const isFlipped = flippedMessageIds.has(msgId);
                     const senderDisplayName = msg.role === 'user' ? user.name : (msg.description || '成员');
                     return (
                       <div className="w-full text-center my-3">
-                        <span 
-                          onClick={() => {
-                            setRecalledMessageToView(msg);
-                          }}
-                          className="inline-block px-3 py-1 bg-black/10 dark:bg-white/10 text-slate-500 dark:text-slate-400 text-[10px] rounded-full cursor-pointer hover:underline"
-                        >
-                          {senderDisplayName === user.name ? '你' : senderDisplayName} 撤回了一条消息 (点击查看)
-                        </span>
+                        {isFlipped ? (
+                          <div 
+                            onClick={() => {
+                              setFlippedMessageIds(prev => {
+                                const next = new Set(prev);
+                                next.delete(msgId);
+                                return next;
+                              });
+                            }}
+                            className="inline-block max-w-xs mx-auto p-3 bg-white dark:bg-slate-800 rounded-2xl shadow-lg border border-slate-200 dark:border-slate-700 text-left text-xs cursor-pointer animate-in zoom-in-95 duration-200"
+                          >
+                            <div className="flex justify-between items-center mb-1 text-[10px] text-slate-400 font-bold">
+                              <span>【撤回前的内容 - 点击收起】</span>
+                              <span>{senderDisplayName}</span>
+                            </div>
+                            <p className="text-slate-800 dark:text-slate-200 whitespace-pre-wrap">{msg.recalledContent || msg.content}</p>
+                          </div>
+                        ) : (
+                          <span 
+                            onClick={() => {
+                              setFlippedMessageIds(prev => {
+                                const next = new Set(prev);
+                                next.add(msgId);
+                                return next;
+                              });
+                            }}
+                            className="inline-block px-3 py-1 bg-black/10 dark:bg-white/10 text-slate-500 dark:text-slate-400 text-[10px] rounded-full cursor-pointer hover:underline"
+                          >
+                            {senderDisplayName === user.name ? '你' : senderDisplayName} 撤回了一条消息 (点击查看)
+                          </span>
+                        )}
                       </div>
                     );
                   })() : msg.isMergedForward && msg.mergedMessages ? (
@@ -3317,39 +3248,25 @@ ${historyText}`;
               解析卡片
             </button>
 
-            <button
-              onClick={() => {
-                handleRepairRendering(activeContextMenu.index);
-                setActiveContextMenu(null);
-              }}
-              onTouchEnd={(e) => {
-                e.stopPropagation();
-                handleRepairRendering(activeContextMenu.index);
-                setActiveContextMenu(null);
-              }}
-              className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700/60 text-xs font-medium transition-colors text-left text-slate-800 dark:text-slate-100 w-full"
-            >
-              <Wrench size={16} className="text-slate-600 dark:text-slate-300" />
-              格式
-            </button>
-
-            <button
-              onClick={() => {
-                setEditingMsgIndex(activeContextMenu.index);
-                setEditText(activeContextMenu.msg.content);
-                setActiveContextMenu(null);
-              }}
-              onTouchEnd={(e) => {
-                e.stopPropagation();
-                setEditingMsgIndex(activeContextMenu.index);
-                setEditText(activeContextMenu.msg.content);
-                setActiveContextMenu(null);
-              }}
-              className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700/60 text-xs font-medium transition-colors text-left text-slate-800 dark:text-slate-100 w-full"
-            >
-              <Edit3 size={16} className="text-slate-600 dark:text-slate-300" />
-              编辑
-            </button>
+            {activeContextMenu.msg.role === 'user' && (
+              <button
+                onClick={() => {
+                  setEditingMsgIndex(activeContextMenu.index);
+                  setEditText(activeContextMenu.msg.content);
+                  setActiveContextMenu(null);
+                }}
+                onTouchEnd={(e) => {
+                  e.stopPropagation();
+                  setEditingMsgIndex(activeContextMenu.index);
+                  setEditText(activeContextMenu.msg.content);
+                  setActiveContextMenu(null);
+                }}
+                className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700/60 text-xs font-medium transition-colors text-left text-slate-800 dark:text-slate-100 w-full"
+              >
+                <Edit3 size={16} className="text-slate-600 dark:text-slate-300" />
+                编辑
+              </button>
+            )}
 
             <button
               onClick={() => {
@@ -3555,41 +3472,6 @@ ${historyText}`;
             </motion.div>
           </div>
         )}
-        {/* Recalled Message Modal */}
-        <AnimatePresence>
-          {recalledMessageToView && (
-            <div className="fixed inset-0 z-[200000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-6" onClick={() => setRecalledMessageToView(null)}>
-              <motion.div 
-                initial={{ opacity: 0, scale: 0.9, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                onClick={(e) => e.stopPropagation()}
-                className={cn(
-                  "w-full max-w-xs rounded-3xl p-6 shadow-2xl transition-all duration-300 border bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700"
-                )}
-              >
-                <div className="flex items-center gap-2 mb-4 opacity-50 text-slate-500 dark:text-slate-400">
-                  <RotateCcw size={16} />
-                  <span className="text-xs font-bold uppercase tracking-wider">撤回的消息内容</span>
-                </div>
-                
-                <div className="max-h-[40vh] overflow-y-auto mb-6">
-                  <p className="text-sm leading-relaxed whitespace-pre-wrap text-slate-700 dark:text-slate-200 italic">
-                    “{recalledMessageToView.recalledContent || recalledMessageToView.content}”
-                  </p>
-                </div>
-
-                <button
-                  onClick={() => setRecalledMessageToView(null)}
-                  className="w-full py-3 rounded-2xl font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all active:scale-95 text-sm"
-                >
-                  我知道了
-                </button>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
-
       </AnimatePresence>
     </div>
   );

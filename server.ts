@@ -40,82 +40,6 @@ function addApiLog(type: string, status: number | 'error', url: string, error?: 
   logToFile(`API Log - Type: ${type}, Status: ${status}, URL: ${url}, Error: ${error || 'None'}`);
 }
 
-function parseDataUrl(dataUrl: string) {
-  if (!dataUrl) return null;
-  const matches = dataUrl.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.*)$/);
-  if (matches && matches.length === 3) {
-    return {
-      mimeType: matches[1],
-      data: matches[2]
-    };
-  }
-  return null;
-}
-
-async function fetchImageAsBase64(url: string): Promise<{ mimeType: string, data: string } | null> {
-  try {
-    if (!url) return null;
-    
-    // If it's a data URL already, parse it directly
-    if (url.startsWith('data:')) {
-      const parsed = parseDataUrl(url);
-      if (parsed) {
-        return parsed;
-      }
-    }
-
-    let targetUrl = url;
-    // Extract from proxy if needed
-    if (url.includes('/api/proxy-image?url=')) {
-      try {
-        const urlObj = new URL(url, 'http://localhost');
-        const decoded = urlObj.searchParams.get('url');
-        if (decoded) {
-          targetUrl = decoded;
-        }
-      } catch (e) {
-        // ignore
-      }
-    }
-
-    // Ensure it's an absolute URL
-    if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
-      const localPort = process.env.DEFAULT_APP_PORT || process.env.PORT || 3000;
-      targetUrl = `http://127.0.0.1:${localPort}${targetUrl.startsWith('/') ? '' : '/'}${targetUrl}`;
-    }
-
-    console.log(`[Image Resolver] Fetching image from: ${targetUrl}`);
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 seconds timeout
-
-    const response = await fetch(targetUrl, {
-      signal: controller.signal,
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'image/*'
-      }
-    });
-    clearTimeout(timeoutId);
-
-    if (!response.ok) {
-      console.warn(`[Image Resolver] Failed to fetch image: status ${response.status}`);
-      return null;
-    }
-
-    const contentType = response.headers.get("content-type") || "image/jpeg";
-    const arrayBuffer = await response.arrayBuffer();
-    const base64Data = Buffer.from(arrayBuffer).toString('base64');
-    
-    return {
-      mimeType: contentType,
-      data: base64Data
-    };
-  } catch (error: any) {
-    console.error("[Image Resolver] Error fetching image:", error.message);
-    return null;
-  }
-}
-
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.DEFAULT_APP_PORT || process.env.PORT || 3000);
@@ -130,24 +54,13 @@ async function startServer() {
     const { system_prompt, messages, settings } = req.body;
     
     try {
-      // Pre-resolve all image messages to base64 structure
-      const processedMessages = await Promise.all((messages || []).map(async (m: any) => {
-        let imageResult: { mimeType: string, data: string } | null = null;
-        if (m.type === 'image' && m.mediaUrl) {
-          imageResult = await fetchImageAsBase64(m.mediaUrl);
-        }
-        return {
-          ...m,
-          resolvedImage: imageResult
-        };
-      }));
-
       let baseUrl = settings?.baseUrl;
       const apiKey = (baseUrl ? (settings?.apiKey || settings?.userApiKey) : (settings?.userApiKey || settings?.apiKey)) || process.env.GEMINI_API_KEY;
       
       if (baseUrl) {
         try {
           baseUrl = baseUrl.replace(/\/+$/, '');
+          // 只要提供了 baseUrl，就优先尝试 OpenAI 兼容路径
           const isOpenAI = true;
           
           if (isOpenAI) {
@@ -161,28 +74,10 @@ async function startServer() {
             }
             const openaiMessages = [
               { role: 'system', content: system_prompt },
-              ...processedMessages.map((m: any) => {
-                const role = m.role === 'model' ? 'assistant' : m.role;
-                const text = m.parts?.[0]?.text || m.content || '';
-                
-                if (m.type === 'image' && m.resolvedImage) {
-                  const dataUrl = `data:${m.resolvedImage.mimeType};base64,${m.resolvedImage.data}`;
-                  return {
-                    role,
-                    content: [
-                      { type: 'text', text: text },
-                      {
-                        type: 'image_url',
-                        image_url: {
-                          url: dataUrl
-                        }
-                      }
-                    ]
-                  };
-                }
-                
-                return { role, content: text };
-              })
+              ...messages.map((m: any) => ({
+                role: m.role === 'model' ? 'assistant' : m.role,
+                content: m.parts?.[0]?.text || m.content || ''
+              }))
             ];
 
             const response = await fetch(url, {
@@ -248,22 +143,10 @@ async function startServer() {
           });
 
           response = await genModel.generateContent({
-            contents: processedMessages.map((msg: any) => {
-              const role = msg.role === 'assistant' ? 'model' : 'user';
-              const text = msg.parts?.[0]?.text || msg.content || '';
-              const parts: any[] = [{ text }];
-              
-              if (msg.type === 'image' && msg.resolvedImage) {
-                parts.push({
-                  inlineData: {
-                    mimeType: msg.resolvedImage.mimeType,
-                    data: msg.resolvedImage.data
-                  }
-                });
-              }
-              
-              return { role, parts };
-            })
+            contents: messages.map((msg: any) => ({
+              role: msg.role === 'assistant' ? 'model' : 'user',
+              parts: [{ text: msg.parts?.[0]?.text || msg.content || '' }]
+            }))
           });
           break;
         } catch (err: any) {
@@ -911,14 +794,6 @@ async function startServer() {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 seconds timeout
 
-    let referer = '';
-    try {
-      const parsedUrl = new URL(imageUrl);
-      referer = parsedUrl.origin + '/';
-    } catch (e) {
-      // ignore
-    }
-
     try {
       const response = await fetch(imageUrl, {
         signal: controller.signal,
@@ -927,8 +802,7 @@ async function startServer() {
           'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
           'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
           'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache',
-          ...(referer ? { 'Referer': referer } : {})
+          'Pragma': 'no-cache'
         }
       });
       clearTimeout(timeoutId);
