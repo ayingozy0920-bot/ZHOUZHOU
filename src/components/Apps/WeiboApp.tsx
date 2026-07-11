@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { Heart, MessageSquare, Share2, MoreHorizontal, Camera, Home, Play, Search, Mail, User, ChevronLeft, Plus, Users, Settings, UserPlus, RefreshCw, X, Trash2, Edit2, Star, FileText, Ban, Download, Upload, History, Image, Link } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Heart, MessageSquare, Share2, MoreHorizontal, Camera, Home, Play, Search, Mail, User, ChevronLeft, Plus, Users, Settings, UserPlus, RefreshCw, X, Trash2, Edit2, Star, FileText, Ban, Download, Upload, History, Image, Link, Smile, Sparkles, Send, Quote, Copy, Edit3, CornerUpLeft } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import { AppSettings, Friend, MomentPost, WeiboCategory, MomentComment } from '../../types';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence } from 'motion/react';
 import { useFriends } from '../../hooks/useFriends';
 import { useMemory } from '../../hooks/useMemory';
 import { get, set } from 'idb-keyval';
@@ -11,14 +11,52 @@ import { getGeminiClient, getGeminiModel } from '../../lib/gemini';
 interface Props {
   settings: AppSettings;
   onBack: () => void;
+  onUpdateSettings?: (updates: Partial<AppSettings>) => void;
 }
+
+const EMOJIS = ['😊', '😂', '🥹', '😍', '🥰', '😘', '😋', '😎', '🤩', '🥳', '😏', '😒', '😞', '😔', '😢', '😭', '❤️', '👍', '🔥', '✨', '🎉', '💩', '👻', '🐱', '🌹', '☕', '🍻'];
+
+const getPureStickerUrl = (content: string, customStickers: any[] = []) => {
+  if (!content) return null;
+  const trimmed = content.trim();
+  const bracketMatch = trimmed.match(/\[(?:SEND_STICKER|表情|发送了表情):\s*([^\]]+)\]/i) || trimmed.match(/\[([^\]]+)\]/);
+  const targetIdOrDesc = bracketMatch ? bracketMatch[1].replace(/^(SEND_STICKER|表情|发送了表情)[:：]\s*/i, '').trim() : trimmed;
+
+  if (customStickers && customStickers.length > 0) {
+    const found = customStickers.find((s: any) => 
+      s.id === targetIdOrDesc || 
+      (s.description && (s.description.includes(targetIdOrDesc) || targetIdOrDesc.includes(s.description)))
+    );
+    if (found) return { url: found.url, desc: found.description };
+
+    if (bracketMatch || trimmed.startsWith('[SEND_STICKER') || trimmed.startsWith('[表情')) {
+      const fallbackSticker = customStickers[0];
+      return { url: fallbackSticker.url, desc: fallbackSticker.description || targetIdOrDesc };
+    }
+  }
+
+  const defaultStickers: Record<string, string> = {
+    '9y0': 'https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?q=80&w=400',
+    'dog': 'https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?q=80&w=400',
+    'cat': 'https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?q=80&w=400',
+    'cute': 'https://images.unsplash.com/photo-1543466835-00a7907e9de1?q=80&w=400',
+    'sticker': 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?q=80&w=400',
+  };
+  if (defaultStickers[targetIdOrDesc]) {
+    return { url: defaultStickers[targetIdOrDesc], desc: targetIdOrDesc };
+  }
+  if (bracketMatch || trimmed.startsWith('[SEND_STICKER') || trimmed.startsWith('[表情')) {
+    return { url: 'https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?q=80&w=400', desc: targetIdOrDesc };
+  }
+  return null;
+};
 
 interface FeedItem {
   friend: Friend;
   moment: MomentPost;
 }
 
-export default function WeiboApp({ settings, onBack }: Props) {
+export default function WeiboApp({ settings, onBack, onUpdateSettings }: Props) {
   const { friends, user } = useFriends();
   const { addOnlineMemory, getFriendMemory } = useMemory();
   const isRainy = settings.themeId === 'rainy-cat';
@@ -45,6 +83,52 @@ export default function WeiboApp({ settings, onBack }: Props) {
   const [showChatSettingsId, setShowChatSettingsId] = useState<string | null>(null);
   const [chatSearchQuery, setChatSearchQuery] = useState('');
   const [chatInput, setChatInput] = useState('');
+  const [isAiGenerating, setIsAiGenerating] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [stickerTab, setStickerTab] = useState<'emoji' | 'custom'>('emoji');
+  const [showStickerImport, setShowStickerImport] = useState<'url' | 'file' | null>(null);
+  const [stickerUrlInput, setStickerUrlInput] = useState('');
+  const [stickerDeleteMode, setStickerDeleteMode] = useState(false);
+  const [selectedStickers, setSelectedStickers] = useState<string[]>([]);
+  const [quotedMessage, setQuotedMessage] = useState<any | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ messageIndex: number } | null>(null);
+  const [editingMessageIndex, setEditingMessageIndex] = useState<number | null>(null);
+  const [editingContent, setEditingContent] = useState('');
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const longPressTimer = useRef<any>(null);
+  const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 2000);
+  };
+
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const prevChatFriendIdRef = useRef<string | null>(null);
+  const stickerFileInputRef = useRef<HTMLInputElement>(null);
+  
+  useEffect(() => {
+    if (messagesEndRef.current && activeChatFriendId) {
+      const isJustOpened = prevChatFriendIdRef.current !== activeChatFriendId;
+      messagesEndRef.current.scrollIntoView({ behavior: isJustOpened ? 'auto' : 'smooth' });
+    }
+    prevChatFriendIdRef.current = activeChatFriendId;
+  }, [activeChatFriendId, weiboChats, isAiGenerating]);
+
+  const formatMessageTime = (timestamp: number) => {
+    if (!timestamp) return '';
+    const date = new Date(timestamp);
+    const now = new Date();
+    const isToday = date.toDateString() === now.toDateString();
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    const isYesterday = date.toDateString() === yesterday.toDateString();
+
+    const timeStr = date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+    if (isToday) return timeStr;
+    if (isYesterday) return `昨天 ${timeStr}`;
+    return `${date.getMonth() + 1}月${date.getDate()}日 ${timeStr}`;
+  };
 
   const [moments, setMoments] = useState<MomentPost[]>([]);
   const [likedMoments, setLikedMoments] = useState<Set<string>>(new Set());
@@ -285,48 +369,71 @@ export default function WeiboApp({ settings, onBack }: Props) {
     if (!friend) return null;
     const messages = weiboChats[activeChatFriendId] || [];
 
-    const handleSendMessage = async () => {
+    const handleSendMessage = () => {
       if (!chatInput.trim()) return;
-      const friend = weiboFriends.find(f => f.id === activeChatFriendId);
-      if (!friend) return;
-
-      const userMsg = { id: Date.now().toString(), role: 'user', content: chatInput, timestamp: Date.now() };
+      const userMsg = { 
+        id: Date.now().toString(), 
+        role: 'user', 
+        content: chatInput, 
+        quote: quotedMessage || undefined,
+        timestamp: Date.now() 
+      };
       const newMessages = [...messages, userMsg];
-      
-      // Limit context if set
-      const contextLimit = friend.memorySettings?.contextLimit || 10;
-      const contextMessages = newMessages.slice(-contextLimit);
-
       setWeiboChats(prev => ({ ...prev, [activeChatFriendId]: newMessages }));
       setChatInput('');
+      setQuotedMessage(null);
+    };
 
-      // Auto-summarize check
-      const autoSummaryThreshold = 15; // Default threshold for Weibo
-      if (newMessages.length > 0 && newMessages.length % autoSummaryThreshold === 0) {
-        const recentMsgs = newMessages.slice(-autoSummaryThreshold * 2);
-        const summarize = async () => {
-          try {
-            const ai = getGeminiClient(settings);
-            const prompt = `请总结以下聊天记录的要点，以便 AI 以后能记住。请用简短的几句话概括。\n\n${recentMsgs.map(m => `${m.role === 'user' ? '用户' : friend.name}: ${m.content}`).join('\n')}`;
-            
-            const result = await ai.models.generateContent({
-              model: getGeminiModel(settings),
-              contents: [{ role: 'user', parts: [{ text: prompt }] }],
-              config: {
-                temperature: 0.3
-              }
-            });
-            const summary = result.text || "";
-            
-            if (summary) {
-              addOnlineMemory(friend.id, summary, 'auto', 'weibo');
-            }
-          } catch (e) {
-            console.error("Auto summary failed:", e);
-          }
-        };
-        summarize().catch(console.error);
+    const handleSendSticker = (sticker: any) => {
+      const userMsg = { 
+        id: Date.now().toString(), 
+        role: 'user', 
+        content: `[表情:${sticker.description || '表情包'}]`, 
+        timestamp: Date.now() 
+      };
+      const newMessages = [...messages, userMsg];
+      setWeiboChats(prev => ({ ...prev, [activeChatFriendId]: newMessages }));
+      setShowEmojiPicker(false);
+    };
+
+    const handleAddStickersByUrl = () => {
+      const lines = stickerUrlInput.split('\n').map(l => l.trim()).filter(l => l);
+      if (lines.length === 0) return;
+      
+      const newStickers = lines.map(line => {
+        const urlPattern = /(https?:\/\/\S+)/i;
+        const match = line.match(urlPattern);
+        if (match) {
+          const url = match[1];
+          let description = line.replace(url, '').trim();
+          description = description.replace(/^[:：\-\s]+|[:：\-\s]+$/g, '').trim() || '批量导入的表情包';
+          return {
+            id: Math.random().toString(36).substr(2, 9),
+            url,
+            description,
+            addedAt: Date.now()
+          };
+        }
+        return null;
+      }).filter(Boolean) as any[];
+
+      if (newStickers.length === 0) return;
+      const updatedStickers = [...(settings.customStickers || []), ...newStickers];
+      if (onUpdateSettings) {
+        onUpdateSettings({ customStickers: updatedStickers });
       }
+      setStickerUrlInput('');
+      setShowStickerImport(null);
+    };
+
+    const handleTriggerAiReply = async () => {
+      const friend = weiboFriends.find(f => f.id === activeChatFriendId);
+      if (!friend) return;
+      setIsAiGenerating(true);
+      const currentMessages = weiboChats[activeChatFriendId] || [];
+
+      const contextLimit = friend.memorySettings?.contextLimit || 10;
+      const contextMessages = currentMessages.slice(-contextLimit);
 
       // Get memories for this friend
       const friendMemory = getFriendMemory(friend.id);
@@ -334,14 +441,55 @@ export default function WeiboApp({ settings, onBack }: Props) {
         ? `\n你的记忆库中有以下关于用户的记录：\n${friendMemory.onlineMemories.slice(0, 5).map(m => `- [${m.source === 'weibo' ? '微博' : '聊天'}] ${m.content}`).join('\n')}`
         : "";
 
-      // AI Reply
+      // Fetch Chat App history
+      let chatAppContext = '';
+      try {
+        const allChats = await get('zhouzhou_ji_chats') || {};
+        const friendChats = allChats[friend.id] || [];
+        const recentChatAppHistory = friendChats.slice(-20);
+        chatAppContext = recentChatAppHistory.length > 0
+          ? `\n【微信私信记录（最近20条）】\n${recentChatAppHistory.map((m: any) => `${m.role === 'user' ? '用户' : friend.name}: ${m.content}`).join('\n')}`
+          : '';
+      } catch (e) {
+        console.error(e);
+      }
+
+      // Weibo context
+      const latestFeed = feed.slice(0, 20).map(item => {
+        const authorType = item.moment.authorId === 'user' ? '用户(你聊天的对象)' : item.moment.authorId === friend.id ? '你自己' : '其他网友/好友';
+        return `[作者类型: ${authorType}] [博主: ${item.friend.name}] ${item.moment.content}`;
+      }).join('\n');
+      const userPosts = moments.filter(m => m.authorId === 'user').slice(0, 10).map(m => `- ${m.content}`).join('\n');
+      const friendPosts = moments.filter(m => m.authorId === friend.id).slice(0, 10).map(m => `- ${m.content}`).join('\n');
+      const weiboContext = `\n【微博实时动态与广场】\n首页动态列表（包含你,用户及其他网友发布的微博,你可以通过作者类型明确区分）：\n${latestFeed}\n\n用户自己发表的微博：\n${userPosts}\n\n你自己(${friend.name})发表的微博：\n${friendPosts}`;
+
       try {
         const ai = getGeminiClient(settings);
+        const beijingTimeStr = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai', hour12: false });
+        const timeContext = `\n\n【系统设定：北京实时时间感知】\n当前北京实时时间是：${beijingTimeStr}。请在对话中自然地体现对当前时间（如上午、下午、深夜、星期几等）的感知和流逝。`;
+        
+        let stickerPromptSection = '';
+        if (settings.customStickers && settings.customStickers.length > 0) {
+          stickerPromptSection = `\n\n【系统设定：用户导入的自定义表情包库】\n你可以使用用户导入的表情包。发送表情包时，请使用格式：[SEND_STICKER:表情包ID] 或 [表情:描述]。\n以下是你可用的所有自定义表情包列表：\n`;
+          settings.customStickers.forEach(s => {
+            stickerPromptSection += `- ID: ${s.id}, 描述: ${s.description || '无描述'}\n`;
+          });
+          stickerPromptSection += `\n请根据实时语境和人设，适时在2-7条短句回复中挑选并发送合适的表情包（可单独作为一行短句输出 [SEND_STICKER:表情包ID]）。`;
+        }
+
+        const systemPrompt = `你正在微博私信中扮演 ${friend.name}。性格设定：${friend.persona}。${memoriesStr}${chatAppContext}${weiboContext}${timeContext}${stickerPromptSection}
+要求：
+1. **彻底去AI化**：完全去掉机器感，贴合普通人日常说话语气，高度口语化，不要刻板书面语，像真人一样随性、自然。
+2. **互动张力**：会接梗、会撒娇、会打趣、会轻微拌嘴，真实互动。
+3. **【‼️ 严格禁令】禁止动作描写**：你必须表现得像一个正在打字的真人，严禁使用任何括号、星号或中括号包裹的动作描写、神态描述（如：禁止出现 “(脸红)”、“*微笑*”、“[点头]”、“（笑）” 等）。严禁包含任何括号内的动作/心理描写。
+4. **【‼️ 严格限制数量】多条动态回复机制：** 像真实打字聊天一样，一次发送多条短句。**必须且只能回复 2 到 7 条短句，绝对禁止超过 7 条或少于 2 条**。需要发送多条消息时，请用换行符（\\n）分隔每一条消息。每一行都会作为一条独立的私信消息。绝对禁止每次只发一条或长篇大论，必须用短平快、高频互动的碎碎念。
+5. **上下文感知**：你可以感知到上方提供的微博动态内容和微信聊天记录，并根据语境自然地提起。
+请回复用户的私信。`;
+
         const result = await ai.models.generateContent({
           model: getGeminiModel(settings),
           contents: [
-            { role: 'user', parts: [{ text: `你正在微博私信中扮演 ${friend.name}。性格设定：${friend.persona}。${memoriesStr}
-要求：完全去掉机器感，贴合普通人日常说话语气，高度口语化，不要刻板书面语，像真人一样随性、自然。会接梗、会撒娇、会打趣、会轻微拌嘴，真实互动。请回复用户的私信。` }] },
+            { role: 'user', parts: [{ text: systemPrompt }] },
             ...contextMessages.map(m => ({ 
               role: m.role === 'user' ? 'user' : 'model', 
               parts: [{ text: m.content }] 
@@ -352,8 +500,27 @@ export default function WeiboApp({ settings, onBack }: Props) {
           }
         });
         const aiContent = result.text || "嗯嗯。";
-        const aiMsg = { id: (Date.now() + 1).toString(), role: 'assistant', content: aiContent, timestamp: Date.now() };
-        setWeiboChats(prev => ({ ...prev, [activeChatFriendId]: [...(prev[activeChatFriendId] || []), aiMsg] }));
+        let aiLines = aiContent.split('\n').filter(l => l.trim());
+        if (aiLines.length > 7) {
+          aiLines = aiLines.slice(0, 7);
+        }
+        if (aiLines.length === 0) {
+          aiLines = ["嗯嗯"];
+        }
+        
+        const aiMsgs = aiLines.map((line, i) => ({
+          id: (Date.now() + 100 + i).toString(),
+          role: 'assistant',
+          content: line.trim(),
+          timestamp: Date.now() + 100 + i
+        }));
+
+        if (aiMsgs.length > 0) {
+          setWeiboChats(prev => ({
+            ...prev,
+            [activeChatFriendId]: [...(prev[activeChatFriendId] || []), ...aiMsgs]
+          }));
+        }
       } catch (err: any) {
         if (err?.message?.includes('429') || err?.status === 'RESOURCE_EXHAUSTED' || err?.message?.includes('quota')) {
           const aiMsg = { id: (Date.now() + 1).toString(), role: 'assistant', content: "(博主正在休息中，请稍后再试)", timestamp: Date.now() };
@@ -361,6 +528,8 @@ export default function WeiboApp({ settings, onBack }: Props) {
           return;
         }
         console.error("私信回复失败:", err);
+      } finally {
+        setIsAiGenerating(false);
       }
     };
 
@@ -370,36 +539,433 @@ export default function WeiboApp({ settings, onBack }: Props) {
         backgroundSize: 'cover',
         backgroundPosition: 'center'
       }}>
-        <div className="flex items-center justify-between px-4 py-3 bg-white/90 backdrop-blur-md border-b shrink-0">
-          <div className="flex items-center gap-3">
-            <button onClick={() => setActiveChatFriendId(null)}><ChevronLeft size={24} /></button>
-            <span className="font-bold">{friend.name}</span>
+        {toastMessage && (
+          <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[1000] bg-black/80 text-white px-4 py-2 rounded-xl text-xs shadow-lg backdrop-blur-md animate-fade-in">
+            {toastMessage}
           </div>
-          <div className="flex items-center gap-4">
-            <button onClick={() => setViewingFriendProfileId(friend.id)} className="text-slate-500"><User size={20} /></button>
-            <button onClick={() => setShowChatSettingsId(friend.id)} className="text-slate-500"><Settings size={20} /></button>
+        )}
+
+        {/* Top Header with Centered Name & Typing Indicator */}
+        <div className="relative flex items-center justify-between px-4 py-3 bg-white/95 backdrop-blur-md border-b shrink-0 shadow-sm">
+          <div className="flex items-center gap-3 z-10">
+            <button onClick={() => setActiveChatFriendId(null)} className="p-1 rounded-full hover:bg-slate-100 transition-colors">
+              <ChevronLeft size={24} className="text-slate-700" />
+            </button>
+          </div>
+          <div className="absolute left-1/2 -translate-x-1/2 flex flex-col items-center truncate max-w-[200px]">
+            <span className="font-bold text-sm text-slate-900 truncate w-full text-center">{friend.name}</span>
+            {isAiGenerating && (
+              <span className="text-[10px] text-sky-500 animate-pulse font-sans">正在输入中...</span>
+            )}
+          </div>
+          <div className="flex items-center gap-3 z-10">
+            <button onClick={() => setViewingFriendProfileId(friend.id)} className="p-1 rounded-full hover:bg-slate-100 transition-colors text-slate-600">
+              <User size={20} />
+            </button>
+            <button onClick={() => setShowChatSettingsId(friend.id)} className="p-1 rounded-full hover:bg-slate-100 transition-colors text-slate-600">
+              <Settings size={20} />
+            </button>
           </div>
         </div>
+
+        {/* Messages List with WeChat style bubbles & avatars */}
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {messages.map(m => (
-            <div key={m.id} className={cn("flex", m.role === 'user' ? "justify-end" : "justify-start")}>
-              <div className={cn("max-w-[70%] p-3 rounded-2xl text-sm", m.role === 'user' ? "bg-orange-500 text-white rounded-tr-none" : "bg-white/90 backdrop-blur-sm text-slate-800 rounded-tl-none shadow-sm")}>
-                {m.content}
-              </div>
-            </div>
-          ))}
+          {messages.map((m, idx) => {
+            const isUser = m.role === 'user';
+            const prevMsg = idx > 0 ? messages[idx - 1] : null;
+            const showTimeSep = !prevMsg || (m.timestamp - prevMsg.timestamp > 5 * 60 * 1000);
+            
+            const stickerInfo = getPureStickerUrl(m.content, settings.customStickers || []);
+
+            return (
+              <React.Fragment key={m.id || idx}>
+                {showTimeSep && (
+                  <div className="flex justify-center my-3">
+                    <span className="text-[11px] text-slate-400 bg-slate-200/60 px-2.5 py-0.5 rounded-full font-sans">
+                      {formatMessageTime(m.timestamp)}
+                    </span>
+                  </div>
+                )}
+                <div 
+                  data-message-index={idx}
+                  onContextMenu={(e) => { e.preventDefault(); setContextMenu({ messageIndex: idx }); }}
+                  onTouchStart={(e) => {
+                    const touch = e.touches[0];
+                    touchStartPosRef.current = { x: touch.clientX, y: touch.clientY };
+                    longPressTimer.current = setTimeout(() => {
+                      setContextMenu({ messageIndex: idx });
+                    }, 500);
+                  }}
+                  onTouchMove={(e) => {
+                    if (!touchStartPosRef.current) return;
+                    const touch = e.touches[0];
+                    const dx = Math.abs(touch.clientX - touchStartPosRef.current.x);
+                    const dy = Math.abs(touch.clientY - touchStartPosRef.current.y);
+                    if (dx > 10 || dy > 10) {
+                      if (longPressTimer.current) clearTimeout(longPressTimer.current);
+                      longPressTimer.current = null;
+                    }
+                  }}
+                  onTouchEnd={() => {
+                    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+                    touchStartPosRef.current = null;
+                  }}
+                  onTouchCancel={() => {
+                    if (longPressTimer.current) clearTimeout(longPressTimer.current);
+                    touchStartPosRef.current = null;
+                  }}
+                  onMouseDown={() => {
+                    longPressTimer.current = setTimeout(() => {
+                      setContextMenu({ messageIndex: idx });
+                    }, 500);
+                  }}
+                  onMouseUp={() => { if (longPressTimer.current) clearTimeout(longPressTimer.current); }}
+                  onMouseLeave={() => { if (longPressTimer.current) clearTimeout(longPressTimer.current); }}
+                  className={cn("flex items-start gap-2.5", isUser ? "justify-end" : "justify-start")}
+                >
+                  {!isUser && (
+                    <img 
+                      src={friend.avatar} 
+                      className="w-9 h-9 rounded-lg object-cover shrink-0 border border-slate-200/80 shadow-sm bg-white" 
+                      referrerPolicy="no-referrer" 
+                      alt={friend.name} 
+                    />
+                  )}
+                  <div className={cn("flex flex-col gap-1 max-w-[70%]", isUser ? "items-end" : "items-start")}>
+                    {m.quote && (
+                      <div className="mb-1 p-1.5 bg-black/5 rounded text-[11px] opacity-70 border-l-2 border-orange-500 truncate max-w-full">
+                        引用: {m.quote.content}
+                      </div>
+                    )}
+                    {stickerInfo ? (
+                      <div className="max-w-[140px] aspect-square rounded-2xl overflow-hidden shadow-sm bg-white/50 border border-slate-200/40">
+                        <img src={stickerInfo.url} className="w-full h-full object-cover" referrerPolicy="no-referrer" alt={stickerInfo.desc} />
+                      </div>
+                    ) : editingMessageIndex === idx ? (
+                      <div className="flex flex-col gap-2 p-2 bg-white rounded-xl shadow-md border w-64">
+                        <textarea
+                          value={editingContent}
+                          onChange={e => setEditingContent(e.target.value)}
+                          className="w-full p-2 text-xs border rounded outline-none resize-none h-20 text-slate-800"
+                          autoFocus
+                        />
+                        <div className="flex justify-end gap-2">
+                          <button onClick={() => setEditingMessageIndex(null)} className="px-2.5 py-1 text-xs text-slate-500 bg-slate-100 rounded">取消</button>
+                          <button onClick={() => {
+                            const newMsgs = [...messages];
+                            newMsgs[idx] = { ...newMsgs[idx], content: editingContent };
+                            setWeiboChats(prev => ({ ...prev, [activeChatFriendId]: newMsgs }));
+                            setEditingMessageIndex(null);
+                            showToast('已修改');
+                          }} className="px-2.5 py-1 text-xs text-white bg-orange-500 rounded font-bold">保存</button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className={cn(
+                        "px-3.5 py-2.5 rounded-2xl text-sm leading-relaxed shadow-sm break-words",
+                        isUser 
+                          ? "bg-black !text-white font-medium rounded-tr-sm" 
+                          : "bg-white text-slate-900 border border-slate-200/60 rounded-tl-sm"
+                      )} style={isUser ? { color: '#ffffff', backgroundColor: '#000000' } : {}}>
+                        {m.content}
+                      </div>
+                    )}
+                  </div>
+                  {isUser && (
+                    <img 
+                      src={userProfile.avatar || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=150&q=80'} 
+                      className="w-9 h-9 rounded-lg object-cover shrink-0 border border-slate-200/80 shadow-sm bg-white" 
+                      referrerPolicy="no-referrer" 
+                      alt={userProfile.name} 
+                    />
+                  )}
+                </div>
+              </React.Fragment>
+            );
+          })}
+          <div ref={messagesEndRef} />
         </div>
-        <div className="p-4 bg-white border-t flex gap-2">
+
+        {/* Context Menu Modal (WeChat Style) */}
+        <AnimatePresence>
+          {contextMenu && (
+            <div className="fixed inset-0 z-[99999] bg-black/5" onClick={() => setContextMenu(null)}>
+              {(() => {
+                const msgEl = document.querySelector(`[data-message-index="${contextMenu.messageIndex}"]`);
+                if (!msgEl) return null;
+                const rect = msgEl.getBoundingClientRect();
+                return (
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.9, x: "-50%", y: -10 }}
+                    animate={{ opacity: 1, scale: 1, x: "-50%", y: 0 }}
+                    exit={{ opacity: 0, scale: 0.9, x: "-50%", y: -10 }}
+                    onClick={(e) => e.stopPropagation()}
+                    className="fixed pointer-events-auto"
+                    style={{
+                      left: '50%',
+                      top: rect.top - 12,
+                      zIndex: 100000,
+                      width: 240,
+                      transformOrigin: 'bottom center'
+                    }}
+                  >
+                    <div className="bg-[#333333]/95 backdrop-blur-xl rounded-2xl shadow-2xl p-3.5 border border-white/10 -translate-y-full">
+                      <div className="grid grid-cols-5 gap-y-4 gap-x-2">
+                        {[
+                          { label: '复制', icon: Copy, onClick: () => {
+                            navigator.clipboard.writeText(messages[contextMenu.messageIndex].content);
+                            showToast('已复制');
+                          }},
+                          { label: '编辑', icon: Edit3, onClick: () => {
+                            setEditingMessageIndex(contextMenu.messageIndex);
+                            setEditingContent(messages[contextMenu.messageIndex].content);
+                          }},
+                          { label: '引用', icon: Quote, onClick: () => {
+                            setQuotedMessage(messages[contextMenu.messageIndex]);
+                          }},
+                          { label: '撤回', icon: CornerUpLeft, onClick: () => {
+                            const newMsgs = messages.filter((_, i) => i !== contextMenu.messageIndex);
+                            setWeiboChats(prev => ({ ...prev, [activeChatFriendId]: newMsgs }));
+                            showToast('已撤回');
+                          }},
+                          { label: '删除', icon: Trash2, onClick: () => {
+                            const newMsgs = messages.filter((_, i) => i !== contextMenu.messageIndex);
+                            setWeiboChats(prev => ({ ...prev, [activeChatFriendId]: newMsgs }));
+                            showToast('已删除');
+                          }},
+                        ].map((item, idx) => (
+                          <div
+                            key={idx}
+                            className="flex flex-col items-center gap-1.5 active:opacity-50 transition-opacity cursor-pointer"
+                            onClick={() => {
+                              item.onClick();
+                              setContextMenu(null);
+                            }}
+                          >
+                            <div className="w-8 h-8 flex items-center justify-center rounded-xl bg-white/5 active:bg-white/10 transition-colors">
+                              <item.icon size={16} style={{ color: 'white' }} />
+                            </div>
+                            <span className="text-[10px] font-medium text-white">{item.label}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })()}
+            </div>
+          )}
+        </AnimatePresence>
+
+        {/* Emoji / Sticker Picker Panel */}
+        <AnimatePresence>
+          {showEmojiPicker && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 260, opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              className="shrink-0 flex flex-col bg-white border-t overflow-hidden shadow-lg z-20"
+            >
+              <div className="flex border-b border-slate-100">
+                <button 
+                  onClick={() => setStickerTab('emoji')}
+                  className={cn("flex-1 py-2 flex items-center justify-center transition-all", stickerTab === 'emoji' ? "text-orange-500 border-b-2 border-orange-500 font-bold" : "text-slate-400")}
+                >
+                  <Smile size={18} />
+                </button>
+                <button 
+                  onClick={() => setStickerTab('custom')}
+                  className={cn("flex-1 py-2 flex items-center justify-center transition-all", stickerTab === 'custom' ? "text-orange-500 border-b-2 border-orange-500 font-bold" : "text-slate-400")}
+                >
+                  <Heart size={18} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-3">
+                {stickerTab === 'emoji' ? (
+                  <div className="grid grid-cols-8 gap-2">
+                    {EMOJIS.map((emoji, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => setChatInput(prev => prev + emoji)}
+                        className="text-xl rounded p-1 hover:bg-slate-100 transition-colors flex items-center justify-center"
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div>
+                    <div className="flex justify-between items-center mb-3">
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => setShowStickerImport('url')}
+                          className="px-2.5 py-1 rounded-md text-[10px] font-bold bg-orange-500 text-white"
+                        >
+                          URL批量导入
+                        </button>
+                        <button 
+                          onClick={() => stickerFileInputRef.current?.click()}
+                          className="px-2.5 py-1 rounded-md text-[10px] font-bold bg-slate-200 text-slate-700"
+                        >
+                          相册导入
+                        </button>
+                      </div>
+                      <button 
+                        onClick={() => {
+                          if (stickerDeleteMode) {
+                            if (selectedStickers.length > 0) {
+                              const updated = (settings.customStickers || []).filter(s => !selectedStickers.includes(s.id));
+                              onUpdateSettings?.({ customStickers: updated });
+                              setSelectedStickers([]);
+                            }
+                            setStickerDeleteMode(false);
+                          } else {
+                            setStickerDeleteMode(true);
+                          }
+                        }}
+                        className={cn("px-2.5 py-1 rounded-md text-[10px] font-bold", stickerDeleteMode ? "bg-red-500 text-white" : "bg-slate-200 text-slate-700")}
+                      >
+                        {stickerDeleteMode ? `确认删除(${selectedStickers.length})` : '批量删除'}
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-4 gap-2">
+                      <button 
+                        onClick={() => stickerFileInputRef.current?.click()}
+                        className="aspect-square border-2 border-dashed border-slate-200 text-slate-400 rounded-xl flex items-center justify-center hover:border-slate-400 transition-all"
+                      >
+                        <Plus size={20} />
+                      </button>
+                      {(settings.customStickers || []).map((sticker, idx) => (
+                        <div key={`${sticker.id}-${idx}`} className="relative group flex flex-col gap-1">
+                          <button
+                            onClick={() => {
+                              if (stickerDeleteMode) {
+                                setSelectedStickers(prev => 
+                                  prev.includes(sticker.id) ? prev.filter(id => id !== sticker.id) : [...prev, sticker.id]
+                                );
+                              } else {
+                                handleSendSticker(sticker);
+                              }
+                            }}
+                            className={cn(
+                              "w-full aspect-square rounded-xl overflow-hidden border-2 transition-all",
+                              selectedStickers.includes(sticker.id) ? "border-red-500 scale-95" : "border-transparent"
+                            )}
+                          >
+                            <img src={sticker.url} className="w-full h-full object-cover" referrerPolicy="no-referrer" alt={sticker.description} />
+                          </button>
+                          {!stickerDeleteMode && sticker.description && (
+                            <span className="text-[10px] truncate text-center text-slate-500 px-1">
+                              {sticker.description}
+                            </span>
+                          )}
+                          {stickerDeleteMode && (
+                            <div className="absolute top-1 right-1 w-4 h-4 rounded-full bg-white border border-slate-200 flex items-center justify-center">
+                              {selectedStickers.includes(sticker.id) && <div className="w-2 h-2 rounded-full bg-red-500" />}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {quotedMessage && (
+          <div className="bg-slate-100 border-t px-3 py-1.5 flex items-center justify-between text-xs text-slate-600 shrink-0">
+            <div className="flex items-center gap-2 truncate">
+              <Quote size={14} className="text-orange-500 shrink-0" />
+              <span className="truncate">引用: {quotedMessage.content}</span>
+            </div>
+            <button onClick={() => setQuotedMessage(null)} className="p-1 hover:text-slate-900">
+              <X size={14} />
+            </button>
+          </div>
+        )}
+
+        {/* Bottom Input Bar: No overflow, WeChat style minimalist buttons */}
+        <div className="shrink-0 bg-white border-t px-3 py-2 flex items-center gap-2 max-w-full overflow-hidden shadow-sm">
+          <button onClick={() => setShowEmojiPicker(!showEmojiPicker)} className="p-2 text-slate-600 hover:text-slate-900 transition-colors bg-transparent border-none shadow-none shrink-0" title="表情">
+            <Smile size={22} className={showEmojiPicker ? "text-orange-500" : ""} />
+          </button>
+          <button className="p-2 text-slate-600 hover:text-slate-900 transition-colors bg-transparent border-none shadow-none shrink-0" title="更多功能">
+            <Plus size={22} />
+          </button>
           <input 
             type="text" 
             value={chatInput} 
             onChange={e => setChatInput(e.target.value)}
             onKeyDown={e => e.key === 'Enter' && handleSendMessage()}
             placeholder="发送私信..."
-            className="flex-1 bg-slate-100 rounded-full px-4 py-2 text-sm outline-none"
+            className="flex-1 bg-slate-100 rounded-lg px-3 py-2 text-sm outline-none border border-slate-200/50 focus:border-slate-400 min-w-0"
           />
-          <button onClick={handleSendMessage} className="bg-orange-500 text-white px-4 py-2 rounded-full text-sm font-bold">发送</button>
+          <button 
+            onClick={handleSendMessage} 
+            className="p-2 text-slate-600 hover:text-slate-900 transition-colors bg-transparent border-none shadow-none shrink-0" 
+            title="发送"
+          >
+            <Send size={20} />
+          </button>
+          <button 
+            onClick={handleTriggerAiReply} 
+            className="p-2 text-sky-500 hover:text-sky-600 transition-colors bg-transparent border-none shadow-none shrink-0" 
+            title="生成角色回复"
+          >
+            <Sparkles size={20} />
+          </button>
         </div>
+
+        {/* Hidden File Input for Stickers */}
+        <input 
+          type="file" 
+          ref={stickerFileInputRef} 
+          className="hidden" 
+          accept="image/*" 
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) {
+              const reader = new FileReader();
+              reader.onload = (event) => {
+                const newSticker = {
+                  id: Math.random().toString(36).substr(2, 9),
+                  url: event.target?.result as string,
+                  description: '自定义表情包',
+                  addedAt: Date.now()
+                };
+                const updated = [...(settings.customStickers || []), newSticker];
+                onUpdateSettings?.({ customStickers: updated });
+              };
+              reader.readAsDataURL(file);
+            }
+          }} 
+        />
+
+        {/* URL Sticker Import Modal */}
+        <AnimatePresence>
+          {showStickerImport === 'url' && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-black/40 backdrop-blur-sm">
+              <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} className="w-full max-w-sm bg-white text-slate-800 rounded-3xl p-6 space-y-4 shadow-2xl">
+                <h3 className="font-bold text-lg">批量导入表情包URL</h3>
+                <p className="text-xs text-slate-400">参考格式：雨中落泪：https://... 或每行一个链接</p>
+                <textarea 
+                  value={stickerUrlInput}
+                  onChange={(e) => setStickerUrlInput(e.target.value)}
+                  className="w-full h-40 p-3 bg-slate-100 rounded-2xl text-sm focus:outline-none"
+                  placeholder="雨中落泪：https://imgbed.heliar.top/file/...&#10;看一眼手机：https://v1.ax1x.com/..."
+                />
+                <div className="flex gap-3">
+                  <button onClick={() => setShowStickerImport(null)} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold">取消</button>
+                  <button onClick={handleAddStickersByUrl} className="flex-1 py-3 bg-orange-500 text-white rounded-xl font-bold">导入</button>
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
       </div>
     );
   };
@@ -1486,51 +2052,123 @@ export default function WeiboApp({ settings, onBack }: Props) {
     if (isRefreshing) return;
     setIsRefreshing(true);
     const category = categories.find(c => c.id === selectedCategoryId);
-    const prompt = category ? category.prompt : '生成一些有趣的微博内容';
+    const categoryPrompt = category ? category.prompt : '生成一些有趣的微博内容';
     const categoryId = category ? category.id : (categories.length > 0 ? categories[Math.floor(Math.random() * categories.length)].id : 'all');
 
     try {
       const ai = getGeminiClient(settings);
-      const result = await ai.models.generateContent({
+      const newMoments: MomentPost[] = [];
+
+      // 1. For contact characters (friends), generate Weibo posts strictly matching their persona, reading the latest 30 chat records from chat app, and using first-person thinking.
+      const targetFriends = friends.length > 0 
+        ? [...friends].sort(() => 0.5 - Math.random()).slice(0, 3) 
+        : [];
+
+      for (const friend of targetFriends) {
+        try {
+          // Read chat app, online chat user and character latest chat context 30 records
+          const allChats = await get('zhouzhou_ji_chats') || {};
+          const friendChats = allChats[friend.id] || [];
+          const recentChatAppHistory = friendChats.slice(-30);
+          const chatAppContext = recentChatAppHistory.length > 0
+            ? recentChatAppHistory.map((m: any) => `${m.role === 'user' ? '用户' : friend.name}: ${m.content}`).join('\n')
+            : '暂无与用户的聊天记录';
+
+          // Read Weibo private chat context (20 records)
+          const friendWeiboChats = weiboChats[friend.id] || [];
+          const recentWeiboChatHistory = friendWeiboChats.slice(-20);
+          const weiboChatContext = recentWeiboChatHistory.length > 0
+            ? recentWeiboChatHistory.map((m: any) => `${m.role === 'user' ? '用户' : friend.name}: ${m.content}`).join('\n')
+            : '暂无微博私聊记录';
+
+          const prompt = `你现在正在扮演微博博主兼通讯录角色 ${friend.name}。
+【角色人设与性格】
+${friend.persona || '一个性格鲜明的好友'}
+
+【与用户的聊天App最新聊天上下文（最近30条记录）】
+${chatAppContext}
+
+【与用户在微博私聊的最新上下文（最近20条记录）】
+${weiboChatContext}
+
+【任务要求】
+微博是公共网络平台，角色百分百按照人设思维发表内容的同时，也需要考虑社交平台发言需要以正常人思维考虑，我发表的这条微博，会不会影响个人形象，会不会造成不合适的舆论压力，有一个思考过程,然后才正式输出想要发表的微博帖子内容。
+请结合你的【人设生活】与上述聊天上下文，以 ${friend.name} 的【第一人称思维】（第一视角），创作并发表一条微博内容。
+1. **百分百符合人设**：语气、性格、说话口吻和行为方式必须100%符合上述人设，绝对不能出戏或带有AI机械感。
+2. **结合现实与聊天**：可以融入你最近的生活状态、心情、感悟，或者将与用户的聊天互动中的点滴转化为微博日常分享、吐槽或碎碎念。
+3. **微博风格**：高度口语化、接地气、符合当代年轻人发微博的真实习惯（字数50-200字左右），可适当带有话题或表情符号。
+4. **输出格式**：可先进行内心思考评估（考虑形象与舆论压力），最终仅返回微博正文内容文本，不要包含任何多余的解释。`;
+
+          const result = await ai.models.generateContent({
+            model: getGeminiModel(settings),
+            contents: [{ role: 'user', parts: [{ text: prompt }] }],
+            config: {
+              temperature: 0.8
+            }
+          });
+
+          const content = result.text?.trim();
+          if (content) {
+            newMoments.push({
+              id: Date.now().toString() + Math.random(),
+              authorId: friend.id,
+              authorName: friend.name,
+              authorAvatar: friend.avatar,
+              content: content.replace(/^["'「『]|["'」』]$/g, ''),
+              timestamp: Date.now(),
+              images: [],
+              imageDescription: '',
+              likes: [],
+              comments: [],
+              visibility: 'public',
+              categoryId: categoryId
+            });
+          }
+        } catch (friendErr) {
+          console.error(`Failed to generate Weibo for friend ${friend.name}:`, friendErr);
+        }
+      }
+
+      // 2. Also generate 2 netizen posts to keep the feed rich
+      const netizenPrompt = `请以微博风格生成2条网友或热门话题微博内容，主题是：${categoryPrompt}。请返回JSON数组，每个对象包含：content(微博内容), authorName(作者名), authorAvatar(作者头像单字，例如：'网', '路', '星')。`;
+      
+      const netizenResult = await ai.models.generateContent({
         model: getGeminiModel(settings),
-        contents: [{ role: 'user', parts: [{ text: `请以微博风格生成5条微博内容，主题是：${prompt}。其中部分是我的好友发的，部分是网友发的。请返回JSON数组，每个对象包含：content(微博内容), authorName(作者名), authorAvatar(作者头像，文字头像，例如：'A', 'B', 'C'), isFriend(布尔值，是否好友), imageDescription(图片描述，如果没有图片则为空字符串)。` }] }],
+        contents: [{ role: 'user', parts: [{ text: netizenPrompt }] }],
         config: {
           temperature: 0.7,
           responseMimeType: "application/json"
         }
       });
 
-      let text = result.text || "";
-      if (!text) throw new Error("API未返回有效内容");
-      
-      // 提取 JSON 内容
-      const jsonStartIndex = text.indexOf('[');
-      const jsonEndIndex = text.lastIndexOf(']');
+      let netizenText = netizenResult.text || "";
+      const jsonStartIndex = netizenText.indexOf('[');
+      const jsonEndIndex = netizenText.lastIndexOf(']');
       if (jsonStartIndex !== -1 && jsonEndIndex !== -1) {
-        text = text.substring(jsonStartIndex, jsonEndIndex + 1);
+        netizenText = netizenText.substring(jsonStartIndex, jsonEndIndex + 1);
       }
       
-      const parsedData = JSON.parse(text);
-      
-      const newMoments: MomentPost[] = parsedData.map((item: any) => ({
+      const netizenData = JSON.parse(netizenText || '[]');
+      const netizenMoments: MomentPost[] = netizenData.map((item: any) => ({
         id: Date.now().toString() + Math.random(),
-        authorId: item.isFriend ? friends[Math.floor(Math.random() * friends.length)].id : 'ai_user_' + Math.random(),
-        authorName: item.authorName,
-        authorAvatar: item.authorAvatar,
+        authorId: 'ai_user_' + Math.random(),
+        authorName: item.authorName || '网友',
+        authorAvatar: item.authorAvatar || '网',
         content: item.content,
-        timestamp: Date.now(),
+        timestamp: Date.now() - Math.floor(Math.random() * 60000),
         images: [],
-        imageDescription: item.imageDescription,
+        imageDescription: '',
         likes: [],
         comments: [],
         visibility: 'public',
         categoryId: categoryId
       }));
-      
-      setMoments(prev => [...newMoments, ...prev]);
+
+      const combinedMoments = [...newMoments, ...netizenMoments];
+      setMoments(prev => [...combinedMoments, ...prev]);
       
       // Trigger some AI comments on the new AI posts to make it lively
-      newMoments.forEach((m, idx) => {
+      combinedMoments.forEach((m, idx) => {
         if (Math.random() > 0.3) {
           setTimeout(() => {
             triggerAiComment(m).catch(err => console.error("Delayed AI comment failed:", err));

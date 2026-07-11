@@ -688,6 +688,8 @@ export default function App() {
               type: 'text'
             });
           }
+        }).catch(err => {
+          console.error("Auto-summarize call error:", err);
         });
       }
     }
@@ -944,7 +946,7 @@ ${recentMemories}
             case 'diary':
               return <DiaryApp settings={settings} onSave={saveSettings} onBack={() => setActiveApp('home')} />;
             case 'weibo':
-              return <WeiboApp settings={settings} onBack={() => setActiveApp('home')} />;
+              return <WeiboApp settings={settings} onBack={() => setActiveApp('home')} onUpdateSettings={saveSettings} />;
             case 'check-phone':
               return <CheckPhoneApp settings={settings} onBack={() => setActiveApp('home')} />;
             case 'parallel-universe':
@@ -1017,31 +1019,116 @@ ${recentMemories}
       case 'cute-cheese': return '"ZCOOL KuaiLe", cursive';
       case 'dynalight': return '"Dynalight", cursive';
       case 'lxgw-wenkai': return '"LXGW WenKai TC", serif';
+      case 'hanyi-senty': return '"SentyTea", cursive';
+      case 'zcool-qingke': return '"ZCOOL QingKe HuangYou", cursive';
+      case 'fira-code': return '"Fira Code", monospace';
       default: return '"Inter", sans-serif';
     }
+  };
+
+  const getFontFaceSource = () => {
+    let styles = '';
+    if (settings.fontFamily === 'hanyi-senty') {
+      styles += '@import url("https://cdn.jsdelivr.net/gh/ayqy/font-tea@master/SentyTea.css");\n';
+    }
+    if (settings.fontFamily === 'zcool-qingke') {
+      styles += '@import url("https://fonts.googleapis.com/css2?family=ZCOOL+QingKe+HuangYou&display=swap");\n';
+    }
+    if (settings.fontFamily === 'fira-code') {
+      styles += '@import url("https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500;600;700&display=swap");\n';
+    }
+    return styles;
   };
 
   return (
     <div 
       className={cn(
         "flex flex-col selection:bg-blue-100 transition-colors duration-500",
-        settings.fullScreenMode ? "w-screen h-dvh overflow-hidden fixed inset-0 z-[9999]" : "w-full min-h-screen bg-slate-900 py-10 px-4"
+        settings.fullScreenMode ? "w-screen h-dvh overflow-hidden fixed inset-0 z-[9999]" : "w-full min-h-screen bg-slate-900 pt-0 pb-10 px-2"
       )}
       style={{ 
         fontFamily: getFontFamily(),
         fontSize: settings.fontSize === 'small' ? '12px' : settings.fontSize === 'large' ? '18px' : '14px'
       }}
     >
-      {settings.customFontUrl && (
-        <style>
-          {`
+      <style>
+        {`
+          ${getFontFaceSource()}
+          ${settings.customFontUrl ? `
             @font-face {
               font-family: 'CustomFont';
               src: url('${settings.customFontUrl}');
             }
-          `}
-        </style>
-      )}
+          ` : ''}
+          
+          /* 全局强制字体生效，除了文游app特定区域 */
+          ${(settings.customFontUrl || settings.fontFamily) ? `
+            body, button, input, select, textarea, .font-sans, .font-serif, .font-mono {
+              font-family: ${getFontFamily()} !important;
+            }
+            /* 如果在文游app内且开启了特定字体，则不强制全局 */
+            .ta-app-font-active * {
+              font-family: inherit !important;
+            }
+          ` : ''}
+
+          /* 全局美化样式 */
+          ::-webkit-scrollbar {
+            width: 5px;
+            height: 5px;
+          }
+          ::-webkit-scrollbar-track {
+            background: transparent;
+          }
+          ::-webkit-scrollbar-thumb {
+            background: rgba(0, 0, 0, 0.08);
+            border-radius: 10px;
+          }
+          .dark ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+          }
+          ::-webkit-scrollbar-thumb:hover {
+            background: rgba(0, 0, 0, 0.15);
+          }
+          
+          * {
+            -webkit-tap-highlight-color: transparent;
+            outline-color: rgba(59, 130, 246, 0.5);
+          }
+
+          /* 交互反馈增强 */
+          button:active {
+            transform: scale(0.98);
+            transition: transform 0.1s ease;
+          }
+
+          /* 背景微光效果 */
+          .glow-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            pointer-events: none;
+            background: radial-gradient(circle at 50% -20%, rgba(59, 130, 246, 0.05), transparent 70%),
+                        radial-gradient(circle at 80% 80%, rgba(236, 72, 153, 0.05), transparent 70%);
+            z-index: -1;
+          }
+
+          /* 页面切场平滑过渡 */
+          .page-transition-enter {
+            opacity: 0;
+            transform: translateY(10px);
+          }
+          .page-transition-enter-active {
+            opacity: 1;
+            transform: translateY(0);
+            transition: opacity 300ms, transform 300ms;
+          }
+        `}
+      </style>
+
+      <div className="glow-bg" />
 
       {settings.customGlobalCss && (
         <style>{settings.customGlobalCss}</style>
@@ -1094,11 +1181,13 @@ ${recentMemories}
             settings.themeId === 'ocean-blue' && "ocean-snow-theme",
             settings.fullScreenMode 
               ? "fullscreen-immersive" 
-              : "w-full max-w-[380px] h-[min(800px,90dvh)] min-h-[600px] sm:min-h-[700px] rounded-[24px] sm:rounded-[40px] border-[2px] sm:border-[4px] border-[#333] shadow-2xl my-4"
+              : "w-full max-w-[380px] h-[min(800px,90dvh)] min-h-[600px] sm:min-h-[700px] rounded-[24px] sm:rounded-[40px] border-[2px] sm:border-[4px] border-[#333] shadow-2xl mt-0 mb-10"
           )}
         style={{ 
           background: settings.themeId === 'pink-cat' ? '#fffafb' : settings.themeId === 'ocean-blue' ? '#f0f9ff' : '#000',
-          transform: 'translateZ(0)', // Force fixed elements to stay within this container
+          paddingBottom: 'max(env(safe-area-inset-bottom), 15px)',
+          boxSizing: 'border-box',
+          transform: 'translateZ(0)' // Traps Portals and fixed elements within the shell
         }}
       >
         {/* Notch (刘海) */}
@@ -1151,11 +1240,11 @@ ${recentMemories}
         {/* Status Bar */}
         {!settings.hideStatusBar && (
           <div className={cn(
-            "w-full flex items-center justify-between px-4 pt-2 pb-1 z-[10001] pointer-events-none transition-all duration-500",
-            (settings.fullScreenMode) ? "absolute top-0 left-0 right-0 bg-transparent safe-area-padding-top" : "relative bg-black/20 backdrop-blur-md"
-          )}>
+            "w-full flex items-center justify-between px-4 z-[100001] pointer-events-none transition-all duration-500 system-bar",
+            "absolute top-0 left-0 right-0 bg-black/20 backdrop-blur-md"
+          )} style={{ height: 'max(env(safe-area-inset-top), 34px)', minHeight: '24px' }}>
             {/* Left: Time */}
-            <div className="flex items-center justify-start">
+            <div className="flex items-center justify-start h-full flex-col justify-center">
               {settings.themeId === 'rainy-cat' ? (
                 <CatTime time={time} />
               ) : (
@@ -1206,7 +1295,6 @@ ${recentMemories}
           </div>
         )}
 
-        {/* Content Area */}
         <div 
           className={cn(
             "flex-1 relative overflow-hidden flex flex-col",
@@ -1225,9 +1313,14 @@ ${recentMemories}
             )
           )}
         >
-          {/* Fullscreen Spacer to avoid status bar overlap */}
-          {settings.fullScreenMode && activeApp !== 'chat' && <div className="safe-area-padding-top h-11 pointer-events-none" />}
-          
+          <div 
+          className="flex-1 relative overflow-hidden flex flex-col"
+          style={{ 
+            marginTop: settings.hideStatusBar ? 0 : 'max(env(safe-area-inset-top), 34px)',
+            transform: 'translateZ(0)',
+            height: '100%'
+          }}
+        >
           <AnimatePresence mode="wait">
             {isLocked ? (
               <motion.div
@@ -1348,6 +1441,7 @@ ${recentMemories}
                 exit={{ opacity: 0, scale: 1.05 }}
                 transition={{ duration: 0.3, ease: 'easeOut' }}
                 className="h-full w-full relative"
+                style={{ transform: 'translateZ(0)' }}
               >
                 <Desktop 
                   settings={settings}
@@ -1384,7 +1478,7 @@ ${recentMemories}
                           style={themeIconBg ? { backgroundImage: `url(${themeIconBg})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}
                         >
                           {themeIconBg ? null : customIcon ? (
-                            <img src={customIcon} className="w-full h-full object-cover" />
+                            <img referrerPolicy="no-referrer"  src={customIcon} className="w-full h-full object-cover"  />
                           ) : (
                             <Icon size={24} className={cn(
                               "text-white drop-shadow-md",
@@ -1408,9 +1502,9 @@ ${recentMemories}
                 exit={{ y: '100%' }}
                 transition={{ type: 'spring', damping: 25, stiffness: 200 }}
                 className={cn(
-                  "flex-1 flex flex-col z-50 bg-transparent w-full h-full",
-                  !settings.fullScreenMode && "pt-6"
+                  "flex-1 flex flex-col z-50 bg-transparent w-full h-full"
                 )}
+                style={{ transform: 'translateZ(0)' }}
               >
                 {renderActiveApp()}
                 {/* Home Indicator for Apps */}
@@ -1421,8 +1515,9 @@ ${recentMemories}
               </motion.div>
             )}
           </AnimatePresence>
+        </div>
 
-          {/* Full Screen Call UI */}
+        {/* Full Screen Call UI */}
           <AnimatePresence>
             {callState.isActive && !callState.isMinimized && (
               <motion.div 
@@ -1437,13 +1532,13 @@ ${recentMemories}
                 {/* Background for Call */}
                 <div className="absolute inset-0 z-0">
                   {settings.isCallBackgroundEnabled && settings.callBackground ? (
-                    <img 
+                    <img referrerPolicy="no-referrer"  
                       src={settings.callBackground} 
                       className={cn(
                         "w-full h-full object-cover transition-all duration-1000",
                         settings.themeId === 'rainy-cat' && "grayscale contrast-125 brightness-50 blur-xl scale-125"
                       )} 
-                      referrerPolicy="no-referrer"
+                      
                     />
                   ) : (
                     <div className="w-full h-full bg-[#FFF9FB]" />
@@ -1456,7 +1551,7 @@ ${recentMemories}
                   {callState.type === 'video' ? (
                     <div className="relative w-full h-full">
                       {settings.isCallBackgroundEnabled && settings.callBackground && (
-                        <img 
+                        <img referrerPolicy="no-referrer"  
                           src={settings.callBackground} 
                           className={cn(
                             "absolute inset-0 w-full h-full object-cover transition-all duration-500",
@@ -1513,10 +1608,10 @@ ${recentMemories}
                         animate={{ scale: 1, opacity: 1 }}
                         className="mt-3 relative"
                       >
-                        <img src={callState.friend?.avatar} className={cn(
+                        <img referrerPolicy="no-referrer"  src={callState.friend?.avatar} className={cn(
                           "w-16 h-16 rounded-full border-2 shadow-xl transition-all duration-500",
                           settings.themeId === 'rainy-cat' ? "border-white/20 grayscale-[0.2]" : "border-white/20"
-                        )} />
+                        )}  />
                         <div className="absolute -bottom-1 left-0 right-0 flex justify-center gap-1">
                           {[1, 2, 3].map(i => (
                             <motion.div 
@@ -1641,7 +1736,7 @@ ${recentMemories}
                 <div className="flex-1 relative flex flex-col items-center justify-center overflow-hidden py-4 z-10">
                   {!callState.isAccepted ? (
                     <div className="flex flex-col items-center gap-6">
-                      <img src={callState.friend?.avatar} className={cn(
+                      <img referrerPolicy="no-referrer"  src={callState.friend?.avatar} className={cn(
                         "w-32 h-32 rounded-full border-4 shadow-2xl transition-all duration-500",
                         settings.themeId === 'rainy-cat' ? "border-white/20 grayscale-[0.2]" : "border-white/10"
                       )} />
@@ -1905,7 +2000,7 @@ ${recentMemories}
                     ) : (
                       <div className="w-full h-full flex flex-col items-center justify-center gap-2 relative">
                         {settings.isCallBackgroundEnabled && settings.callBackground ? (
-                          <img 
+                          <img referrerPolicy="no-referrer"  
                             src={settings.callBackground} 
                             className="absolute inset-0 w-full h-full object-cover opacity-100"
                           />
@@ -1913,7 +2008,7 @@ ${recentMemories}
                           <div className="absolute inset-0 bg-gradient-to-br from-green-500/20 to-blue-500/20" />
                         )}
                         <div className="relative z-10 flex flex-col items-center gap-2">
-                          <img src={callState.friend?.avatar} className="w-10 h-10 rounded-full border border-white/20 shadow-lg" />
+                          <img referrerPolicy="no-referrer"  src={callState.friend?.avatar} className="w-10 h-10 rounded-full border border-white/20 shadow-lg" />
                           <div className="flex gap-1">
                             {[1, 2, 3].map(i => (
                               <motion.div 
@@ -2208,7 +2303,7 @@ ${historyFormatted}`;
       <div className="h-full flex flex-col bg-slate-900 text-white select-none overflow-hidden relative">
         {/* iOS Call Header */}
         <div className="pt-10 pb-6 px-6 text-center bg-gradient-to-b from-black/60 to-transparent flex flex-col items-center">
-          <img src={callingFriend.avatar} className="w-24 h-24 rounded-full object-cover shrink-0 border-2 border-white/20 shadow-2xl mb-3" referrerPolicy="no-referrer" />
+          <img referrerPolicy="no-referrer"  src={callingFriend.avatar} className="w-24 h-24 rounded-full object-cover shrink-0 border-2 border-white/20 shadow-2xl mb-3"  />
           <h2 className="text-xl font-bold tracking-tight">{callingFriend.name}</h2>
           <p className="text-xs text-white/60 mt-1 font-mono">
             {isCalling ? '正在呼叫中...' : timeStr}
@@ -2365,7 +2460,7 @@ ${historyFormatted}`;
                     className="bg-white p-3.5 rounded-2xl border border-slate-200/60 flex items-center justify-between shadow-sm hover:border-blue-400 cursor-pointer transition-all group"
                   >
                     <div className="flex items-center gap-3.5">
-                      <img src={friend.avatar} className="w-12 h-12 rounded-full object-cover shrink-0 border border-slate-200 shadow-sm" referrerPolicy="no-referrer" />
+                      <img referrerPolicy="no-referrer"  src={friend.avatar} className="w-12 h-12 rounded-full object-cover shrink-0 border border-slate-200 shadow-sm"  />
                       <div>
                         <div className="flex items-center gap-2">
                           <h4 className="font-bold text-xs text-slate-900">{friend.name}</h4>

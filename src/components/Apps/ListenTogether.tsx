@@ -257,12 +257,18 @@ export default function ListenTogether({ state, setState, friend, user, settings
           exit={{ opacity: 0, scale: 0.9 }}
           className="fixed inset-0 z-[20000] bg-black flex flex-col text-white overflow-hidden"
         >
-          {settings.fullScreenMode && (
+          {/* Top Spacer to prevent Status Bar overlap */}
+          {!settings.hideStatusBar ? (
             <div 
               className="shrink-0 bg-black/40"
-              style={{ height: settings.hideStatusBar ? 'env(safe-area-inset-top)' : 'max(env(safe-area-inset-top), 68px)' }}
+              style={{ height: settings.fullScreenMode ? 'max(env(safe-area-inset-top), 68px)' : '36px' }}
             />
-          )}
+          ) : settings.fullScreenMode ? (
+            <div 
+              className="shrink-0 bg-black/40"
+              style={{ height: 'env(safe-area-inset-top)' }}
+            />
+          ) : null}
           {/* Custom Background */}
           {state.backgroundUrl && (
             <img 

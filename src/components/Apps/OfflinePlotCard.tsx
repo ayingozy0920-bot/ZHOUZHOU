@@ -48,13 +48,10 @@ interface OfflinePlotCardProps {
   user: any;
   index: number;
   theme?: 'classic' | 'student' | 'glass' | 'time';
-  isEditing: boolean;
-  editingContent: string;
-  setEditingContent: (val: string) => void;
-  onStartEdit: () => void;
-  onSaveEdit: () => void;
-  onCancelEdit: () => void;
+  onSaveEdit: (newContent: string) => void;
   onDelete?: () => void;
+  onStartEdit?: () => void;
+  onEditChange?: (editing: boolean) => void;
 }
 
 export const OfflinePlotCard: React.FC<OfflinePlotCardProps> = ({
@@ -63,13 +60,10 @@ export const OfflinePlotCard: React.FC<OfflinePlotCardProps> = ({
   user,
   index,
   theme = 'classic',
-  isEditing,
-  editingContent,
-  setEditingContent,
-  onStartEdit,
   onSaveEdit,
-  onCancelEdit,
-  onDelete
+  onDelete,
+  onStartEdit,
+  onEditChange
 }) => {
   const isUser = message.role === 'user';
   const roundNum = index + 1;
@@ -86,72 +80,39 @@ export const OfflinePlotCard: React.FC<OfflinePlotCardProps> = ({
 
   // Helper for edit/delete buttons
   const ActionButtons = ({ className }: { className?: string }) => (
-    <div className={cn("flex gap-1 pointer-events-auto", className)}>
+    <div 
+      className={cn("flex gap-1 pointer-events-auto", className)}
+      onClick={e => e.stopPropagation()}
+      onMouseDown={e => e.stopPropagation()}
+      onTouchStart={e => e.stopPropagation()}
+      onPointerDown={e => e.stopPropagation()}
+    >
       <button 
+        type="button"
         onClick={(e) => {
           e.stopPropagation();
-          onStartEdit();
+          onStartEdit?.();
         }}
+        onMouseDown={e => e.stopPropagation()}
+        onTouchStart={e => e.stopPropagation()}
         className="p-1 bg-white/80 border border-slate-200 text-slate-500 hover:text-blue-600 rounded-md hover:shadow-sm transition-all z-20 backdrop-blur-sm active:scale-95"
         title="编辑"
       >
         <Edit2 size={10} strokeWidth={3} />
       </button>
       <button 
+        type="button"
         onClick={(e) => {
           e.stopPropagation();
-          onDelete();
+          onDelete?.();
         }}
+        onMouseDown={e => e.stopPropagation()}
+        onTouchStart={e => e.stopPropagation()}
         className="p-1 bg-white/80 border border-slate-200 text-slate-400 hover:text-red-600 rounded-md hover:shadow-sm transition-all z-20 backdrop-blur-sm active:scale-95"
         title="删除"
       >
         <Trash2 size={10} strokeWidth={3} />
       </button>
-    </div>
-  );
-
-  const renderEditForm = () => (
-    <div className="space-y-3 w-full">
-      <textarea 
-        autoFocus
-        value={editingContent}
-        onChange={e => setEditingContent(e.target.value)}
-        onClick={e => e.stopPropagation()}
-        onFocus={(e) => {
-          // Ensure cursor is at the end of text
-          const val = e.target.value;
-          e.target.value = '';
-          e.target.value = val;
-        }}
-        className={cn(
-          "w-full min-h-[160px] p-4 text-sm rounded-2xl focus:outline-none focus:ring-2 font-sans transition-all",
-          theme === 'student' ? "bg-white/80 text-blue-900 border-blue-200 focus:ring-blue-400" :
-          theme === 'glass' ? "bg-white/20 text-white border-white/30 focus:ring-white/50 backdrop-blur-md" :
-          theme === 'time' ? "bg-slate-800 text-slate-100 border-slate-700 focus:ring-slate-500" :
-          "bg-white text-stone-900 border-slate-200 focus:ring-pink-400"
-        )}
-        placeholder="修改剧情内容..."
-      />
-      <div className="flex gap-2 justify-end">
-        <button 
-          onClick={(e) => {
-            e.stopPropagation();
-            onCancelEdit();
-          }}
-          className="px-3 py-1.5 text-[10px] bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200 transition-colors flex items-center gap-1 font-black"
-        >
-          <X size={12} /> 取消
-        </button>
-        <button 
-          onClick={(e) => {
-            e.stopPropagation();
-            onSaveEdit();
-          }}
-          className="px-3 py-1.5 text-[10px] bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-1 font-black shadow-lg shadow-blue-500/20"
-        >
-          <Check size={12} /> 保存
-        </button>
-      </div>
     </div>
   );
 
@@ -284,11 +245,9 @@ export const OfflinePlotCard: React.FC<OfflinePlotCardProps> = ({
             </div>
 
             <div className="bg-white/60 rounded-[24px] p-6 border-2 border-white shadow-inner min-h-[180px]">
-              {isEditing ? renderEditForm() : (
-                <div className="text-sm md:text-base leading-relaxed font-medium font-sans text-blue-900/90 whitespace-pre-wrap">
-                  {parseNovelFormat(message.content)}
-                </div>
-              )}
+              <div className="text-sm md:text-base leading-relaxed font-medium font-sans text-blue-900/90 whitespace-pre-wrap">
+                {parseNovelFormat(message.content)}
+              </div>
             </div>
           </div>
 
@@ -368,11 +327,9 @@ export const OfflinePlotCard: React.FC<OfflinePlotCardProps> = ({
             )}
 
             <div className="bg-black/15 rounded-[32px] p-6 md:p-8 border border-white/10 shadow-inner">
-              {isEditing ? renderEditForm() : (
-                <div className="text-white/95 leading-loose text-base tracking-wide font-serif text-justify selection:bg-pink-500/30">
-                  {parseNovelFormat(message.content)}
-                </div>
-              )}
+              <div className="text-white/95 leading-loose text-base tracking-wide font-serif text-justify selection:bg-pink-500/30">
+                {parseNovelFormat(message.content)}
+              </div>
             </div>
 
             <div className="flex justify-between items-center text-[9px] font-black text-white/40 tracking-[0.4em] uppercase">
@@ -443,11 +400,9 @@ export const OfflinePlotCard: React.FC<OfflinePlotCardProps> = ({
                 </div>
               )}
 
-              {isEditing ? renderEditForm() : (
-                <div className="text-white/90 leading-loose text-lg tracking-wide font-serif text-justify drop-shadow-md">
-                   {parseNovelFormat(message.content)}
-                </div>
-              )}
+               <div className="text-white/90 leading-loose text-lg tracking-wide font-serif text-justify drop-shadow-md">
+                  {parseNovelFormat(message.content)}
+               </div>
            </div>
 
            <div className="py-6 px-10 text-[9px] font-mono text-white/10 tracking-[0.8em] uppercase text-center border-t border-white/5 bg-white/[0.01]">
@@ -503,11 +458,9 @@ export const OfflinePlotCard: React.FC<OfflinePlotCardProps> = ({
           </div>
 
           <div className="border border-[#E2D9C5]/70 bg-[#FCFAF7]/90 rounded-2xl p-5 shadow-inner min-h-[140px]">
-            {isEditing ? renderEditForm() : (
-              <div className="space-y-1 select-text">
-                {parseNovelFormat(message.content)}
-              </div>
-            )}
+            <div className="space-y-1 select-text">
+              {parseNovelFormat(message.content)}
+            </div>
           </div>
         </div>
       </div>

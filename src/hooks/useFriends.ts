@@ -2,6 +2,29 @@ import { useState, useEffect } from 'react';
 import { Friend, ChatMessage, UserPersona, FavoriteMessage, MomentPost, GroupChat, UserProfile, BankCard, Transaction } from '../types';
 import { get, set } from 'idb-keyval';
 
+export const formatMessageTimestamp = (timestamp?: number): string => {
+  if (!timestamp) return '';
+  const date = new Date(timestamp);
+  const now = new Date();
+  
+  const isToday = date.toDateString() === now.toDateString();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+  const isYesterday = date.toDateString() === yesterday.toDateString();
+
+  const timeStr = date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
+  
+  if (isToday) {
+    return timeStr;
+  } else if (isYesterday) {
+    return `昨天 ${timeStr}`;
+  } else {
+    const month = date.getMonth() + 1;
+    const day = date.getDate();
+    return `${month}月${day}日 ${timeStr}`;
+  }
+};
+
 export type { BankCard, Transaction };
 
 const FRIENDS_KEY = 'zhouzhou_ji_friends';
@@ -174,7 +197,7 @@ export function useFriends() {
       avatar,
       createdAt: Date.now(),
       lastMessage: '群聊已创建，开始聊天吧',
-      lastTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      lastTime: formatMessageTimestamp(Date.now())
     };
     saveGroups([newGroup, ...groups]);
     return newGroup.id;
@@ -210,7 +233,7 @@ export function useFriends() {
           return {
             ...g,
             lastMessage: message.content,
-            lastTime: new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            lastTime: formatMessageTimestamp(message.timestamp)
           };
         }
         return g;
@@ -254,7 +277,7 @@ export function useFriends() {
             return {
               ...g,
               lastMessage: lastMsg.content,
-              lastTime: new Date(lastMsg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              lastTime: formatMessageTimestamp(lastMsg.timestamp)
             };
           }
           return g;
@@ -295,7 +318,7 @@ export function useFriends() {
       id: `friend-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
       createdAt: Date.now(),
       lastMessage: '刚刚添加了你',
-      lastTime: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+      lastTime: formatMessageTimestamp(Date.now())
     };
     saveFriends([newFriend, ...friends]);
   };
@@ -317,7 +340,7 @@ export function useFriends() {
         if (updates.isOfflineMode && updates.currentOfflineMessages && updates.currentOfflineMessages.length > 0) {
           const lastOffline = updates.currentOfflineMessages[updates.currentOfflineMessages.length - 1];
           newFriend.lastMessage = lastOffline.content;
-          newFriend.lastTime = new Date(lastOffline.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+          newFriend.lastTime = formatMessageTimestamp(lastOffline.timestamp);
         } else if (updates.isOfflineMode === false) {
           // If exiting offline mode, we might want to revert to the last real message?
           // For now, let's keep the last offline message as the preview if that was the most recent interaction
@@ -350,7 +373,7 @@ export function useFriends() {
           return {
             ...f,
             lastMessage: message.content,
-            lastTime: new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            lastTime: formatMessageTimestamp(message.timestamp)
           };
         }
         return f;
@@ -393,7 +416,7 @@ export function useFriends() {
           return {
             ...f,
             lastMessage: lastMsg.content,
-            lastTime: new Date(lastMsg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            lastTime: formatMessageTimestamp(lastMsg.timestamp)
           };
         }
         return f;

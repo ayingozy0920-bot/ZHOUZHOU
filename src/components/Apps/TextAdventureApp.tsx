@@ -44,7 +44,21 @@ interface GameState {
   previousStoryLog?: string;
   characters: Character[];
   memoryCore: string[];
+  settings: {
+    notifications: boolean;
+    autoSave: boolean;
+    fontSize: 'sm' | 'md' | 'lg';
+    fontFamily?: string;
+  };
 }
+
+const FONTS = [
+  { id: 'sans-serif', name: '系统默认', family: 'ui-sans-serif, system-ui, sans-serif' },
+  { id: 'cute', name: '可爱', family: '"ZCOOL KuaiLe", cursive' },
+  { id: 'elegant', name: '飘逸', family: '"Ma Shan Zheng", cursive' },
+  { id: 'serif', name: '宋体', family: '"Noto Serif SC", serif' },
+  { id: 'handwriting', name: '手写', family: '"Liu Jian Mao Cao", cursive' },
+];
 
 interface ChatMessage {
   id: string;
@@ -329,7 +343,20 @@ export const TextAdventureApp: React.FC<TextAdventureAppProps> = ({
   const [gameState, setGameState] = useState<GameState>(() => {
     try {
       const saved = localStorage.getItem('ta_game_state');
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Ensure settings with fontFamily exists
+        return {
+          ...parsed,
+          settings: {
+            notifications: true,
+            autoSave: true,
+            fontSize: 'md',
+            fontFamily: 'sans-serif',
+            ...(parsed.settings || {})
+          }
+        };
+      }
     } catch (e) {}
     return {
       worldInfo: '',
@@ -339,7 +366,13 @@ export const TextAdventureApp: React.FC<TextAdventureAppProps> = ({
       location: '未开始游玩',
       storyLog: '',
       characters: [],
-      memoryCore: []
+      memoryCore: [],
+      settings: {
+        notifications: true,
+        autoSave: true,
+        fontSize: 'md',
+        fontFamily: 'sans-serif'
+      }
     };
   });
 
@@ -404,35 +437,67 @@ export const TextAdventureApp: React.FC<TextAdventureAppProps> = ({
     ]
   });
 
-  useEffect(() => {
+  // Utility to safely save to localStorage with quota handling
+  const safeSave = (key: string, data: any) => {
     try {
-      localStorage.setItem('ta_game_state', JSON.stringify(gameState));
+      const value = typeof data === 'string' ? data : JSON.stringify(data);
+      localStorage.setItem(key, value);
     } catch (e) {
-      try {
-        const trimmed = { ...gameState, storyLog: gameState.storyLog.slice(-50000) };
-        localStorage.setItem('ta_game_state', JSON.stringify(trimmed));
-      } catch (err) {}
+      if (e instanceof DOMException && (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED')) {
+        console.warn(`LocalStorage quota exceeded for key: ${key}. Attempting to trim...`);
+        // If it's a save slot, maybe remove the oldest slot or trim the data within
+        if (key === 'ta_game_state' && data && typeof data === 'object' && data.storyLog) {
+          const trimmed = { ...data, storyLog: data.storyLog.slice(-5000) };
+          try { localStorage.setItem(key, JSON.stringify(trimmed)); } catch (err) {}
+        } else if (key === 'ta_save_slots' && Array.isArray(data)) {
+          // Remove the oldest slot if quota exceeded
+          if (data.length > 1) {
+            safeSave(key, data.slice(1));
+          } else {
+            // If only one slot left and still failing, trim its log
+            const trimmedSlot = [{ 
+              ...data[0], 
+              gameState: { ...data[0].gameState, storyLog: data[0].gameState.storyLog.slice(-5000) } 
+            }];
+            try { localStorage.setItem(key, JSON.stringify(trimmedSlot)); } catch (err) {}
+          }
+        } else if (key === 'ta_chat_messages' && data && typeof data === 'object') {
+          // Trim chat messages: keep only last 10 messages per character
+          const trimmedMsgs: Record<string, any> = {};
+          Object.keys(data).forEach(id => {
+            trimmedMsgs[id] = (data as any)[id].slice(-10);
+          });
+          try { localStorage.setItem(key, JSON.stringify(trimmedMsgs)); } catch (err) {}
+        } else {
+          // For other small items, try to save anyway or just fail
+          console.error(`Could not save ${key} even after potential trimming.`);
+        }
+      }
     }
+  };
+
+  useEffect(() => {
+    safeSave('ta_game_state', gameState);
   }, [gameState]);
 
   useEffect(() => {
-    try { localStorage.setItem('ta_save_slots', JSON.stringify(saveSlots)); } catch (e) {}
+    safeSave('ta_save_slots', saveSlots);
   }, [saveSlots]);
 
   useEffect(() => {
-    try { localStorage.setItem('ta_chat_messages', JSON.stringify(chatMessagesMap)); } catch (e) {}
+    safeSave('ta_chat_messages', chatMessagesMap);
   }, [chatMessagesMap]);
 
   useEffect(() => {
-    try { localStorage.setItem('ta_moments_posts', JSON.stringify(momentsPosts)); } catch (e) {}
+    safeSave('ta_moments_posts', momentsPosts);
   }, [momentsPosts]);
 
   useEffect(() => {
-    try { localStorage.setItem('ta_user_adv_profile', JSON.stringify(userAdvProfile)); } catch (e) {}
+    safeSave('ta_user_adv_profile', userAdvProfile);
   }, [userAdvProfile]);
 
   useEffect(() => {
-    try { localStorage.setItem('ta_custom_templates', JSON.stringify(customTemplates)); } catch (e) {}
+    safeSave('ta_custom_templates', customTemplates);
   }, [customTemplates]);
 
   const [summarizedCountsMap, setSummarizedCountsMap] = useState<Record<string, number>>(() => {
@@ -447,9 +512,7 @@ export const TextAdventureApp: React.FC<TextAdventureAppProps> = ({
   const [isSummarizingMap, setIsSummarizingMap] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    try {
-      localStorage.setItem('ta_summarized_counts', JSON.stringify(summarizedCountsMap));
-    } catch (e) {}
+    safeSave('ta_summarized_counts', summarizedCountsMap);
   }, [summarizedCountsMap]);
 
   const triggerSummarizeForCharacter = async (charId: string, forceManual = false) => {
@@ -747,15 +810,15 @@ export const TextAdventureApp: React.FC<TextAdventureAppProps> = ({
   }, [chatMessagesMap, selectedChar]);
 
   const saveApiConfig = () => {
-    localStorage.setItem('ta_api_url', apiUrl);
-    localStorage.setItem('ta_api_key', apiKey);
-    localStorage.setItem('ta_model', modelName);
+    safeSave('ta_api_url', apiUrl);
+    safeSave('ta_api_key', apiKey);
+    safeSave('ta_model', modelName);
     alert('API配置保存成功！');
     setActiveTab('home');
   };
 
   const saveUserProfile = () => {
-    localStorage.setItem('ta_user_adv_profile', JSON.stringify(userAdvProfile));
+    safeSave('ta_user_adv_profile', userAdvProfile);
     alert('个人人设资料保存成功！角色将在对话中读取您的身份与介绍。');
   };
 
@@ -764,7 +827,7 @@ export const TextAdventureApp: React.FC<TextAdventureAppProps> = ({
     const urls = newStickerUrl.split(/[\n,]+/).map(u => u.trim()).filter(Boolean);
     const updated = [...urls, ...stickers];
     setStickers(updated);
-    localStorage.setItem('ta_stickers', JSON.stringify(updated));
+    safeSave('ta_stickers', updated);
     setNewStickerUrl('');
     alert(`成功导入 ${urls.length} 个表情包图床链接！`);
   };
@@ -772,7 +835,7 @@ export const TextAdventureApp: React.FC<TextAdventureAppProps> = ({
   const deleteSticker = (idx: number) => {
     const updated = stickers.filter((_, i) => i !== idx);
     setStickers(updated);
-    localStorage.setItem('ta_stickers', JSON.stringify(updated));
+    safeSave('ta_stickers', updated);
   };
 
   const fetchModelList = async () => {
@@ -921,7 +984,8 @@ export const TextAdventureApp: React.FC<TextAdventureAppProps> = ({
 
     const charInfoStr = preset.characters.map((c, i) => `${i + 1}. ${c.name}（${c.role}）：${c.desc}`).join('\n');
 
-    setGameState({
+    setGameState(prev => ({
+      ...prev,
       worldInfo: preset.desc,
       charInfo: charInfoStr,
       goodwill: 0,
@@ -930,7 +994,7 @@ export const TextAdventureApp: React.FC<TextAdventureAppProps> = ({
       storyLog: `【世界开启：${preset.title}】\n${preset.desc}\n\n你降临于【${preset.location}】。周围光影流转，命运的篇章正式拉开序幕……\n`,
       characters: newChars,
       memoryCore: [`玩家进入世界：${preset.title}。`, `初始地点：${preset.location}。`]
-    });
+    }));
 
     setPlotMode('world');
     setSelectedCharsForPlot([]);
@@ -1011,7 +1075,8 @@ export const TextAdventureApp: React.FC<TextAdventureAppProps> = ({
 
     const charInfoStr = f.characters.map((c, i) => `${i + 1}. ${c.name}（${c.role}）：${c.desc}`).join('\n');
 
-    setGameState({
+    setGameState(prev => ({
+      ...prev,
       worldInfo: f.worldInfo,
       charInfo: charInfoStr,
       goodwill: 0,
@@ -1020,7 +1085,7 @@ export const TextAdventureApp: React.FC<TextAdventureAppProps> = ({
       storyLog: `【自定义世界：${f.title} 开启】\n${f.worldInfo}\n\n你睁开双眼，发现自己身处【${f.location}】。周围的空气中仿佛有着异样的气息，${f.characters.map(c => c.name).join('、')} 正向你投来目光……\n`,
       characters: newChars,
       memoryCore: [`玩家进入自定义世界：${f.title}。`, `初始地点：${f.location}。`]
-    });
+    }));
 
     setPlotMode('world');
     setSelectedCharsForPlot([]);
@@ -1053,7 +1118,6 @@ export const TextAdventureApp: React.FC<TextAdventureAppProps> = ({
     };
     const updated = [newTemplate, ...customTemplates.filter(t => t.id !== newTemplate.id)];
     setCustomTemplates(updated);
-    localStorage.setItem('ta_custom_templates', JSON.stringify(updated));
     alert(`自定义世界模板【${tName}】保存成功！`);
   };
 
@@ -1230,28 +1294,10 @@ export const TextAdventureApp: React.FC<TextAdventureAppProps> = ({
       }
 
       setSaveSlots(updated);
-      try {
-        localStorage.setItem('ta_save_slots', JSON.stringify(updated));
-        if (existingIndex >= 0) {
-          alert(`本次文游世界「${worldName}」存档已更新到最新进度（地点：${gameState?.location || '未知地点'}），请去存档中心查看！`);
-        } else {
-          alert(`本次文游世界「${worldName}」已成功存档（地点：${gameState?.location || '未知地点'}），请去存档中心查看！`);
-        }
-      } catch (storageErr) {
-        // Try trimming if quota exceeded
-        const trimmedUpdated = updated.map(s => {
-          const log = s.gameState?.storyLog || '';
-          return {
-            ...s,
-            gameState: {
-              ...s.gameState,
-              storyLog: log.slice(-50000)
-            }
-          };
-        });
-        setSaveSlots(trimmedUpdated);
-        localStorage.setItem('ta_save_slots', JSON.stringify(trimmedUpdated));
-        alert(`本次文游世界「${worldName}」已存档（已自动优化存储空间），请去存档中心查看！`);
+      if (existingIndex >= 0) {
+        alert(`本次文游世界「${worldName}」存档已更新到最新进度（地点：${gameState?.location || '未知地点'}），请去存档中心查看！`);
+      } else {
+        alert(`本次文游世界「${worldName}」已成功存档（地点：${gameState?.location || '未知地点'}），请去存档中心查看！`);
       }
     } catch (e: any) {
       alert(`存档失败: ${e.message || '未知错误，请重试'}`);
@@ -1261,7 +1307,10 @@ export const TextAdventureApp: React.FC<TextAdventureAppProps> = ({
   };
 
   const loadSlot = (slot: SaveSlot) => {
-    setGameState(slot.gameState);
+    setGameState(prev => ({
+      ...slot.gameState,
+      settings: prev.settings // Keep current user's font/size settings
+    }));
     if (slot.chatMessagesMap) {
       setChatMessagesMap(slot.chatMessagesMap);
     }
@@ -1278,7 +1327,6 @@ export const TextAdventureApp: React.FC<TextAdventureAppProps> = ({
     if (!deleteSlotId) return;
     const updated = saveSlots.filter(s => s.id !== deleteSlotId);
     setSaveSlots(updated);
-    localStorage.setItem('ta_save_slots', JSON.stringify(updated));
     setDeleteSlotId(null);
     alert('存档记录删除成功！');
   };
@@ -1287,7 +1335,6 @@ export const TextAdventureApp: React.FC<TextAdventureAppProps> = ({
     if (!deleteTemplateId) return;
     const updated = customTemplates.filter(t => t.id !== deleteTemplateId);
     setCustomTemplates(updated);
-    localStorage.setItem('ta_custom_templates', JSON.stringify(updated));
     setDeleteTemplateId(null);
     alert('自定义世界模板已删除！');
   };
@@ -1396,6 +1443,12 @@ ${memoryContext}
 玩家刚进行了如下行动：“${userMsg}”。
 
 请根据玩家行动推进剧情，描写生动细腻、引人入胜，并适当触发角色的互动与情感变化。分段清晰。
+【剧情排版极其重要指令】：
+1. 每一段剧情必须独立成段。
+2. 角色对话请使用“姓名：内容”或“姓名: 内容”的格式。
+3. 严禁在任何地方使用星号（*）包裹文字。
+4. 确保角色姓名准确无误。
+
 【极其重要指令】在回复的最后一行，必须严格输出一个标准JSON，用于更新状态，格式如下：
 {"goodwill": 本次好感度变动值数字, "stamina": 新体力数字, "location": "当前地点名称", "memory": "本次事件的关键记忆点总结"}
 例如：{"goodwill": 1.2, "stamina": 90, "location": "旧书店", "memory": "在旧书店与苏清寒共同翻阅了古籍，好感上升。"}
@@ -1672,8 +1725,17 @@ ${chatHistory}
     <div className="h-full w-full bg-[#fbf7f9] text-[#222226] flex flex-col relative select-none font-sans overflow-hidden">
       {/* Top Header */}
       <div className="px-4 py-3 bg-white/70 backdrop-blur-md border-b border-rose-100/60 flex items-center justify-between shrink-0 z-20">
-        <button onClick={onBack} className="p-2 hover:bg-rose-50 rounded-full transition-colors flex items-center gap-1 text-sm font-medium text-slate-700">
-          <ArrowLeft size={18} /> 返回桌面
+        <button 
+          onClick={() => {
+            if (activeTab === 'home') {
+              onBack();
+            } else {
+              setActiveTab('home');
+            }
+          }} 
+          className="p-2 hover:bg-rose-50 rounded-full transition-colors flex items-center gap-1 text-sm font-medium text-slate-700"
+        >
+          <ArrowLeft size={18} />
         </button>
         <div className="flex items-center gap-2 font-bold text-base text-slate-800">
           <Gamepad2 className="text-rose-400" size={20} />
@@ -1685,7 +1747,13 @@ ${chatHistory}
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 overflow-y-auto relative p-4 flex flex-col">
+      <div 
+        className={cn(
+          "flex-1 overflow-y-auto relative p-4 flex flex-col",
+          gameState.settings?.fontFamily && gameState.settings.fontFamily !== 'sans-serif' && "ta-app-font-active"
+        )}
+        style={{ fontFamily: FONTS.find(f => f.id === (gameState.settings?.fontFamily || 'sans-serif'))?.family }}
+      >
         {activeTab === 'home' && (
           <div className="flex-1 flex flex-col items-center justify-center max-w-md mx-auto w-full text-center space-y-6">
             <div className="w-24 h-24 bg-gradient-to-tr from-rose-100 to-pink-50 rounded-3xl shadow-md border border-rose-200/50 flex items-center justify-center text-rose-500 mb-2">
@@ -2237,11 +2305,49 @@ ${chatHistory}
                         {/* Story Box */}
             <div 
               ref={storyBoxRef}
-              className="flex-1 bg-white/70 backdrop-blur-md rounded-2xl border border-white/80 shadow-inner p-4 overflow-y-auto text-sm leading-relaxed whitespace-pre-wrap mb-3 font-sans"
+              className={cn(
+                "flex-1 bg-white/70 backdrop-blur-md rounded-2xl border border-white/80 shadow-inner p-4 overflow-y-auto leading-relaxed mb-3 font-sans",
+                gameState.settings?.fontSize === 'sm' ? "text-xs" : 
+                gameState.settings?.fontSize === 'lg' ? "text-base" : "text-sm"
+              )}
             >
-              {gameState.storyLog}
+              <div className="space-y-4">
+                {gameState.storyLog.split('\n').filter(l => l.trim()).map((line, i) => {
+                  // Remove any asterisks from the line
+                  const cleanLine = line.replace(/\*/g, '').trim();
+                  if (!cleanLine) return null;
+
+                  // Check if it's a character dialogue: "Name: Content" or "Name：Content"
+                  const charMatch = cleanLine.match(/^([^：:]+)([：:])(.*)$/);
+                  if (charMatch) {
+                    const name = charMatch[1].trim();
+                    const sep = charMatch[2];
+                    const content = charMatch[3];
+                    
+                    // Check if the name belongs to a main character
+                    const isMainChar = gameState.characters.some(c => c.name === name);
+                    
+                    return (
+                      <div key={i} className="text-slate-800" style={{ textIndent: '2em' }}>
+                        <span className={isMainChar ? "font-bold text-rose-600" : "font-normal text-slate-700"}>
+                          {name}
+                        </span>
+                        {sep}
+                        {content}
+                      </div>
+                    );
+                  }
+
+                  // Standard narrative paragraph
+                  return (
+                    <div key={i} className="text-slate-800" style={{ textIndent: '2em' }}>
+                      {cleanLine}
+                    </div>
+                  );
+                })}
+              </div>
               {isGenerating && (
-                <div className="text-xs text-rose-400 animate-pulse mt-2 flex items-center gap-1">
+                <div className="text-xs text-rose-400 animate-pulse mt-4 flex items-center gap-1">
                   <Sparkles size={14} /> 大模型正在演绎后续剧情中……
                 </div>
               )}
@@ -2726,7 +2832,7 @@ ${chatHistory}
                       onClick={() => {
                         handleImageUploadFromFile((url) => {
                           setMomentsCoverUrl(url);
-                          localStorage.setItem('ta_moments_cover', url);
+                          safeSave('ta_moments_cover', url);
                           alert('朋友圈封面已从本地相册更新成功！');
                         });
                       }}
@@ -3219,6 +3325,85 @@ ${chatHistory}
               <div className="pt-2 text-center">
                 <button onClick={() => setActiveTab('home')} className="text-xs opacity-60 hover:underline">
                   返回首页
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-white/70 backdrop-blur-md p-6 rounded-2xl border border-white/80 shadow-sm space-y-5">
+              <div className="flex items-center justify-between">
+                <h3 className="font-bold text-base">个性化设置 (Personalization)</h3>
+                <button onClick={() => setActiveTab('home')} className="text-xs text-rose-600 font-bold flex items-center gap-1">
+                  <ArrowLeft size={14} /> 返回首页
+                </button>
+              </div>
+              
+              <div className="space-y-3">
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">字体样式 (Typography)</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {FONTS.map(font => (
+                    <button
+                      key={font.id}
+                      onClick={() => {
+                        setGameState(prev => ({
+                          ...prev,
+                          settings: { ...prev.settings, fontFamily: font.id }
+                        }));
+                      }}
+                      className={cn(
+                        "flex items-center justify-center p-3 rounded-xl border-2 transition-all",
+                        (gameState.settings?.fontFamily || 'sans-serif') === font.id 
+                          ? "border-rose-400 bg-rose-50/50 text-rose-600 shadow-sm font-bold" 
+                          : "border-slate-100 bg-white text-slate-600 hover:border-slate-200"
+                      )}
+                      style={{ fontFamily: font.family }}
+                    >
+                      {font.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <label className="text-xs font-semibold text-slate-500 uppercase tracking-wider block">字体大小 (Font Size)</label>
+                <div className="flex gap-2">
+                  {(['sm', 'md', 'lg'] as const).map(size => (
+                    <button
+                      key={size}
+                      onClick={() => {
+                        setGameState(prev => ({
+                          ...prev,
+                          settings: { ...prev.settings, fontSize: size }
+                        }));
+                      }}
+                      className={cn(
+                        "flex-1 py-2.5 rounded-xl border-2 transition-all text-xs font-semibold",
+                        (gameState.settings?.fontSize || 'md') === size 
+                          ? "border-rose-400 bg-rose-50/50 text-rose-600" 
+                          : "border-slate-100 bg-white text-slate-600"
+                      )}
+                    >
+                      {size === 'sm' ? '小' : size === 'md' ? '中' : '大'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="pt-6 border-t border-rose-100 flex justify-center">
+                <button 
+                  onClick={() => {
+                    if (confirm('确定要清除所有本地缓存吗？这将删除所有存档、设定和聊天记录，且无法恢复！')) {
+                      // Clear only keys starting with 'ta_'
+                      Object.keys(localStorage).forEach(key => {
+                        if (key.startsWith('ta_')) {
+                          localStorage.removeItem(key);
+                        }
+                      });
+                      window.location.reload();
+                    }
+                  }}
+                  className="text-xs text-rose-400 hover:text-rose-600 transition-colors flex items-center gap-1 opacity-60 hover:opacity-100"
+                >
+                  <Trash2 size={12} /> 清除所有本地数据 (危险操作)
                 </button>
               </div>
             </div>

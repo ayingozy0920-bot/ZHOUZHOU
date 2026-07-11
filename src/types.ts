@@ -140,7 +140,7 @@ export interface AppSettings {
   themeColor?: string;
   glassOpacity?: number;
   fontSize?: 'small' | 'medium' | 'large';
-  fontFamily?: 'sans' | 'serif' | 'mono' | 'rounded' | 'cute-cheese' | 'dynalight' | 'lxgw-wenkai';
+  fontFamily?: 'sans' | 'serif' | 'mono' | 'rounded' | 'cute-cheese' | 'dynalight' | 'lxgw-wenkai' | 'hanyi-senty' | 'zcool-qingke' | 'fira-code';
   backgroundBlur?: number;
   wallpaperUrl?: string;
   settingsBackgroundUrl?: string;
@@ -560,6 +560,18 @@ export interface ChatMessage {
   notificationType?: string;
   notificationData?: any;
   locationName?: string;
+  locationData?: {
+    locationName: string;
+    fullAddress: string;
+    remark?: string;
+    category: 'home' | 'play' | 'road' | 'normal';
+    distanceKm: string;
+    coordinateX: number;
+    coordinateY: number;
+    homeX: number;
+    homeY: number;
+    isCharacter?: boolean;
+  };
   isForwarded?: boolean;
   forwardFrom?: string;
   innerMonologue?: string;

@@ -6,6 +6,29 @@ interface ApiRequest {
 }
 
 export async function apiFetch(req: ApiRequest): Promise<any> {
+  // Merge settings with localStorage overrides if running in browser
+  if (typeof window !== 'undefined' && req.body) {
+    try {
+      const customKey = localStorage.getItem('CUSTOM_GEMINI_API_KEY');
+      const customUrl = localStorage.getItem('CUSTOM_GEMINI_BASE_URL');
+      const customModel = localStorage.getItem('CUSTOM_GEMINI_MODEL');
+      let storedSettings: any = null;
+      try {
+        const s = localStorage.getItem('zhouzhou_ji_settings');
+        if (s) storedSettings = JSON.parse(s);
+      } catch (e) {}
+
+      req.body.settings = {
+        ...storedSettings,
+        ...(req.body.settings || {}),
+        apiKey: customKey || req.body.settings?.apiKey || storedSettings?.apiKey,
+        userApiKey: customKey || req.body.settings?.userApiKey || storedSettings?.userApiKey,
+        baseUrl: customUrl || req.body.settings?.baseUrl || storedSettings?.baseUrl,
+        modelName: customModel || req.body.settings?.modelName || storedSettings?.modelName || storedSettings?.model
+      };
+    } catch (e) {}
+  }
+
   // 1. Attempt to fetch from local Node.js proxy first (if available)
   try {
     const response = await fetch(req.endpoint, {
@@ -34,7 +57,8 @@ export async function apiFetch(req: ApiRequest): Promise<any> {
       }
     }
   } catch (error: any) {
-    if (error.message && (error.message.includes('PROHIBITED_CONTENT') || error.message.includes('safety') || error.message.includes('blocked') || error.message.includes('API key') || error.message.includes('429') || error.message.includes('quota'))) {
+    const hasCustomBaseUrl = req.body?.settings?.baseUrl;
+    if (hasCustomBaseUrl || (error.message && (error.message.includes('PROHIBITED_CONTENT') || error.message.includes('safety') || error.message.includes('blocked') || error.message.includes('API key') || error.message.includes('429') || error.message.includes('quota')))) {
       throw error;
     }
     console.warn(`Local fetch to ${req.endpoint} failed. Falling back to direct client-side fetch...`, error);

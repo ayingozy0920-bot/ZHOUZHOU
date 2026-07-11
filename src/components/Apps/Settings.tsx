@@ -43,6 +43,32 @@ export default function SettingsApp({
   const [customFontNameInput, setCustomFontNameInput] = useState('');
   const [customFontUrlInput, setCustomFontUrlInput] = useState('');
   const fontFileInputRef = useRef<HTMLInputElement>(null);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [expandedPastLog, setExpandedPastLog] = useState(false);
+
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
+  }, []);
+
+  const handleInstallPwa = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        showToast('✅ 成功添加到桌面！');
+      }
+      setDeferredPrompt(null);
+    } else {
+      showToast('请在浏览器菜单中选择“添加到主屏幕”或“安装应用”', 'success');
+    }
+  };
 
   const handleAddFontPreset = (name: string, url: string, applyNow = true) => {
     if (!url.trim()) {
@@ -676,7 +702,7 @@ export default function SettingsApp({
     voice: '语音设置',
     imageGen: '生图设置',
     memoryApi: '记忆总结API',
-    help: '帮助与反馈',
+    help: '更新日志',
   };
 
   return (
@@ -685,15 +711,32 @@ export default function SettingsApp({
       form.settingsBackgroundUrl ? "bg-transparent" : (form.themeId === 'pink-cat' ? "bg-[#fffafb]" : form.themeId === 'ocean-blue' ? "bg-[#f0f9ff]" : "bg-slate-50")
     )}>
       <div className={cn(
-        "backdrop-blur-md border-b px-4 py-3 flex items-center gap-3 sticky top-0 z-20 transition-all duration-500",
+        "backdrop-blur-md border-b px-4 py-3 flex items-center justify-between sticky top-0 z-20 transition-all duration-500",
         form.settingsBackgroundUrl ? "bg-white/40 border-white/20" : "bg-white/80"
       )} style={form.settingsBackgroundUrl ? { backgroundColor: `rgba(255, 255, 255, ${Math.max(0.2, form.settingsBackgroundOpacity ?? 0.4)})` } : {}}>
-        <button onClick={handleBack} className="p-1 hover:bg-slate-100 rounded-full transition-colors">
-          <ChevronLeft size={24} />
-        </button>
-        <span className="font-bold text-slate-800">
-          {activeSection === 'main' ? '系统设置' : sectionTitles[activeSection]}
-        </span>
+        <div className="flex items-center gap-3">
+          <button onClick={handleBack} className="p-1.5 hover:bg-slate-100 rounded-full transition-colors group">
+            {activeSection === 'main' ? (
+              <X size={22} className="text-slate-400 group-hover:text-slate-600" />
+            ) : (
+              <ChevronLeft size={24} className="text-slate-600" />
+            )}
+          </button>
+          <span className="font-bold text-slate-800 tracking-tight">
+            {activeSection === 'main' ? '系统设置' : sectionTitles[activeSection]}
+          </span>
+        </div>
+        {activeSection === 'main' && (
+          <button 
+            onClick={() => {
+              onSave(form);
+              onBack();
+            }}
+            className="text-xs font-bold text-blue-600 bg-blue-50 px-3 py-1.5 rounded-full hover:bg-blue-100 transition-colors"
+          >
+            保存并返回
+          </button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-6 space-y-8 z-10">
@@ -833,7 +876,7 @@ export default function SettingsApp({
               <button onClick={() => setActiveSection('help')} className="w-full px-4 py-4 flex items-center justify-between border-b hover:bg-slate-50 transition-colors">
                 <div className="flex items-center gap-3">
                   <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-600"><HelpCircle size={18} /></div>
-                  <span className="font-medium text-slate-800">帮助与反馈</span>
+                  <span className="font-medium text-slate-800">更新日志</span>
                 </div>
                 <ChevronLeft size={20} className="text-slate-400 rotate-180" />
               </button>
@@ -1274,35 +1317,51 @@ export default function SettingsApp({
                 </div>
               </div>
 
-              <div className="space-y-2">
+              <div className="space-y-4">
                 <label className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center justify-between">
-                  <span className="flex items-center gap-2"><Type size={14} /> 字体样式</span>
+                  <span className="flex items-center gap-2"><Type size={14} /> 字体样式 (内置)</span>
                   <span className="text-[10px] text-slate-400 font-normal">点击已选中字体可取消并使用系统默认</span>
                 </label>
-                <div className="grid grid-cols-2 gap-2">
-                  {(['sans', 'serif', 'mono', 'rounded', 'cute-cheese', 'dynalight', 'lxgw-wenkai'] as const).map(font => (
+                <div className="grid grid-cols-2 gap-3">
+                  {([
+                    { id: 'sans', name: '标准无衬线', desc: 'Standard Sans' },
+                    { id: 'serif', name: '优雅衬线体', desc: 'Elegant Serif' },
+                    { id: 'mono', name: '极客等宽体', desc: 'Modern Mono' },
+                    { id: 'rounded', name: '可爱圆体', desc: 'Soft Rounded' },
+                    { id: 'cute-cheese', name: '可爱奶酪体', desc: 'Cute Cheese' },
+                    { id: 'dynalight', name: '签名体', desc: 'Signature' },
+                    { id: 'lxgw-wenkai', name: '霞鹜文楷', desc: 'Classical' },
+                    { id: 'hanyi-senty', name: '手写下午茶', desc: 'Handwriting' },
+                    { id: 'zcool-qingke', name: '庆科黄油', desc: 'Butter' },
+                    { id: 'fira-code', name: 'Fira Code', desc: 'Developer' },
+                  ] as const).map(font => (
                     <button
-                      key={font}
+                      key={font.id}
                       onClick={() => {
-                        const newFont = form.fontFamily === font ? undefined : font;
+                        const newFont = form.fontFamily === font.id ? undefined : font.id;
                         const newSettings = { ...form, fontFamily: newFont };
                         setForm(newSettings);
                         onSave(newSettings);
                       }}
                       className={cn(
-                        "py-2 px-3 text-sm border rounded-xl transition-all",
-                        form.fontFamily === font 
-                          ? "bg-blue-50 border-blue-500 text-blue-600 font-bold shadow-sm" 
-                          : "bg-white border-slate-200 text-slate-600 hover:bg-slate-50"
+                        "p-3 text-left border rounded-2xl transition-all relative overflow-hidden group",
+                        form.fontFamily === font.id 
+                          ? "bg-blue-50 border-blue-400 text-blue-600 shadow-md scale-[1.02]" 
+                          : "bg-white border-slate-100 text-slate-600 hover:border-blue-200 hover:bg-blue-50/10"
                       )}
+                      style={{ 
+                        fontFamily: font.id === 'serif' ? 'serif' : 
+                                   font.id === 'mono' ? 'monospace' : 
+                                   font.id === 'hanyi-senty' ? 'cursive' : 'sans-serif'
+                      }}
                     >
-                      {font === 'sans' && '标准无衬线'}
-                      {font === 'serif' && '优雅衬线体'}
-                      {font === 'mono' && '极客等宽体'}
-                      {font === 'rounded' && '可爱圆体'}
-                      {font === 'cute-cheese' && '可爱奶酪体'}
-                      {font === 'dynalight' && 'Dynalight'}
-                      {font === 'lxgw-wenkai' && '霞鹜文楷'}
+                      <p className="text-sm font-black tracking-tight">{font.name}</p>
+                      <p className="text-[10px] opacity-40">{font.desc}</p>
+                      {form.fontFamily === font.id && (
+                        <div className="absolute top-1 right-1">
+                          <Check size={12} className="text-blue-500" />
+                        </div>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -1662,6 +1721,33 @@ export default function SettingsApp({
                     form.hideStatusBar ? "right-1" : "left-1"
                   )} />
                 </button>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-2xl border shadow-sm p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 bg-purple-100 rounded-xl text-purple-600"><Smartphone size={20} /></div>
+                  <div className="flex flex-col">
+                    <span className="text-sm font-medium">添加到手机桌面 (PWA 安装)</span>
+                    <span className="text-[10px] text-slate-400">将小手机安装为主屏幕独立App</span>
+                  </div>
+                </div>
+                <button
+                  onClick={handleInstallPwa}
+                  className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white rounded-xl text-xs font-bold shadow-md hover:opacity-95 active:scale-95 transition-all flex items-center gap-1.5"
+                >
+                  <span>{deferredPrompt ? '立即安装' : '查看安装指南'}</span>
+                </button>
+              </div>
+
+              <div className="text-[11px] text-slate-500 bg-slate-50 p-3 rounded-xl space-y-2 border">
+                <p className="font-bold text-slate-700">📌 如何从谷歌浏览器/手机浏览器添加到桌面：</p>
+                <ul className="list-disc pl-4 space-y-1 text-slate-600">
+                  <li><strong>Google Chrome (安卓/电脑)</strong>：点击浏览器右上角菜单 <span className="font-bold">⋮</span>，选择 <span className="text-purple-600 font-bold">“添加到主屏幕”</span> 或 <span className="text-purple-600 font-bold">“安装应用”</span>。</li>
+                  <li><strong>Safari (苹果 iPhone/iPad)</strong>：点击浏览器底部中间的 <span className="text-purple-600 font-bold">“分享”</span> 按钮（带有向上箭头的框），滚动并选择 <span className="text-purple-600 font-bold">“添加到主屏幕”</span>。</li>
+                  <li><strong>优势</strong>：安装后将隐藏浏览器地址栏，支持全屏沉浸式体验、离线访问与独立桌面图标启动！</li>
+                </ul>
               </div>
             </div>
             
@@ -2211,6 +2297,107 @@ export default function SettingsApp({
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        )}
+        {activeSection === 'help' && (
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300 pb-10">
+            {/* 2026年7月11日更新 (最新) */}
+            <div className="bg-white rounded-2xl border shadow-sm p-5 space-y-4">
+              <div className="flex items-center justify-between border-b pb-3">
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 bg-sky-500 text-white rounded-md text-[10px] font-bold">最新</span>
+                  <h3 className="font-bold text-slate-800 text-base">2026年7月11日更新</h3>
+                </div>
+                <span className="text-xs text-slate-400">v1.2.0</span>
+              </div>
+              <ul className="space-y-2 text-sm text-slate-700 leading-relaxed">
+                <li className="flex items-start gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-sky-500 mt-2 shrink-0" />
+                  <span>优化了线下剧情输入卡顿问题</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-sky-500 mt-2 shrink-0" />
+                  <span>优化微博角色发表微博读取人设问题</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-sky-500 mt-2 shrink-0" />
+                  <span>优化微博聊天和线上聊天互通</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-sky-500 mt-2 shrink-0" />
+                  <span>优化私聊和朋友圈互通</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-sky-500 mt-2 shrink-0" />
+                  <span>优化微博私信交互：支持2-7条短句连发、无缝切入最新记录及“正在输入中”实时状态提示</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-sky-500 mt-2 shrink-0" />
+                  <span>优化微博聊天气泡：用户侧聊天气泡文字升级为清晰纯白色</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-sky-500 mt-2 shrink-0" />
+                  <span>升级聊天时间显示：消息列表智能区分今天（显示时间）与昨天/往期（显示日期与时间）</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-sky-500 mt-2 shrink-0" />
+                  <span>优化了app顶部白条问题</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-sky-500 mt-2 shrink-0" />
+                  <span>开始完善位置功能</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-sky-500 mt-2 shrink-0" />
+                  <span>优化了全局字体适配</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-sky-500 mt-2 shrink-0" />
+                  <span>继续优化了日程生成问题</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-sky-500 mt-2 shrink-0" />
+                  <span>优化pwa添加到桌面</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="w-1.5 h-1.5 rounded-full bg-sky-500 mt-2 shrink-0" />
+                  <span>设置中“帮助和反馈”更名为“更新日志”</span>
+                </li>
+              </ul>
+            </div>
+
+            {/* 2026年7月10日更新 (折叠展开) */}
+            <div className="bg-white rounded-2xl border shadow-sm overflow-hidden">
+              <button
+                onClick={() => setExpandedPastLog(!expandedPastLog)}
+                className="w-full px-5 py-4 flex items-center justify-between text-left hover:bg-slate-50 transition-colors"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-slate-800 text-sm">2026年7月10日更新 ^</span>
+                  <span className="text-xs text-slate-400">({expandedPastLog ? '点击收起' : '点击展开'})</span>
+                </div>
+                <span className={cn("text-slate-400 font-mono transition-transform duration-300", expandedPastLog && "rotate-180")}>^</span>
+              </button>
+
+              {expandedPastLog && (
+                <div className="px-5 pb-5 pt-1 border-t bg-slate-50/50 space-y-2 animate-in fade-in duration-200">
+                  <ul className="space-y-2 text-sm text-slate-700 leading-relaxed pt-2">
+                    <li className="flex items-start gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-slate-400 mt-2 shrink-0" />
+                      <span>1、查手机与主动查岗功能优化：支持按设置数量逐个扫描所有好友聊天记录，支持关键词触发或随机概率触发“角色查用户岗”审讯互动</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-slate-400 mt-2 shrink-0" />
+                      <span>2、动作描写智能开关：线上聊天默认自动禁止带括号的动作描写，除非用户手动在角色设置中关闭限制</span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-slate-400 mt-2 shrink-0" />
+                      <span>3、日程与小组件增强：优化日程提醒交互，新增桌面便签、实时时钟与快捷查岗组件，提升桌面美化体验</span>
+                    </li>
+                  </ul>
+                </div>
+              )}
             </div>
           </div>
         )}

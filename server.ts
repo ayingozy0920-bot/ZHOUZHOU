@@ -58,57 +58,59 @@ async function startServer() {
       const apiKey = (baseUrl ? (settings?.apiKey || settings?.userApiKey) : (settings?.userApiKey || settings?.apiKey)) || process.env.GEMINI_API_KEY;
       
       if (baseUrl) {
-        baseUrl = baseUrl.replace(/\/+$/, '');
-        // 只要提供了 baseUrl，就优先尝试 OpenAI 兼容路径
-        const isOpenAI = true;
-        
-        if (isOpenAI) {
-          let url = baseUrl;
-          if (!url.includes('/chat/completions')) {
-            if (url.endsWith('/v1')) {
-              url = `${url}/chat/completions`;
+        try {
+          baseUrl = baseUrl.replace(/\/+$/, '');
+          // 只要提供了 baseUrl，就优先尝试 OpenAI 兼容路径
+          const isOpenAI = true;
+          
+          if (isOpenAI) {
+            let url = baseUrl;
+            if (!url.includes('/chat/completions')) {
+              if (url.endsWith('/v1')) {
+                url = `${url}/chat/completions`;
+              } else {
+                url = `${url}/v1/chat/completions`;
+              }
+            }
+            const openaiMessages = [
+              { role: 'system', content: system_prompt },
+              ...messages.map((m: any) => ({
+                role: m.role === 'model' ? 'assistant' : m.role,
+                content: m.parts?.[0]?.text || m.content || ''
+              }))
+            ];
+
+            const response = await fetch(url, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+              },
+              body: JSON.stringify({
+                model: settings.modelName || settings.model || 'gpt-3.5-turbo',
+                messages: openaiMessages,
+                temperature: settings.temperature || 0.7,
+                max_tokens: settings.maxTokens || 1000
+              })
+            });
+
+            if (!response.ok) {
+              const errText = await response.text();
+              console.error(`[Proxy Error] Proxy failed with ${response.status}: ${errText}`);
+              return res.status(response.status).json({ error: errText || `Proxy error ${response.status}` });
             } else {
-              url = `${url}/v1/chat/completions`;
+              const data: any = await response.json();
+              return res.json({ text: data.choices?.[0]?.message?.content || '' });
             }
           }
-          const openaiMessages = [
-            { role: 'system', content: system_prompt },
-            ...messages.map((m: any) => ({
-              role: m.role === 'model' ? 'assistant' : m.role,
-              content: m.parts?.[0]?.text || m.content || ''
-            }))
-          ];
-
-          const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${apiKey}`
-            },
-            body: JSON.stringify({
-              model: settings.modelName || settings.model || 'gpt-3.5-turbo',
-              messages: openaiMessages,
-              temperature: settings.temperature || 0.7,
-              max_tokens: settings.maxTokens || 2000
-            })
-          });
-
-          if (!response.ok) {
-            const errText = await response.text();
-            return res.status(response.status).json({ error: errText });
-          }
-
-          const data: any = await response.json();
-          return res.json({ text: data.choices?.[0]?.message?.content || '' });
+        } catch (proxyErr: any) {
+          console.error(`[Proxy Exception]`, proxyErr);
+          return res.status(500).json({ error: proxyErr.message || 'Proxy request failed' });
         }
-
-        // Native Gemini with custom baseUrl
-        const v1Match = baseUrl.match(/^(.*?)\/v1(\/|$)/);
-        if (v1Match) baseUrl = v1Match[1];
       }
 
       // Initialize with @google/generative-ai
-      const genAI = new GoogleGenerativeAI(apiKey || '');
+      const genAI = new GoogleGenerativeAI(apiKey || process.env.GEMINI_API_KEY || '');
       
       const safetySettings = [
         { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
@@ -119,7 +121,7 @@ async function startServer() {
         { category: "HARM_CATEGORY_UNSPECIFIED", threshold: "BLOCK_NONE" }
       ];
 
-      const requestedModel = settings.modelName || settings.model || "gemini-1.5-flash";
+      const requestedModel = settings.modelName || settings.model || "gemini-2.0-flash";
       const fallbackModels = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"];
       const modelsToTry = Array.from(new Set([requestedModel, ...fallbackModels]));
 
@@ -134,7 +136,7 @@ async function startServer() {
             safetySettings: safetySettings as any,
             generationConfig: {
               temperature: settings.temperature || 0.8,
-              maxOutputTokens: settings.maxTokens || 8192,
+              maxOutputTokens: settings.maxTokens || 1024,
               topP: 0.95,
               topK: 40
             }
@@ -793,9 +795,22 @@ async function startServer() {
     const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 seconds timeout
 
     try {
-      const response = await fetch(imageUrl, { signal: controller.signal });
+      const response = await fetch(imageUrl, {
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
+          'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
+          'Cache-Control': 'no-cache',
+          'Pragma': 'no-cache'
+        }
+      });
       clearTimeout(timeoutId);
-      if (!response.ok) throw new Error(`Failed to fetch image: ${response.status}`);
+      
+      if (!response.ok) {
+        console.warn(`[Proxy Image] Failed to fetch image: status ${response.status}. Redirecting to original URL.`);
+        return res.redirect(imageUrl);
+      }
 
       const contentType = response.headers.get("content-type");
       if (contentType) res.setHeader("Content-Type", contentType);
@@ -807,8 +822,8 @@ async function startServer() {
       const arrayBuffer = await response.arrayBuffer();
       res.send(Buffer.from(arrayBuffer));
     } catch (error: any) {
-      console.error("Image proxy error:", error);
-      res.status(500).send("Error proxying image");
+      console.error("Image proxy error, redirecting to original URL:", error);
+      res.redirect(imageUrl);
     }
   });
 
@@ -978,4 +993,6 @@ async function startServer() {
   });
 }
 
-startServer();
+startServer().catch(err => {
+  console.error("Failed to start server:", err);
+});

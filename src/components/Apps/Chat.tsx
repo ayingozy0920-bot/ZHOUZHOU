@@ -62,8 +62,12 @@ import {
   Check,
   Smartphone,
   ShieldAlert,
+  Edit2,
   Edit3,
-  Cpu
+  Cpu,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw
 } from 'lucide-react';
 import { AppSettings, Friend, ChatMessage, OfflineMemory, ListenTogetherState, AppId, ChatTheme, OfflineConfig, GroupChat } from '../../types';
 import { CCDPhotoCard } from './CCDPhotoCard';
@@ -92,7 +96,7 @@ type Tab = 'chats' | 'contacts' | 'discover' | 'me';
 export const getHeaderPadding = (settings: AppSettings, basePaddingPx: number) => {
   if (!settings.fullScreenMode) return {};
   return {
-    paddingTop: `calc(${settings.hideStatusBar ? 'env(safe-area-inset-top)' : 'max(env(safe-area-inset-top), 44px)'} + ${basePaddingPx}px)`
+    paddingTop: `${basePaddingPx}px`
   };
 };
 
@@ -206,20 +210,20 @@ export default function ChatApp({ settings, onBack, onStartCall, externalCallSta
     
     try {
       const friendMsgs = chats[friendId] || [];
-      const recentMsgs = friendMsgs.slice(-30);
-      const context = recentMsgs.map(m => `${m.role === 'user' ? '我' : (friend?.name ?? '角色')}: ${m.content}`).join('\n') || '无近期聊天记录';
+      const recentMsgs = friendMsgs.slice(-20);
+      const context = recentMsgs.map(m => `${m.role === 'user' ? '用户(我)' : (friend?.name ?? '角色')}: ${m.content}`).join('\n') || '无近期聊天记录';
       
-      const systemPrompt = `你现在是${friend?.name ?? '角色'}。请根据我们最近的聊天内容、你的人设以及你当前的生活状态，发一条朋友圈。
+      const systemPrompt = `你现在是${friend?.name ?? '角色'}。请根据我们与用户最近的聊天内容、你的人设以及你当前的生活状态，发一条朋友圈。
 要求：
-1. 必须符合你的人设（${friend?.persona ?? ''}）。
-2. 朋友圈内容要自然、生活化，像真人一样分享心情、吐槽生活或记录美好瞬间。
-3. 如果你们最近聊过天，请在朋友圈中含蓄地提及或受到其影响。
-4. 你需要配一张精美的照片描述。
+1. 必须完全符合你的人设（${friend?.persona ?? ''}）及日常生活轨迹。
+2. **公开场所深思熟虑原则**：朋友圈是公开社交场所，你发表内容前需要经过深思熟虑和内心评估（确保符合你的性格、形象、不会造成不合适的舆论、尴尬或影响公众形象），确定妥当后再正式输出。
+3. 内容要自然、生活化，像真实年轻人一样分享日常生活、吐槽抱怨、分享快乐、记录美好瞬间，或含蓄地受最近与用户私聊内容的影响。
+4. 你需要配一张极具画面感的照片描述。
 5. 格式要求：
 【文字内容】你的朋友圈文字
 【图片描述】你配的照片内容（用文字详细描写一张画面感极强的照片）
 
-最近的聊天背景：
+最近与用户的私聊上下文（最近20条）：
 ${context}`;
       
       const response = await callAI(systemPrompt, [{ role: 'user', content: '请根据当前心情和生活发一条朋友圈' } as ChatMessage], settings);
@@ -291,9 +295,9 @@ ${context}`;
     try {
       const friendMsgs = chats[friendId] || [];
       const recentMsgs = friendMsgs.slice(-20);
-      const context = recentMsgs.map(m => `${m.role === 'user' ? '我' : (friend?.name ?? '角色')}: ${m.content}`).join('\n');
+      const context = recentMsgs.map(m => `${m.role === 'user' ? '用户(我)' : (friend?.name ?? '角色')}: ${m.content}`).join('\n') || '无近期聊天记录';
       
-      const systemPrompt = `你现在是${friend?.name ?? '角色'}。请根据我们最近的聊天内容、你的人设以及你当前可能的生活状态，发一条朋友圈。\n要求：\n1. 必须符合你的人设（${friend?.persona ?? ''}）。\n2. 朋友圈内容要自然、生活化，像真人一样发牢骚、分享心情或生活点滴。\n3. 你发出的照片必须是“文字摄影卡片”形式，你需要写出极具画面感的照片描述。\n4. 回复时必须使用当前设定的语言：${friend.language || '普通话'}。\n5. 格式要求：\n【文字内容】你的朋友圈文字\n【图片描述】你配的文字摄影卡片内容（必填，描写一张精美的照片）\n\n最近的聊天内容：\n${context}`;
+      const systemPrompt = `你现在是${friend?.name ?? '角色'}。请根据我们与用户最近的聊天内容、你的人设以及你当前可能的生活状态，发一条朋友圈。\n要求：\n1. 必须完全符合你的人设（${friend?.persona ?? ''}）及日常生活轨迹。\n2. **公开场所深思熟虑原则**：朋友圈是公开社交场所，你发表内容前需要经过深思熟虑和内心评估（确保符合你的性格、形象、不会造成不合适的舆论、尴尬或影响公众形象），确定妥当后再正式输出。\n3. 内容要自然、生活化，像真实年轻人一样发牢骚、分享快乐或分享日常生活点滴。\n4. 你发出的照片必须是“文字摄影卡片”形式，你需要写出极具画面感的照片描述。\n5. 回复时必须使用当前设定的语言：${friend.language || '普通话'}。\n6. 格式要求：\n【文字内容】你的朋友圈文字\n【图片描述】你配的文字摄影卡片内容（必填，描写一张精美的照片）\n\n最近与用户的私聊上下文（最近20条）：\n${context}`;
       
       const response = await callAI(systemPrompt, [{ role: 'user', content: '请发一条朋友圈' } as ChatMessage], settings);
       
@@ -451,7 +455,7 @@ ${context}`;
                 isDark ? "bg-black/40 backdrop-blur-md border-white/10 text-white" : 
                 (isRabbit ? "bg-pink-50/60 backdrop-blur-md border-pink-100 text-pink-600" : (settings.appBackgroundUrl ? "bg-white/10 backdrop-blur-md border-slate-200/20" : "bg-slate-100 border-slate-200"))
               )} style={{
-                ...(settings.fullScreenMode ? { paddingTop: settings.hideStatusBar ? 'env(safe-area-inset-top)' : 'max(env(safe-area-inset-top), 44px)' } : {}),
+                ...(settings.fullScreenMode ? { paddingTop: '0px' } : {}),
                 ...(settings.appBackgroundUrl ? { backgroundColor: `rgba(255, 255, 255, ${Math.max(0, (settings.chatWallpaperOpacity ?? 0.8) * 0.2)})` } : {})
               }}>
                 <div className="flex items-center gap-1.5">
@@ -541,7 +545,7 @@ ${context}`;
                       )}
                       style={settings.appBackgroundUrl ? { backgroundColor: `rgba(255, 255, 255, ${Math.max(0, (settings.chatWallpaperOpacity ?? 0.8) * 0.1)})` } : {}}
                     >
-                      <img src={group.avatar} alt={group.name} loading="lazy" className="w-10 h-10 rounded-lg bg-slate-200 object-cover" />
+                      <img referrerPolicy="no-referrer"  src={group.avatar} alt={group.name} loading="lazy" className="w-10 h-10 rounded-lg bg-slate-200 object-cover" />
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-center mb-0.5">
                           <span className="font-bold text-sm truncate">{group.name} ({group.memberIds.length + 1})</span>
@@ -569,7 +573,7 @@ ${context}`;
                       )}
                       style={settings.appBackgroundUrl ? { backgroundColor: `rgba(255, 255, 255, ${Math.max(0, (settings.chatWallpaperOpacity ?? 0.8) * 0.1)})` } : {}}
                     >
-                      <img src={friend?.avatar} alt={friend?.name} loading="lazy" className="w-10 h-10 rounded-lg bg-slate-200 object-cover" />
+                      <img referrerPolicy="no-referrer"  src={friend?.avatar} alt={friend?.name} loading="lazy" className="w-10 h-10 rounded-lg bg-slate-200 object-cover" />
                       <div className="flex-1 min-w-0">
                         <div className="flex justify-between items-center mb-0.5">
                           <span className="font-bold text-sm truncate">{friend?.alias || friend?.name || '好友'}</span>
@@ -618,7 +622,7 @@ ${context}`;
                         onClick={() => setViewingFriendProfileId(friend.id)}
                       >
                         <div className="flex items-center gap-2.5">
-                          <img src={friend?.avatar} alt={friend?.name} loading="lazy" className={cn("w-8 h-8 rounded-lg bg-slate-200 object-cover", friend?.isBlocked && "grayscale opacity-50")} />
+                          <img referrerPolicy="no-referrer"  src={friend?.avatar} alt={friend?.name} loading="lazy" className={cn("w-8 h-8 rounded-lg bg-slate-200 object-cover", friend?.isBlocked && "grayscale opacity-50")} />
                           <span className={cn("font-medium text-sm", friend.isBlocked && "text-slate-400")}>
                             {friend?.alias || friend?.name || '好友'}
                             {friend.isBlocked && <span className="ml-2 text-[10px] bg-slate-200 px-1 rounded text-slate-500">已拉黑</span>}
@@ -815,7 +819,7 @@ const HeartVoiceCard = ({ content, avatar }: { content: string; avatar: string }
     <div className="my-2 bg-[#FFF0F3] border-2 border-[#FF4D6D]/20 rounded-2xl p-3.5 shadow-sm relative overflow-hidden group animate-in fade-in slide-in-from-bottom-2 w-full min-w-[270px]">
       <div className="flex items-center justify-between mb-2 pb-2 border-b border-[#FF4D6D]/10">
         <div className="flex items-center gap-2">
-          <img src={avatar} className="w-7 h-7 rounded-lg border border-white shadow-sm object-cover" />
+          <img referrerPolicy="no-referrer"  src={avatar} className="w-7 h-7 rounded-lg border border-white shadow-sm object-cover"  />
           <div className="text-[10px] font-black text-[#FF4D6D] uppercase tracking-widest flex items-center gap-1.5">
             <span>角色心声</span>
             <div className="w-1.5 h-1.5 rounded-full bg-[#FF4D6D] animate-pulse" />
@@ -1747,7 +1751,7 @@ function ChatSettings({
       <div className={cn(
         "border-b px-3 py-2 flex items-center gap-2 sticky top-0 z-10 transition-all duration-300",
         settings.themeId === 'rainy-cat' ? "bg-white/5 border-white/10" : "bg-[#f5f5f5] border-slate-200"
-      )} style={settings.fullScreenMode ? { paddingTop: settings.hideStatusBar ? 'env(safe-area-inset-top)' : 'max(env(safe-area-inset-top), 44px)' } : {}}>
+      )} style={settings.fullScreenMode ? { paddingTop: '0px' } : {}}>
         <button onClick={onBack} className={cn(
           "p-1 rounded-full transition-all duration-300",
           settings.themeId === 'rainy-cat' ? "hover:bg-white/10" : "hover:bg-slate-200"
@@ -1767,7 +1771,7 @@ function ChatSettings({
           settings.themeId === 'rainy-cat' ? "bg-white/5 backdrop-blur-xl" : "bg-white"
         )}>
           <div className="flex flex-col items-center gap-1">
-            <img src={friend.avatar} className={cn(
+            <img referrerPolicy="no-referrer"  src={friend.avatar} className={cn(
               "w-14 h-14 rounded-lg object-cover transition-all duration-300",
               settings.themeId === 'rainy-cat' ? "bg-white/10" : "bg-slate-200"
             )} />
@@ -2015,7 +2019,7 @@ function ChatSettings({
               {friend.chatBackground && <div className={cn(
                 "w-8 h-8 rounded overflow-hidden border transition-all duration-300",
                 settings.themeId === 'rainy-cat' ? "bg-white/10 border-white/10" : "bg-slate-100 border-slate-200"
-              )}><img src={friend.chatBackground} className="w-full h-full object-cover" /></div>}
+              )}><img referrerPolicy="no-referrer"  src={friend.chatBackground} className="w-full h-full object-cover"  /></div>}
               <ChevronLeft size={16} className={cn(
                 "rotate-180 transition-all duration-300",
                 settings.themeId === 'rainy-cat' ? "text-white/20" : "text-slate-300"
@@ -2770,6 +2774,7 @@ ${actionRule}
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [editingOfflineIndex, setEditingOfflineIndex] = useState<number | null>(null);
   const { addOnlineMemory, addOfflinePlot, getFriendMemory } = useMemory();
   const [activeModal, setActiveModal] = useState<'transfer' | 'receive-transfer' | 'call' | 'location' | 'music' | 'game' | 'truth-or-dare' | 'voice-input' | 'camera' | 'text-photo' | 'sparkle' | 'exit-offline' | 'manual-summary' | 'blind-box' | 'custom-blind-box' | 'edit-message' | 'image-preview' | 'character-image-gen' | 'huabei' | null>(null);
   const [huabeiAmount, setHuabeiAmount] = useState('456.80');
@@ -2853,6 +2858,450 @@ ${actionRule}
   const [playingUrl, setPlayingUrl] = useState<string | null>(null);
   const [voiceInputText, setVoiceInputText] = useState('');
   const [textPhotoContent, setTextPhotoContent] = useState('');
+
+  // INTERACTIVE MAP / CUSTOM LOCATION SHARING STATES
+  const [mapViewMode, setMapViewMode] = useState<'user' | 'character'>('user');
+  const [userHome, setUserHome] = useState<{ x: number; y: number }>(() => {
+    const saved = localStorage.getItem(`user_home_${friend.id}`);
+    return saved ? JSON.parse(saved) : { x: 180, y: 280 };
+  });
+  const [characterHome, setCharacterHome] = useState<{ x: number; y: number }>(() => {
+    const saved = localStorage.getItem(`char_home_${friend.id}`);
+    return saved ? JSON.parse(saved) : { x: 260, y: 220 };
+  });
+  const [locationPoints, setLocationPoints] = useState<Array<{
+    id: string;
+    x: number;
+    y: number;
+    name: string;
+    fullAddr: string;
+    desc: string;
+    type: 'home' | 'play' | 'road' | 'normal';
+    owner: 'user' | 'character';
+  }>>(() => {
+    const saved = localStorage.getItem(`map_points_${friend.id}`);
+    if (saved) return JSON.parse(saved);
+    
+    // Seed default custom lifestyle/persona locations based on character tags/description
+    const isSweet = friend.persona?.includes('甜') || friend.persona?.includes('温柔') || friend.persona?.includes('青梅竹马') || friend.name?.includes('林') || friend.name?.includes('糖');
+    const isArt = friend.persona?.includes('画') || friend.persona?.includes('艺术') || friend.persona?.includes('冷漠') || friend.persona?.includes('设计') || friend.persona?.includes('高冷') || friend.persona?.includes('傲娇');
+    const isMusic = friend.persona?.includes('歌') || friend.persona?.includes('音') || friend.persona?.includes('乐') || friend.persona?.includes('吉他');
+
+    const defaultPoints: any[] = [];
+    
+    // User initial points
+    defaultPoints.push({
+      id: 'u-home',
+      x: 180,
+      y: 280,
+      name: '我的温馨小屋',
+      fullAddr: '春风路12号幸福里小区3栋502',
+      desc: '我的温馨舒适狗窝，平时喜欢宅在这里打游戏看剧。',
+      type: 'home',
+      owner: 'user'
+    });
+    defaultPoints.push({
+      id: 'u-cafe',
+      x: 120,
+      y: 200,
+      name: '猫咪转角咖啡馆',
+      fullAddr: '梧桐街28号(近中心广场)',
+      desc: '特别安静的一家猫咖，拿铁很赞，适合午后发呆。',
+      type: 'play',
+      owner: 'user'
+    });
+
+    // Character initial points (Seeded based on lifestyle/persona)
+    if (isArt) {
+      defaultPoints.push({
+        id: 'c-home',
+        x: 260,
+        y: 220,
+        name: `${friend.name}的阁楼画室`,
+        fullAddr: '艺术园区创意路7号老洋房3楼',
+        desc: '洒满阳光的私人画室，摆满了还没干透的油画画布，充斥着松节油的香气。',
+        type: 'home',
+        owner: 'character'
+      });
+      defaultPoints.push({
+        id: 'c-spot1',
+        x: 320,
+        y: 150,
+        name: '西岸现代美术馆',
+        fullAddr: '滨江大道3001号',
+        desc: '经常来这里寻找灵感或者看最新的装置艺术展，落地窗看江景很美。',
+        type: 'play',
+        owner: 'character'
+      });
+      defaultPoints.push({
+        id: 'c-spot2',
+        x: 220,
+        y: 350,
+        name: '古旧二手书店',
+        fullAddr: '学府路240号(后街小巷内)',
+        desc: '一家藏得很深的书店，有绝版画册和黑胶唱片，老板很任性。',
+        type: 'normal',
+        owner: 'character'
+      });
+    } else if (isMusic) {
+      defaultPoints.push({
+        id: 'c-home',
+        x: 260,
+        y: 220,
+        name: `${friend.name}的INS录音棚`,
+        fullAddr: '数字音乐港B座405室',
+        desc: '专属的创作空间，铺着吸音地毯，吉他和合成器随处可见。',
+        type: 'home',
+        owner: 'character'
+      });
+      defaultPoints.push({
+        id: 'c-spot1',
+        x: 320,
+        y: 150,
+        name: 'BlueNote爵士酒吧',
+        fullAddr: '和平路18号地下一层',
+        desc: '驻唱和听现场首选，这里的威士忌和深夜萨克斯超级有氛围。',
+        type: 'play',
+        owner: 'character'
+      });
+      defaultPoints.push({
+        id: 'c-spot2',
+        x: 220,
+        y: 350,
+        name: '落日听海沙滩',
+        fullAddr: '黄金海岸路东段观海露台',
+        desc: '写不出歌的时候最喜欢来这里，吹吹海风，抱着木吉他弹一整晚。',
+        type: 'road',
+        owner: 'character'
+      });
+    } else if (isSweet) {
+      defaultPoints.push({
+        id: 'c-home',
+        x: 260,
+        y: 220,
+        name: `${friend.name}的温馨小窝`,
+        fullAddr: '向阳大道99号阳光花园小高层',
+        desc: '布置得十分温暖的女孩子闺房，阳台上种满了多肉和薄荷。',
+        type: 'home',
+        owner: 'character'
+      });
+      defaultPoints.push({
+        id: 'c-spot1',
+        x: 320,
+        y: 150,
+        name: '后街章鱼小丸子摊',
+        fullAddr: '学校后街第二家摊位',
+        desc: '我们从小吃到大的一家摊子，老板酱料给得特别足，有很多回忆。',
+        type: 'play',
+        owner: 'character'
+      });
+      defaultPoints.push({
+        id: 'c-spot2',
+        x: 110,
+        y: 330,
+        name: '林间秘密双人秋千',
+        fullAddr: '青年公园最深处的银杏林下',
+        desc: '一个很少有人知道的安静角落，特别适合秋天叶子黄了的时候坐着聊天。',
+        type: 'play',
+        owner: 'character'
+      });
+    } else {
+      defaultPoints.push({
+        id: 'c-home',
+        x: 260,
+        y: 220,
+        name: `${friend.name}的温馨住处`,
+        fullAddr: '枫叶大道58号绿城公寓',
+        desc: '简约而整洁的日常居所，书桌上永远亮着一盏温馨的暖光台灯。',
+        type: 'home',
+        owner: 'character'
+      });
+      defaultPoints.push({
+        id: 'c-spot1',
+        x: 300,
+        y: 160,
+        name: '深夜24h便利店',
+        fullAddr: '街角转弯处罗森店',
+        desc: '凌晨失眠时的避难所，关东煮和温热的厚乳拿铁总能治愈疲惫。',
+        type: 'road',
+        owner: 'character'
+      });
+      defaultPoints.push({
+        id: 'c-spot2',
+        x: 210,
+        y: 340,
+        name: '滨江路散步落日台',
+        fullAddr: '沿江观景道木栈道中段',
+        desc: '最喜欢的散步路线，天气好的下午，可以看金黄的晚霞洒在江面上。',
+        type: 'play',
+        owner: 'character'
+      });
+    }
+
+    return defaultPoints;
+  });
+
+  const saveMapPoints = (newPoints: any[]) => {
+    setLocationPoints(newPoints);
+    localStorage.setItem(`map_points_${friend.id}`, JSON.stringify(newPoints));
+  };
+
+  const [selectedMapPoint, setSelectedMapPoint] = useState<any | null>(null);
+  const [mapSelectTag, setMapSelectTag] = useState<'home' | 'play' | 'road' | 'normal'>('normal');
+  const [mapZoom, setMapZoom] = useState(1);
+  const [mapPan, setMapPan] = useState({ x: 0, y: 0 });
+  const [isDraggingMap, setIsDraggingMap] = useState(false);
+  const [lastMousePos, setLastMousePos] = useState({ x: 0, y: 0 });
+  const dragStartCoordRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isGeneratingLandmarks, setIsGeneratingLandmarks] = useState(false);
+
+  const handleGenerateCharacterLandmarks = async () => {
+    setIsGeneratingLandmarks(true);
+    try {
+      const prompt = `请扮演角色：${friend.name}。
+角色档案与人设：${friend.persona || '性格正常，生活规律'}
+生活城市背景：日常生活常驻区域、常去的咖啡馆、书店、公园、工作地点、娱乐场所等。
+
+请根据角色的性格、人设与生活习惯，生成至少10个该角色的常驻生活地标（Living Landmarks）。
+要求：
+1. 必须生成至少 10 个不同的地点。
+2. 每个地点包含：
+   - name: 地点名称（简短好听，符合人设）
+   - fullAddr: 详细街道/地址描述
+   - desc: 备注介绍（为什么喜欢去这里、常做的事或人设关联）
+   - type: 分类标记（只能是 'home'（住所）, 'play'（娱乐/休闲）, 'road'（途经/交通）, 'normal'（普通地点） 之一）
+   - x: 坐标X（数值在 50 到 350 之间）
+   - y: 坐标Y（数值在 50 到 500 之间）
+3. 必须输出且仅输出纯 JSON 数组格式，不要包含任何 markdown 标记以外的文字。`;
+
+      const data = await apiFetch({
+        endpoint: '/api/chat',
+        body: {
+          system_prompt: "你是一个专业的地图地标规划助手。请严格输出JSON数组格式，不要有多余文字。",
+          messages: [{ role: 'user', content: prompt }],
+          settings
+        }
+      });
+
+      let text = data.reply || data.content || data.message || JSON.stringify(data);
+      text = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
+      const parsed = JSON.parse(text);
+
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const newLandmarks = parsed.map((item: any, idx: number) => ({
+          id: `char-ai-${Date.now()}-${idx}`,
+          x: Number(item.x) || (60 + (idx * 30) % 300),
+          y: Number(item.y) || (60 + (idx * 40) % 450),
+          name: String(item.name || `地标 ${idx + 1}`),
+          fullAddr: String(item.fullAddr || '城市专属街区'),
+          desc: String(item.desc || '角色的常驻生活轨迹点'),
+          type: ['home', 'play', 'road', 'normal'].includes(item.type) ? item.type : 'play',
+          owner: 'character'
+        }));
+
+        const userPoints = locationPoints.filter(p => p.owner === 'user');
+        const cHome = locationPoints.find(p => p.id === 'c-home') || {
+          id: 'c-home',
+          x: characterHome.x,
+          y: characterHome.y,
+          name: `${friend.name}的温馨住所`,
+          fullAddr: '私人住宅区',
+          desc: '角色的常驻大本营',
+          type: 'home' as const,
+          owner: 'character'
+        };
+
+        const updated = [cHome, ...userPoints, ...newLandmarks];
+        saveMapPoints(updated);
+        showToast(`✨ 成功生成 ${newLandmarks.length} 个${friend.name}的专属生活地标！`);
+      }
+    } catch (err: any) {
+      console.error("Generate landmarks error:", err);
+      const fallbackLandmarks = [
+        { id: 'l-1', x: 120, y: 150, name: '转角温暖咖啡馆', fullAddr: '梧桐路 88 号', desc: '经常在这里度过宁静的下午，手捧一杯热拿铁看书。', type: 'play', owner: 'character' },
+        { id: 'l-2', x: 280, y: 220, name: '静谧城市藏书阁', fullAddr: '文化街 12 号', desc: '寻找灵感与放松心情的秘密基地。', type: 'normal', owner: 'character' },
+        { id: 'l-3', x: 90, y: 350, name: '夕阳江滨栈道', fullAddr: '滨江路中段', desc: '散步与吹晚风的最佳去处，晚霞非常漂亮。', type: 'play', owner: 'character' },
+        { id: 'l-4', x: 310, y: 110, name: '24小时深夜便利店', fullAddr: '商业街交叉口', desc: '深夜加班或散心时买关东煮的地方。', type: 'road', owner: 'character' },
+        { id: 'l-5', x: 200, y: 280, name: '美术展览馆', fullAddr: '艺术中心东区', desc: '偶尔来看画展寻找视觉美学灵感。', type: 'play', owner: 'character' },
+        { id: 'l-6', x: 150, y: 420, name: '樱花林步行公园', fullAddr: '城南公园内', desc: '春天赏樱、平时晨跑散步的好去处。', type: 'play', owner: 'character' },
+        { id: 'l-7', x: 340, y: 380, name: '私人黑胶唱片行', fullAddr: '老街小巷 5 号', desc: '淘绝版老唱片和感受复古氛围的宝藏店铺。', type: 'normal', owner: 'character' },
+        { id: 'l-8', x: 70, y: 220, name: '天台观星花园', fullAddr: '创意园区顶楼', desc: '视野开阔，适合夜晚看星星和城市夜景。', type: 'play', owner: 'character' },
+        { id: 'l-9', x: 230, y: 460, name: '手作陶艺工坊', fullAddr: '匠心文创园 3 号', desc: '体验捏陶、静心慢活的手作空间。', type: 'normal', owner: 'character' },
+        { id: 'l-10', x: 180, y: 80, name: '清晨早市花摊', fullAddr: '幸福路菜市场旁', desc: '喜欢在这里挑选新鲜的花束装饰房间。', type: 'road', owner: 'character' }
+      ];
+
+      const userPoints = locationPoints.filter(p => p.owner === 'user');
+      const cHome = locationPoints.find(p => p.id === 'c-home') || {
+        id: 'c-home',
+        x: characterHome.x,
+        y: characterHome.y,
+        name: `${friend.name}的温馨住所`,
+        fullAddr: '私人住宅区',
+        desc: '角色的常驻大本营',
+        type: 'home' as const,
+        owner: 'character'
+      };
+      saveMapPoints([cHome, ...userPoints, ...fallbackLandmarks]);
+      showToast(`✨ 已为您智能生成 10 个${friend.name}的常驻生活地标！`);
+    } finally {
+      setIsGeneratingLandmarks(false);
+    }
+  };
+
+  // Map Event Handlers
+  const handleCanvasMouseDown = (e: React.MouseEvent) => {
+    setIsDraggingMap(true);
+    setLastMousePos({ x: e.clientX, y: e.clientY });
+    dragStartCoordRef.current = { x: e.clientX, y: e.clientY };
+  };
+
+  const handleCanvasMouseMove = (e: React.MouseEvent) => {
+    if (!isDraggingMap) return;
+    const dx = e.clientX - lastMousePos.x;
+    const dy = e.clientY - lastMousePos.y;
+    setMapPan(prev => ({ x: prev.x + dx, y: prev.y + dy }));
+    setLastMousePos({ x: e.clientX, y: e.clientY });
+  };
+
+  const handleCanvasMouseUp = () => {
+    setIsDraggingMap(false);
+  };
+
+  const handleCanvasTouchStart = (e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      setIsDraggingMap(true);
+      setLastMousePos({ x: e.touches[0].clientX, y: e.touches[0].clientY });
+    }
+  };
+
+  const handleCanvasTouchMove = (e: React.TouchEvent) => {
+    if (!isDraggingMap || e.touches.length !== 1) return;
+    const dx = e.touches[0].clientX - lastMousePos.x;
+    const dy = e.touches[0].clientY - lastMousePos.y;
+    setMapPan(prev => ({ x: prev.x + dx, y: prev.y + dy }));
+    setLastMousePos({ x: e.touches[0].clientX, y: e.touches[0].clientY });
+  };
+
+  const handleCanvasClick = (e: React.MouseEvent) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const distMoved = Math.sqrt(Math.pow(e.clientX - dragStartCoordRef.current.x, 2) + Math.pow(e.clientY - dragStartCoordRef.current.y, 2));
+    if (distMoved > 6) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const clickX = (e.clientX - rect.left) * scaleX;
+    const clickY = (e.clientY - rect.top) * scaleY;
+
+    const x = (clickX - mapPan.x) / mapZoom;
+    const y = (clickY - mapPan.y) / mapZoom;
+
+    // Check if clicked on an existing point
+    const clickedPoint = locationPoints.find(p => {
+      if (mapViewMode === 'user' && p.owner !== 'user' && p.type !== 'home') return false;
+      if (mapViewMode === 'character' && p.owner !== 'character' && p.type !== 'home') return false;
+
+      const px = p.x * mapZoom + mapPan.x;
+      const py = p.y * mapZoom + mapPan.y;
+      const dist = Math.sqrt(Math.pow(clickX - px, 2) + Math.pow(clickY - py, 2));
+      return dist < 35;
+    });
+
+    if (clickedPoint) {
+      setSelectedMapPoint(clickedPoint);
+      setMapSelectTag(clickedPoint.type);
+      return;
+    }
+
+    // Add new point
+    const newPt = {
+      id: `custom-${Date.now()}`,
+      x,
+      y,
+      name: mapViewMode === 'user' ? '我的新地点' : `${friend.name}的新地标`,
+      fullAddr: '',
+      desc: '',
+      type: 'normal' as const,
+      owner: mapViewMode
+    };
+    const updated = [...locationPoints, newPt];
+    saveMapPoints(updated);
+    setSelectedMapPoint(newPt);
+    setMapSelectTag('normal');
+  };
+
+  // Map Drawing Logic
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || activeModal !== 'location') return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const render = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      
+      // Background grid
+      ctx.save();
+      ctx.translate(mapPan.x, mapPan.y);
+      ctx.scale(mapZoom, mapZoom);
+
+      const gridSize = 50;
+      ctx.beginPath();
+      ctx.strokeStyle = settings.themeId === 'rainy-cat' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
+      ctx.lineWidth = 1 / mapZoom;
+      for (let x = -2000; x < 2000; x += gridSize) {
+        ctx.moveTo(x, -2000); ctx.lineTo(x, 2000);
+      }
+      for (let y = -2000; y < 2000; y += gridSize) {
+        ctx.moveTo(-2000, y); ctx.lineTo(2000, y);
+      }
+      ctx.stroke();
+
+      // Connections between points
+      ctx.beginPath();
+      ctx.setLineDash([5, 5]);
+      ctx.strokeStyle = settings.themeId === 'rainy-cat' ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)';
+      ctx.lineWidth = 2 / mapZoom;
+      ctx.moveTo(userHome.x, userHome.y);
+      ctx.lineTo(characterHome.x, characterHome.y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Draw Points
+      locationPoints.forEach(p => {
+        if (mapViewMode === 'user' && p.owner !== 'user' && p.type !== 'home') return;
+        if (mapViewMode === 'character' && p.owner !== 'character' && p.type !== 'home') return;
+
+        const isSelected = selectedMapPoint?.id === p.id;
+        
+        ctx.beginPath();
+        const radius = (isSelected ? 10 : 8) / mapZoom;
+        ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+        
+        let color = '#64748b';
+        if (p.type === 'home') color = p.owner === 'user' ? '#10b981' : '#ec4899';
+        else if (p.type === 'play') color = '#a855f7';
+        else if (p.type === 'road') color = '#3b82f6';
+        
+        ctx.fillStyle = color;
+        ctx.fill();
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 2 / mapZoom;
+        ctx.stroke();
+
+        // Label
+        ctx.fillStyle = settings.themeId === 'rainy-cat' ? '#fff' : '#000';
+        ctx.font = `${12 / mapZoom}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.fillText(p.name, p.x, p.y + (22 / mapZoom));
+      });
+
+      ctx.restore();
+    };
+
+    render();
+  }, [locationPoints, mapZoom, mapPan, selectedMapPoint, mapViewMode, activeModal, userHome, characterHome, settings.themeId]);
   const [selectedDescription, setSelectedDescription] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ messageIndex: number; rect?: DOMRect } | null>(null);
   const [isTranslating, setIsTranslating] = useState<number | null>(null);
@@ -3296,6 +3745,12 @@ ${actionRule}
         get(`phone_passcode_${friend.id}`) || Promise.resolve('1234')
       ]);
 
+      const friendWeiboChats = (weiboChats as any)[friend.id] || [];
+      const recentWeiboChats = friendWeiboChats.slice(-20);
+      const weiboChatContext = recentWeiboChats.length > 0
+        ? `【微博私信记录（最近20条）】\n${recentWeiboChats.map((m: any) => `${m.role === 'user' ? '用户' : friend.name}: ${m.content}`).join('\n')}\n\n`
+        : '';
+
       const beijingTimeStr = new Date().toLocaleString('zh-CN', { 
         timeZone: 'Asia/Shanghai', 
         year: 'numeric', 
@@ -3559,6 +4014,8 @@ ${(() => {
         2. 说话风格：
            - 严禁使用任何AI助手的口吻。禁止说“作为AI”、“我是一个AI”、“很高兴为你解答”、“请问还有什么可以帮你的吗”等。
            - 说话要口语化、生活化，像真正的朋友在微信上聊天。
+           - **【‼️ 严格禁令】禁止动作描写**：你必须表现得像一个正在打字的真人，严禁使用任何括号、星号或中括号包裹的动作描写、神态描述（如：禁止出现 “(脸红)”、“*微笑*”、“[点头]” 等）。
+           - **分段回复要求**：像真实打字聊天一样，一次发送多条短句。需要发送多条消息时，请用换行符（\n）分隔每一条消息。每一行都会作为一条独立的微信消息。必须避免每次只发一段长篇大论，务必用短平快、高频互动的碎碎念。
            ${isOfflineMode ? `
            - **线下剧情核心约束**：
              1. **字数控制**：每一段回复总字数必须在 ${offlineConfig.minWords} 到 ${offlineConfig.maxWords} 字左右。
@@ -3604,6 +4061,19 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
         systemPrompt += `\n\n【系统设定：时间与位置感知】\n当前实时时间是：${timeString}。`;
         if (friend.address) {
           systemPrompt += `\n你当前所处的地理位置是：${friend.address}。`;
+        }
+        
+        // Add custom lifestyle/persona locations to systemPrompt so they are integrated with the AI's persona
+        const charPoints = locationPoints.filter(p => p.owner === 'character');
+        if (charPoints.length > 0) {
+          systemPrompt += `\n你日常生活的常驻与活跃位置如下，你完全了解这些地点，并可以主动提起、分享或约对方在此见面：\n`;
+          charPoints.forEach(p => {
+            const dx = p.x - characterHome.x;
+            const dy = p.y - characterHome.y;
+            const dist = (Math.sqrt(dx*dx + dy*dy) * 0.05).toFixed(2);
+            systemPrompt += `- [${p.type === 'home' ? '家园住所' : p.type === 'play' ? '娱乐休闲' : p.type === 'road' ? '路途途经点' : '普通地标'}] ${p.name} (地址: ${p.fullAddr || '未知'}, 距你常驻点: ${dist} km)。备注说明: ${p.desc || '无'}\n`;
+          });
+          systemPrompt += `如果用户问起你的位置、邀请你出去、或者你想分享日常，请极其自然地提及以上你的生活圈位置。你也可以在需要时使用 [SEND_LOCATION:位置名称] 指令来主动发送你的具体位置卡片给用户（例如：[SEND_LOCATION:${charPoints[0]?.name || '我家'}]）。\n`;
         }
         
         // Add schedule awareness
@@ -3684,6 +4154,33 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
             systemPrompt += `\n\n【共享群聊记忆与时间线感知 (SHARED GROUP MEMORY)】\n你与用户共同所在的群聊最近聊天记录（共${slicedGroupMsgs.length}条，具备精准时间线感知）：\n${formattedGroupMemory}\n\n用户自定义补充指令/预期反应：${customPrompt || '无'}\n\n【核心行为准则】：\n1. 时间线感知：请严格注意上面每条群聊记录发生的时间（例如是“刚刚实时聊的”、“10分钟前”、“几小时前”还是“几天前”）。\n2. 真实情绪互动：如果你发现用户在群聊里跟别人聊天或者活跃却冷落了你，过了一段时间才来找你私聊，你要能够敏锐察觉并根据你的人设自然地在私聊中提起、吃醋、吐槽或质问（例如：“哼，刚才在群里聊得那么开心，怎么现在才来找我……”）。`;
           }
         }
+      }
+
+      // 6. Weibo Context
+      systemPrompt += weiboChatContext;
+
+      // 7. Moments Context (Latest 5 moments across all friends/user, distinguishing who posted them)
+      const allMoms = [
+        ...((user?.moments || []).map((m: any) => ({ ...m, authorName: user?.name || '我', authorAvatar: user?.avatar || '' }))),
+        ...(friends || []).flatMap((f: any) => (f?.moments || []).map((m: any) => ({ ...m, authorName: f?.name || '好友', authorAvatar: f?.avatar || '' })))
+      ].sort((a: any, b: any) => (b?.timestamp || 0) - (a?.timestamp || 0));
+      const latestMoments = allMoms.slice(0, 5);
+      if (latestMoments.length > 0) {
+        const formattedMoments = latestMoments.map(m => {
+          let authorType = '其他好友/网友';
+          if (m.authorId === 'user') {
+            authorType = '用户(你聊天的对象)';
+          } else if (m.authorId === friend.id) {
+            authorType = '你自己';
+          } else {
+            const authorFriend = friends.find(f => f.id === m.authorId);
+            if (authorFriend) authorType = `其他好友: ${authorFriend.name}`;
+          }
+          const timeStr = new Date(m.timestamp).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+          return `- [作者类型: ${authorType} | 作者名称: ${m.authorName || '未知'} | 时间: ${timeStr}] ${m.content}${m.imageDescription ? ` (配图描述: ${m.imageDescription})` : ''}`;
+        }).join('\n');
+
+        systemPrompt += `\n\n【朋友圈最新动态（最近5条）】\n以下是朋友圈广场上最新的5条动态（包含你、用户及其他好友发布的，你可以通过作者类型严格区分）：\n${formattedMoments}\n\n【行为指引】：你可以自然地在私聊中提及、评论或受到这些朋友圈动态的影响（例如问用户发了什么动态，或者吐槽某个好友的动态）。`;
       }
 
       // Apply Context Limit
@@ -4137,12 +4634,48 @@ ${!isOfflineMode ? `             - [START_VIDEO_CALL] - 发起视频通话
       // Handle AI sending Location
       const sendLocationMatch = fullContent.match(/\[SEND_LOCATION:(.*?)\]/);
       if (sendLocationMatch) {
-        const address = sendLocationMatch[1];
+        const address = sendLocationMatch[1].trim();
+        const matchedPoint = locationPoints.find(p => p.name.includes(address) || address.includes(p.name));
+        
+        let customLocData: any = undefined;
+        if (matchedPoint) {
+          const dx = matchedPoint.x - userHome.x;
+          const dy = matchedPoint.y - userHome.y;
+          const dist = (Math.sqrt(dx*dx + dy*dy) * 0.05).toFixed(2);
+          customLocData = {
+            locationName: matchedPoint.name,
+            fullAddress: matchedPoint.fullAddr,
+            remark: matchedPoint.desc,
+            category: matchedPoint.type,
+            distanceKm: dist,
+            coordinateX: matchedPoint.x,
+            coordinateY: matchedPoint.y,
+            homeX: userHome.x,
+            homeY: userHome.y,
+            isCharacter: true
+          };
+        } else {
+          customLocData = {
+            locationName: address,
+            fullAddress: `${friend.name}生活圈中的一个地标`,
+            remark: '角色分享的位置',
+            category: 'normal',
+            distanceKm: (2.5 + Math.random() * 3).toFixed(2),
+            coordinateX: characterHome.x + 30,
+            coordinateY: characterHome.y + 15,
+            homeX: userHome.x,
+            homeY: userHome.y,
+            isCharacter: true
+          };
+        }
+
         const locationMsg: ChatMessage = {
           role: 'assistant',
-          content: `[位置] ${address}`,
+          content: `[位置] ${customLocData.locationName}`,
           type: 'location',
-          description: address,
+          locationName: customLocData.locationName,
+          description: customLocData.fullAddress,
+          locationData: customLocData,
           timestamp: Date.now()
         };
         if (isOfflineMode) {
@@ -5390,10 +5923,10 @@ ${context}
                 className="relative max-w-full max-h-full flex flex-col items-center gap-4"
                 onClick={(e) => e.stopPropagation()}
               >
-                <img 
+                <img referrerPolicy="no-referrer"  
                   src={previewImageUrl} 
                   className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl" 
-                  referrerPolicy="no-referrer"
+                  
                 />
                 <div className="flex gap-4">
                   <button 
@@ -5470,7 +6003,7 @@ ${context}
                 transition={{ duration: 0.3 }}
                 className="flex items-center gap-3 bg-white/15 backdrop-blur-md p-3 rounded-xl border border-white/10 shadow-lg"
               >
-                <img src={item.friendAvatar} className="w-10 h-10 rounded-lg object-cover shrink-0 bg-white/20" referrerPolicy="no-referrer" />
+                <img referrerPolicy="no-referrer"  src={item.friendAvatar} className="w-10 h-10 rounded-lg object-cover shrink-0 bg-white/20"  />
                 <div className="flex-1 min-w-0">
                   <div className="flex justify-between items-center mb-0.5">
                     <span className="font-bold text-xs truncate text-white">{item.friendName}</span>
@@ -5634,7 +6167,7 @@ ${context}
         (settings.isCuteRabbitThemeEnabled ? "bg-pink-50/60 backdrop-blur-md border-pink-100 text-pink-600" : 
           (settings.themeId === 'rainy-cat' ? "bg-white/10 backdrop-blur-md border-white/10 text-white" : (settings.activeChatThemeId ? "bg-transparent border-transparent" : (settings.appBackgroundUrl ? "bg-white/10 backdrop-blur-md border-slate-200/20" : (isOfflineMode ? "bg-[#ededed] border-slate-300" : "bg-[#f5f5f5] border-slate-200")))))
       )} style={{
-        ...(settings.fullScreenMode ? { paddingTop: settings.hideStatusBar ? 'env(safe-area-inset-top)' : 'max(env(safe-area-inset-top), 44px)' } : { paddingTop: settings.hideStatusBar ? '0px' : '4px' }),
+        paddingTop: '0px',
         ...(settings.appBackgroundUrl && !settings.activeChatThemeId ? { backgroundColor: `rgba(255, 255, 255, ${Math.max(0, (settings.chatWallpaperOpacity ?? 0.8) * 0.2)})` } : {})
       }}>
         {settings.activeChatThemeId === 'imessage-v3' ? (
@@ -5651,10 +6184,10 @@ ${context}
 
             {/* Center: Avatar + Name + "iMessage" label */}
             <div className="absolute left-1/2 -translate-x-1/2 bottom-0 flex flex-col items-center justify-center text-center">
-              <img 
+              <img referrerPolicy="no-referrer"  
                 src={friend.avatar} 
                 className="w-8 h-8 rounded-full object-cover border border-slate-200/50 shadow-sm mb-0.5" 
-                referrerPolicy="no-referrer"
+                
               />
               <span className="text-[12px] text-slate-800 font-semibold leading-tight flex items-center gap-0.5">
                 {friend.alias || friend.name}
@@ -5753,7 +6286,11 @@ ${context}
       {/* Messages */}
       <div 
         ref={scrollRef} 
-        onClick={() => {
+        onClick={(e) => {
+          if (isEditingOffline) return;
+          if ((e.target as HTMLElement).closest('input, textarea, button, [contenteditable="true"], .chat-message-list-interactive')) {
+            return;
+          }
           if (showEmojiPicker) setShowEmojiPicker(false);
           if (showFeatures) setShowFeatures(false);
           if (document.activeElement instanceof HTMLElement) {
@@ -5820,31 +6357,17 @@ ${context}
                   user={user}
                   index={i}
                   theme={offlineConfig.cardTheme}
-                  isEditing={editingMessageIndex === i}
-                  editingContent={editingContent}
-                  setEditingContent={setEditingContent}
-                  onStartEdit={() => {
-                    setEditingMessageIndex(i);
-                    setEditingContent(msg.content);
-                    setIsEditingOffline(true);
-                  }}
-                  onSaveEdit={() => {
+                  onSaveEdit={(newContent) => {
                     const newMsgs = [...offlineMessages];
-                    newMsgs[i] = { ...newMsgs[i], content: editingContent };
+                    newMsgs[i] = { ...newMsgs[i], content: newContent };
                     setOfflineMessages(newMsgs);
-                    setEditingMessageIndex(null);
-                    setEditingContent('');
-                    setIsEditingOffline(false);
-                  }}
-                  onCancelEdit={() => {
-                    setEditingMessageIndex(null);
-                    setEditingContent('');
-                    setIsEditingOffline(false);
                   }}
                   onDelete={() => {
                     const newMsgs = offlineMessages.filter((_, idx) => idx !== i);
                     setOfflineMessages(newMsgs);
                   }}
+                  onStartEdit={() => setEditingOfflineIndex(i)}
+                  onEditChange={(editing) => setIsEditingOffline(editing)}
                 />
               );
             }
@@ -5915,7 +6438,7 @@ ${context}
                 {renderMessageTimestamp(msg, prevMsg)}
                 <div className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div className={`flex gap-2 max-w-[80%] ${msg.role === 'user' ? 'flex-row-reverse' : 'flex-row'}`}>
-                    <img 
+                    <img referrerPolicy="no-referrer"  
                       src={msg.role === 'user' ? user.avatar : friend.avatar} 
                       alt="avatar" 
                       loading="lazy"
@@ -6230,7 +6753,7 @@ ${context}
                             msg.description && setSelectedDescription(msg.description);
                           }}
                         >
-                          <img src={msg.mediaUrl} alt="sticker" className="max-w-[120px] max-h-[120px] object-contain rounded-md" referrerPolicy="no-referrer" />
+                          <img referrerPolicy="no-referrer"  src={msg.mediaUrl} alt="sticker" className="max-w-[120px] max-h-[120px] object-contain rounded-md"  />
                         </div>
                       )}
                       {msg.type === 'image' && (
@@ -6255,7 +6778,7 @@ ${context}
                             />
                           ) : (
                             <>
-                              <img src={msg.mediaUrl} alt="sent" className="max-w-full rounded-md shadow-sm" referrerPolicy="no-referrer" />
+                              <img referrerPolicy="no-referrer"  src={msg.mediaUrl} alt="sent" className="max-w-full rounded-md shadow-sm"  />
                               <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors rounded-md flex items-center justify-center opacity-0 group-hover:opacity-100">
                                 <Search className="text-white w-5 h-5" />
                               </div>
@@ -6410,7 +6933,7 @@ ${context}
                             </div>
                           </div>
                           <div className="aspect-square rounded-lg overflow-hidden mb-2 bg-slate-50 relative">
-                            <img src={msg.giftData.coverUrl} className="w-full h-full object-cover" alt="Gift" />
+                            <img referrerPolicy="no-referrer"  src={msg.giftData.coverUrl} className="w-full h-full object-cover" alt="Gift" />
                             {msg.giftData.isOpened && (
                               <div className="absolute inset-0 bg-black/20 flex items-center justify-center backdrop-blur-[2px]">
                                 <div className="bg-white/90 text-pink-500 text-xs font-bold px-3 py-1.5 rounded-full shadow-sm transform -rotate-12 border border-pink-100">
@@ -6562,32 +7085,150 @@ ${context}
                         </div>
                       );
                     })()}
-                      {msg.type === 'location' && (
-                        <div className={cn(
-                          "rounded-lg overflow-hidden border transition-all duration-300 min-w-[200px]",
-                          settings.themeId === 'rainy-cat' ? "bg-white/5 border-white/10" : "bg-white border-slate-100"
-                        )}>
-                          <div className="p-2">
+                      {msg.type === 'location' && (() => {
+                        const hasData = !!msg.locationData;
+                        const data = msg.locationData || {
+                          locationName: msg.locationName || msg.content?.replace('[位置] ', '') || '未知地点',
+                          fullAddress: msg.description || '暂无详细地址描述',
+                          remark: '模拟地图定位卡片',
+                          category: 'normal',
+                          distanceKm: '2.50',
+                          coordinateX: 200,
+                          coordinateY: 200,
+                          homeX: 180,
+                          homeY: 280,
+                          isCharacter: msg.role === 'assistant'
+                        };
+
+                        const catMap = {
+                          home: { label: '🏠 家园住所', color: 'bg-red-50 text-red-600 border-red-100 dark:bg-red-950/40 dark:text-red-400 dark:border-red-900/40' },
+                          play: { label: '🍸 娱乐休闲', color: 'bg-purple-50 text-purple-600 border-purple-100 dark:bg-purple-950/40 dark:text-purple-400 dark:border-purple-900/40' },
+                          road: { label: '🚗 途经点', color: 'bg-blue-50 text-blue-600 border-blue-100 dark:bg-blue-950/40 dark:text-blue-400 dark:border-blue-900/40' },
+                          normal: { label: '📍 普通地标', color: 'bg-slate-50 text-slate-600 border-slate-100 dark:bg-slate-950/40 dark:text-slate-400 dark:border-slate-900/40' }
+                        };
+                        const cat = catMap[data.category as keyof typeof catMap] || catMap.normal;
+
+                        return (
+                          <div 
+                            onClick={() => {
+                              // Focus map on this point and open modal!
+                              if (msg.locationData) {
+                                const exists = locationPoints.find(p => p.name === data.locationName);
+                                if (!exists) {
+                                  const newPt = {
+                                    id: `shared-${Date.now()}`,
+                                    x: data.coordinateX,
+                                    y: data.coordinateY,
+                                    name: data.locationName,
+                                    fullAddr: data.fullAddress,
+                                    desc: data.remark || '',
+                                    type: data.category as any,
+                                    owner: data.isCharacter ? 'character' as const : 'user' as const
+                                  };
+                                  saveMapPoints([...locationPoints, newPt]);
+                                  setSelectedMapPoint(newPt);
+                                } else {
+                                  setSelectedMapPoint(exists);
+                                }
+                                setMapZoom(1.2);
+                                setMapPan({ x: -data.coordinateX + 150, y: -data.coordinateY + 200 });
+                              }
+                              setActiveModal('location');
+                            }}
+                            className={cn(
+                              "w-[260px] rounded-2xl overflow-hidden border shadow-sm transition-all duration-300 flex flex-col cursor-pointer hover:shadow-md",
+                              settings.themeId === 'rainy-cat' 
+                                ? "bg-slate-900/90 border-white/10 text-white" 
+                                : "bg-white border-slate-100 text-slate-800"
+                            )}
+                          >
+                            {/* Graphic Mini-map View */}
                             <div className={cn(
-                              "font-bold text-sm truncate transition-all duration-300",
-                              settings.themeId === 'rainy-cat' ? "text-white" : "text-black"
-                            )}>{msg.content}</div>
-                            <div className={cn(
-                              "text-[10px] transition-all duration-300",
-                              settings.themeId === 'rainy-cat' ? "text-white/40" : "text-slate-500"
-                            )}>{msg.locationName}</div>
+                              "h-24 relative overflow-hidden flex items-center justify-center border-b select-none",
+                              settings.themeId === 'rainy-cat' ? "bg-slate-950/50 border-white/5" : "bg-slate-50 border-slate-100"
+                            )}>
+                              {/* Coordinate Grid Lines */}
+                              <div className="absolute inset-0 opacity-10 grid grid-cols-6 grid-rows-4 pointer-events-none">
+                                {Array.from({ length: 24 }).map((_, i) => (
+                                  <div key={i} className="border-t border-l border-slate-400 h-full w-full" />
+                                ))}
+                              </div>
+                              
+                              {/* Pulsing visual radar circles */}
+                              <div className="absolute w-16 h-16 rounded-full border border-sky-400/30 animate-ping opacity-60" style={{ left: 'calc(50% - 32px)', top: 'calc(50% - 32px)' }} />
+                              
+                              {/* Dotted path representation */}
+                              <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-30">
+                                <line 
+                                  x1="30" y1="70" x2="130" y2="48" 
+                                  stroke={settings.themeId === 'rainy-cat' ? "#fff" : "#000"} 
+                                  strokeWidth="2" 
+                                  strokeDasharray="4 4" 
+                                />
+                              </svg>
+
+                              {/* Target pin icon */}
+                              <div className="relative flex flex-col items-center">
+                                <div className={cn(
+                                  "w-10 h-10 rounded-full flex items-center justify-center shadow-md",
+                                  data.category === 'home' ? 'bg-red-500' : data.category === 'play' ? 'bg-purple-500' : data.category === 'road' ? 'bg-blue-500' : 'bg-rose-500'
+                                )}>
+                                  <MapPin size={20} className="text-white animate-bounce" />
+                                </div>
+                              </div>
+
+                              <span className="absolute bottom-1 right-2 text-[9px] font-mono opacity-40">
+                                LOC: {Math.round(data.coordinateX)}, {Math.round(data.coordinateY)}
+                              </span>
+                            </div>
+
+                            {/* Details text area */}
+                            <div className="p-3.5 space-y-2 flex-1">
+                              <div className="flex justify-between items-start gap-1">
+                                <span className={cn(
+                                  "font-bold text-sm tracking-tight line-clamp-1",
+                                  settings.themeId === 'rainy-cat' ? "text-slate-100" : "text-slate-950"
+                                )}>
+                                  {data.locationName}
+                                </span>
+                                <span className={cn(
+                                  "shrink-0 text-[10px] px-1.5 py-0.5 rounded-full border font-medium",
+                                  cat.color
+                                )}>
+                                  {cat.label}
+                                </span>
+                              </div>
+
+                              <p className={cn(
+                                "text-[11px] line-clamp-1 opacity-80",
+                                settings.themeId === 'rainy-cat' ? "text-slate-400" : "text-slate-500"
+                              )}>
+                                {data.fullAddress}
+                              </p>
+
+                              {data.remark && (
+                                <div className={cn(
+                                  "text-[10px] p-2 rounded-xl border italic font-sans leading-relaxed line-clamp-2",
+                                  settings.themeId === 'rainy-cat' 
+                                    ? "bg-white/5 border-white/5 text-slate-300" 
+                                    : "bg-slate-50/80 border-slate-100 text-slate-600"
+                                )}>
+                                  "{data.remark}"
+                                </div>
+                              )}
+
+                              <div className="pt-1 flex items-center justify-between text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 border-t border-dashed border-slate-100 dark:border-white/5">
+                                <span className="flex items-center gap-1">
+                                  🐾 距常驻点: {data.distanceKm} km
+                                </span>
+                                <span className="text-[10px] opacity-60 font-normal hover:underline">
+                                  点击查看地图 &raquo;
+                                </span>
+                              </div>
+                            </div>
                           </div>
-                          <div className={cn(
-                            "h-24 flex items-center justify-center transition-all duration-300",
-                            settings.themeId === 'rainy-cat' ? "bg-white/5" : "bg-slate-100"
-                          )}>
-                            <MapPin size={24} className={cn(
-                              "transition-all duration-300",
-                              settings.themeId === 'rainy-cat' ? "text-white/60" : "text-red-500"
-                            )} />
-                          </div>
-                        </div>
-                      )}
+                        );
+                      })()}
                       {msg.type === 'call' && (
                         <div className="flex items-center gap-3 py-1 px-2">
                           <div className={cn(
@@ -6657,10 +7298,10 @@ ${context}
               className="relative max-w-full max-h-full flex flex-col items-center gap-4"
               onClick={(e) => e.stopPropagation()}
             >
-              <img 
+              <img referrerPolicy="no-referrer"  
                 src={previewImageUrl} 
                 className="max-w-full max-h-[80vh] object-contain rounded-lg shadow-2xl" 
-                referrerPolicy="no-referrer"
+                
               />
               <div className="flex gap-4">
                 <button 
@@ -6709,10 +7350,10 @@ ${context}
                 {/* Header Row: Cute Magazine Profile Card */}
                 <div className="flex items-center gap-4 border-b-2 border-dashed border-[#2D2D2D] pb-4">
                   <div className="relative shrink-0">
-                    <img 
+                    <img referrerPolicy="no-referrer"  
                       src={friend.avatar} 
                       className="w-18 h-18 rounded-3xl border-3 border-[#2D2D2D] object-cover shadow-[3px_3px_0px_0px_rgba(45,45,45,0.15)] bg-slate-100" 
-                      referrerPolicy="no-referrer"
+                      
                     />
                     <div className="absolute -bottom-1 -right-1 bg-[#FFF0F3] border-2 border-[#2D2D2D] p-1 rounded-full shadow-sm animate-pulse">
                       <Sparkles className="text-[#FF4D6D]" size={12} />
@@ -6949,7 +7590,7 @@ ${context}
                   )}
                 >
                   <div className="w-14 h-14 rounded-lg overflow-hidden border border-slate-100 shadow-sm bg-white">
-                    <img src={sticker.url} className="w-full h-full object-contain" referrerPolicy="no-referrer" />
+                    <img referrerPolicy="no-referrer"  src={sticker.url} className="w-full h-full object-contain"  />
                   </div>
                   <span className={cn(
                     "text-[9px] truncate max-w-[56px] font-medium",
@@ -7302,7 +7943,7 @@ ${context}
                               selectedStickers.includes(sticker.id) ? "border-red-500 scale-95" : "border-transparent"
                             )}
                           >
-                            <img src={sticker.url} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            <img referrerPolicy="no-referrer"  src={sticker.url} className="w-full h-full object-cover"  />
                           </button>
                           {!stickerDeleteMode && sticker.description && (
                             <span className={cn(
@@ -7367,6 +8008,95 @@ ${context}
         </AnimatePresence>
       </div>
       )}
+
+        {/* Edit Message Modal */}
+        <AnimatePresence>
+          {editingOfflineIndex !== null && (
+            <motion.div 
+              key="offline-plot-edit-overlay"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0 z-[500] bg-black/60 backdrop-blur-md flex items-center justify-center p-4"
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditingOfflineIndex(null);
+              }}
+            >
+              <motion.div 
+                initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                className={cn(
+                  "w-full max-w-sm p-6 rounded-[32px] shadow-2xl border space-y-4 relative max-h-[85vh] overflow-y-auto",
+                  offlineConfig.cardTheme === 'student' ? "bg-[#E6F3F7] text-blue-900 border-white" :
+                  offlineConfig.cardTheme === 'glass' ? "bg-slate-900/95 text-white border-white/20 backdrop-blur-2xl" :
+                  offlineConfig.cardTheme === 'time' ? "bg-[#141414] text-slate-100 border-white/10" :
+                  "bg-[#FAF7F2] text-stone-800 border-[#E2D9C5]"
+                )}
+                onClick={e => e.stopPropagation()}
+              >
+                <div className="flex items-center justify-between pb-3 border-b border-black/10">
+                  <div className="text-xs font-black uppercase tracking-wider flex items-center gap-1.5 opacity-80">
+                    <Edit2 size={14} /> 修改剧情内容
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingOfflineIndex(null);
+                    }}
+                    className="w-8 h-8 rounded-full flex items-center justify-center bg-black/5 hover:bg-black/10 transition-colors"
+                  >
+                    <X size={16} />
+                  </button>
+                </div>
+
+                <textarea 
+                  defaultValue={offlineMessages[editingOfflineIndex]?.content || ''}
+                  id="offline-edit-textarea"
+                  className={cn(
+                    "w-full min-h-[160px] p-4 text-sm rounded-2xl focus:outline-none focus:ring-2 font-sans transition-all select-text resize-none",
+                    offlineConfig.cardTheme === 'student' ? "bg-white text-blue-900 border-blue-200 focus:ring-blue-400" :
+                    offlineConfig.cardTheme === 'glass' ? "bg-white/10 text-white border-white/20 focus:ring-pink-400 placeholder:text-white/40" :
+                    offlineConfig.cardTheme === 'time' ? "bg-black/40 text-slate-100 border-slate-800 focus:ring-slate-500 placeholder:text-slate-500" :
+                    "bg-white text-stone-900 border-slate-200 focus:ring-amber-500"
+                  )}
+                  placeholder="请输入修改后的剧情..."
+                />
+
+                <div className="flex gap-3 justify-end pt-2">
+                  <button 
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingOfflineIndex(null);
+                    }}
+                    className="px-4 py-2 text-xs bg-slate-200/80 text-slate-700 rounded-xl hover:bg-slate-300 transition-colors font-bold flex items-center gap-1.5"
+                  >
+                    <X size={14} /> 取消
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      const textarea = document.getElementById('offline-edit-textarea') as HTMLTextAreaElement;
+                      if (textarea) {
+                        const newMsgs = [...offlineMessages];
+                        newMsgs[editingOfflineIndex] = { ...newMsgs[editingOfflineIndex], content: textarea.value };
+                        setOfflineMessages(newMsgs);
+                      }
+                      setEditingOfflineIndex(null);
+                    }}
+                    className="px-5 py-2 text-xs bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors font-bold flex items-center gap-1.5 shadow-lg shadow-blue-500/25"
+                  >
+                    <Check size={14} /> 保存修改
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Edit Message Modal */}
         <AnimatePresence>
@@ -7468,7 +8198,7 @@ ${context}
                       }}
                       className="w-full flex items-center gap-3 p-3 hover:bg-white/5 rounded-xl transition-colors"
                     >
-                      <img src={f.avatar} className="w-10 h-10 rounded-lg object-cover" />
+                      <img referrerPolicy="no-referrer"  src={f.avatar} className="w-10 h-10 rounded-lg object-cover" />
                       <span className="font-medium">{f.name}</span>
                     </button>
                   ))}
@@ -7535,12 +8265,18 @@ ${context}
                 settings.themeId === 'rainy-cat' ? "bg-black text-white" : "bg-white text-slate-800"
               )}
             >
-              {settings.fullScreenMode && (
+              {/* Top Spacer to prevent Status Bar overlap */}
+              {!settings.hideStatusBar ? (
                 <div 
                   className={cn("shrink-0", settings.themeId === 'rainy-cat' ? "bg-black" : "bg-white")}
-                  style={{ height: settings.hideStatusBar ? 'env(safe-area-inset-top)' : 'max(env(safe-area-inset-top), 68px)' }}
+                  style={{ height: '0px' }}
                 />
-              )}
+              ) : settings.fullScreenMode ? (
+                <div 
+                  className={cn("shrink-0", settings.themeId === 'rainy-cat' ? "bg-black" : "bg-white")}
+                  style={{ height: '0px' }}
+                />
+              ) : null}
               <div className="px-4 py-3 flex items-center justify-between border-b shrink-0 shadow-sm">
                 <div className="flex items-center gap-3">
                   <button 
@@ -8382,41 +9118,438 @@ ${context}
         )}
 
         {activeModal === 'location' && (
-          <div key="location-modal" className={cn(
-            "fixed inset-0 z-[20000] flex flex-col transition-all duration-300",
-            settings.themeId === 'rainy-cat' ? "bg-black/60 backdrop-blur-xl text-white" : "bg-white"
-          )}>
-            {settings.fullScreenMode && (
-              <div 
-                className={cn("shrink-0", settings.themeId === 'rainy-cat' ? "bg-black/60" : "bg-white")}
-                style={{ height: settings.hideStatusBar ? 'env(safe-area-inset-top)' : 'max(env(safe-area-inset-top), 68px)' }}
-              />
-            )}
-            <div className={cn(
-              "p-4 border-b flex justify-between items-center",
-              settings.themeId === 'rainy-cat' ? "border-white/10" : "border-slate-100"
-            )}>
-              <span className="font-bold">发送位置</span>
-              <button onClick={() => setActiveModal(null)}><X size={20} /></button>
-            </div>
-            <div className={cn(
-              "flex-1 flex flex-col items-center justify-center p-10 text-center gap-4 transition-all duration-300",
-              settings.themeId === 'rainy-cat' ? "bg-white/5" : "bg-slate-100"
-            )}>
-              <MapPin size={64} className="text-red-500 animate-bounce" />
-              <p className={cn(
-                "transition-all duration-300",
-                settings.themeId === 'rainy-cat' ? "text-white/60" : "text-slate-500"
-              )}>模拟地图定位中...</p>
+          <div key="location-modal" className="fixed inset-0 z-[20000] flex flex-col transition-all duration-300 bg-slate-50 text-slate-800">
+            {/* Top Spacer to prevent Status Bar overlap */}
+            {!settings.hideStatusBar ? (
+              <div className="shrink-0 bg-white" style={{ height: '0px' }} />
+            ) : settings.fullScreenMode ? (
+              <div className="shrink-0 bg-white" style={{ height: '0px' }} />
+            ) : null}
+
+            {/* Custom Interactive App Header */}
+            <div className="px-4 py-3 border-b flex items-center justify-between shrink-0 shadow-sm bg-white border-slate-100">
+              <div className="flex items-center gap-2">
+                <button 
+                  onClick={() => setActiveModal(null)}
+                  className="p-1 rounded-full hover:bg-black/5 transition-all"
+                >
+                  <ChevronLeft size={24} className="text-blue-500" />
+                </button>
+                <div>
+                  <h2 className="text-base font-bold tracking-tight text-slate-900">生活圈与位置共享</h2>
+                  <p className="text-[10px] text-slate-400">双向自定义地图：自由设定双方生活圈</p>
+                </div>
+              </div>
               <button 
-                onClick={() => handleLocation('北京市朝阳区三里屯')} 
-                className={cn(
-                  "px-6 py-2 rounded-full font-bold transition-all duration-300",
-                  settings.themeId === 'rainy-cat' ? "bg-white/20 text-white" : "bg-green-600 text-white"
-                )}
+                onClick={() => {
+                  setSelectedMapPoint(null);
+                  setActiveModal(null);
+                }}
+                className="p-1 rounded-full hover:bg-black/5 transition-all"
               >
-                发送当前位置
+                <X size={20} className="text-slate-400" />
               </button>
+            </div>
+
+            {/* View Mode Segment Switcher */}
+            <div className="p-3 flex items-center justify-between shrink-0 border-b bg-white border-slate-100 shadow-sm">
+              <div className="flex gap-2 flex-1 justify-center max-w-md mx-auto">
+                <button
+                  onClick={() => {
+                    setMapViewMode('user');
+                    setSelectedMapPoint(null);
+                  }}
+                  className={cn(
+                    "flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all duration-300 flex items-center justify-center gap-1.5 shadow-sm border",
+                    mapViewMode === 'user'
+                      ? "bg-slate-900 text-white border-slate-900"
+                      : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                  )}
+                >
+                  <div className="w-2 h-2 rounded-full bg-emerald-400" />
+                  📍 我的常用位置
+                </button>
+                <button
+                  onClick={() => {
+                    setMapViewMode('character');
+                    setSelectedMapPoint(null);
+                  }}
+                  className={cn(
+                    "flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all duration-300 flex items-center justify-center gap-1.5 shadow-sm border",
+                    mapViewMode === 'character'
+                      ? "bg-pink-500 text-white border-pink-500"
+                      : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                  )}
+                >
+                  <div className="w-2 h-2 rounded-full bg-pink-400" />
+                  🌸 {friend.name}的生活地标
+                </button>
+              </div>
+
+              {mapViewMode === 'character' && (
+                <button
+                  onClick={handleGenerateCharacterLandmarks}
+                  disabled={isGeneratingLandmarks}
+                  className="ml-2 w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center border border-slate-200 transition-all shadow-sm disabled:opacity-50 shrink-0"
+                  title={`一键生成 ${friend.name} 的10个生活地标`}
+                >
+                  <RefreshCw size={16} className={cn(isGeneratingLandmarks && "animate-spin text-pink-500")} />
+                </button>
+              )}
+            </div>
+
+            {/* Map Container Area */}
+            <div className="flex-1 relative overflow-hidden bg-slate-900/10">
+              <canvas
+                ref={canvasRef}
+                width={420}
+                height={550}
+                onMouseDown={handleCanvasMouseDown}
+                onMouseMove={handleCanvasMouseMove}
+                onMouseUp={handleCanvasMouseUp}
+                onMouseLeave={handleCanvasMouseUp}
+                onTouchStart={handleCanvasTouchStart}
+                onTouchMove={handleCanvasTouchMove}
+                onTouchEnd={handleCanvasMouseUp}
+                onClick={handleCanvasClick}
+                className="w-full h-full block cursor-grab active:cursor-grabbing"
+              />
+
+              {/* Floating Map Utility Buttons */}
+              <div className="absolute right-3.5 top-3.5 flex flex-col gap-2 z-10">
+                <button
+                  onClick={() => setMapZoom(prev => Math.min(prev * 1.2, 4))}
+                  className="w-10 h-10 rounded-full bg-white/95 dark:bg-slate-800/95 shadow-md flex items-center justify-center border border-slate-100 dark:border-white/10 hover:scale-105 active:scale-95 transition-all text-slate-700 dark:text-slate-200"
+                  title="放大"
+                >
+                  <ZoomIn size={18} />
+                </button>
+                <button
+                  onClick={() => setMapZoom(prev => Math.max(prev / 1.2, 0.5))}
+                  className="w-10 h-10 rounded-full bg-white/95 dark:bg-slate-800/95 shadow-md flex items-center justify-center border border-slate-100 dark:border-white/10 hover:scale-105 active:scale-95 transition-all text-slate-700 dark:text-slate-200"
+                  title="缩小"
+                >
+                  <ZoomOut size={18} />
+                </button>
+                <button
+                  onClick={() => {
+                    setMapZoom(1);
+                    setMapPan({ x: 0, y: 0 });
+                  }}
+                  className="w-10 h-10 rounded-full bg-white/95 dark:bg-slate-800/95 shadow-md flex items-center justify-center border border-slate-100 dark:border-white/10 hover:scale-105 active:scale-95 transition-all text-slate-700 dark:text-slate-200"
+                  title="重置"
+                >
+                  <RotateCcw size={16} />
+                </button>
+              </div>
+
+              {/* Guide Overlay Info Badge */}
+              <div className={cn(
+                "absolute left-4 top-4 p-2 rounded-xl text-[10px] shadow-md border pointer-events-none max-w-[200px]",
+                settings.themeId === 'rainy-cat' ? "bg-slate-900/95 border-white/10 text-slate-300" : "bg-white/95 border-slate-100 text-slate-600"
+              )}>
+                💡 <span className="font-bold">地图提示：</span>在地图空白处单击，即可在当前选定的生活圈中添加自定义新位置点。
+              </div>
+
+              {/* Sliding Bottom Drawer Sheet */}
+              {selectedMapPoint && (() => {
+                const dx = selectedMapPoint.x - userHome.x;
+                const dy = selectedMapPoint.y - userHome.y;
+                const distToMe = (Math.sqrt(dx*dx + dy*dy) * 0.05).toFixed(2);
+
+                const cDx = selectedMapPoint.x - characterHome.x;
+                const cDy = selectedMapPoint.y - characterHome.y;
+                const distToChar = (Math.sqrt(cDx*cDx + cDy*cDy) * 0.05).toFixed(2);
+
+                return (
+                  <div className={cn(
+                    "absolute left-0 right-0 bottom-0 rounded-t-3xl shadow-2xl p-4 transition-transform duration-300 border-t z-20 max-h-[85%] overflow-y-auto",
+                    settings.themeId === 'rainy-cat' ? "bg-slate-900 border-white/10" : "bg-white border-slate-100"
+                  )}>
+                    {/* Drawer drag indicator line */}
+                    <div className="w-12 h-1.5 rounded-full bg-slate-300 dark:bg-slate-700 mx-auto mb-3" />
+
+                    <div className="flex justify-between items-start mb-2">
+                      <span className="text-[11px] font-bold text-sky-500 tracking-wider uppercase">
+                        {selectedMapPoint.owner === 'user' ? '👤 正在编辑我的常用位置' : `🌸 正在编辑${friend.name}的生活地标`}
+                      </span>
+                      <button 
+                        onClick={() => setSelectedMapPoint(null)}
+                        className="p-1 rounded-full hover:bg-black/5 dark:hover:bg-white/5 transition-all"
+                      >
+                        <X size={16} className="opacity-60" />
+                      </button>
+                    </div>
+
+                    <div className="space-y-3.5">
+                      {/* Name input */}
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-400 mb-1">地点名称</label>
+                        <input
+                          type="text"
+                          value={selectedMapPoint.name}
+                          onChange={(e) => {
+                            const updated = locationPoints.map(p => 
+                              p.id === selectedMapPoint.id ? { ...p, name: e.target.value } : p
+                            );
+                            saveMapPoints(updated);
+                            setSelectedMapPoint({ ...selectedMapPoint, name: e.target.value });
+                          }}
+                          className={cn(
+                            "w-full text-base font-bold p-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 border",
+                            settings.themeId === 'rainy-cat' ? "bg-slate-950 border-white/10 text-white" : "bg-slate-50 border-slate-200 text-slate-800"
+                          )}
+                          placeholder="例如：海边小酒馆"
+                        />
+                      </div>
+
+                      {/* Full address input */}
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-400 mb-1">详细完整地址</label>
+                        <input
+                          type="text"
+                          value={selectedMapPoint.fullAddr}
+                          onChange={(e) => {
+                            const updated = locationPoints.map(p => 
+                              p.id === selectedMapPoint.id ? { ...p, fullAddr: e.target.value } : p
+                            );
+                            saveMapPoints(updated);
+                            setSelectedMapPoint({ ...selectedMapPoint, fullAddr: e.target.value });
+                          }}
+                          className={cn(
+                            "w-full text-xs p-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 border",
+                            settings.themeId === 'rainy-cat' ? "bg-slate-950 border-white/10 text-white" : "bg-slate-50 border-slate-200 text-slate-800"
+                          )}
+                          placeholder="省-市-区县-街道-门牌号，可自由填写"
+                        />
+                      </div>
+
+                      {/* Description input */}
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-400 mb-1">备注/介绍信息</label>
+                        <textarea
+                          value={selectedMapPoint.desc}
+                          onChange={(e) => {
+                            const updated = locationPoints.map(p => 
+                              p.id === selectedMapPoint.id ? { ...p, desc: e.target.value } : p
+                            );
+                            saveMapPoints(updated);
+                            setSelectedMapPoint({ ...selectedMapPoint, desc: e.target.value });
+                          }}
+                          className={cn(
+                            "w-full text-xs h-16 p-2 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 border resize-none",
+                            settings.themeId === 'rainy-cat' ? "bg-slate-950 border-white/10 text-white" : "bg-slate-50 border-slate-200 text-slate-800"
+                          )}
+                          placeholder="补充说明：营业时间、想一起去的心愿、人设关联等"
+                        />
+                      </div>
+
+                      {/* Distance summary badges */}
+                      <div className="flex flex-col gap-1 p-2 rounded-xl bg-slate-500/5 border border-slate-100 dark:border-white/5 text-[11px] opacity-90">
+                        <div className="flex items-center justify-between">
+                          <span>👤 距离我的常驻点:</span>
+                          <span className="font-bold text-emerald-600 dark:text-emerald-400">{distToMe} km</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span>🌸 距离对方的常驻点:</span>
+                          <span className="font-bold text-pink-600 dark:text-pink-400">{distToChar} km</span>
+                        </div>
+                      </div>
+
+                      {/* Category Type selector */}
+                      <div>
+                        <label className="block text-[11px] font-bold text-slate-400 mb-1.5">分类标记</label>
+                        <div className="flex flex-wrap gap-2">
+                          {[
+                            { key: 'home', icon: '🏠', label: '住所', activeClass: 'bg-red-500 text-white border-red-500', normalClass: 'bg-red-50 text-red-600 border-red-100 dark:bg-red-950/20 dark:text-red-400 dark:border-red-900/20' },
+                            { key: 'play', icon: '🍸', label: '娱乐', activeClass: 'bg-purple-500 text-white border-purple-500', normalClass: 'bg-purple-50 text-purple-600 border-purple-100 dark:bg-purple-950/20 dark:text-purple-400 dark:border-purple-900/20' },
+                            { key: 'road', icon: '🚗', label: '途经', activeClass: 'bg-blue-500 text-white border-blue-500', normalClass: 'bg-blue-50 text-blue-600 border-blue-100 dark:bg-blue-950/20 dark:text-blue-400 dark:border-blue-900/20' },
+                            { key: 'normal', icon: '📍', label: '普通', activeClass: 'bg-slate-500 text-white border-slate-500', normalClass: 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-white/5' }
+                          ].map(t => {
+                            const isActive = mapSelectTag === t.key;
+                            return (
+                              <button
+                                key={t.key}
+                                onClick={() => {
+                                  setMapSelectTag(t.key as any);
+                                  const updated = locationPoints.map(p => 
+                                    p.id === selectedMapPoint.id ? { ...p, type: t.key as any } : p
+                                  );
+                                  saveMapPoints(updated);
+                                  setSelectedMapPoint({ ...selectedMapPoint, type: t.key as any });
+                                }}
+                                className={cn(
+                                  "py-1.5 px-3 rounded-full text-xs font-bold border transition-all duration-300 flex items-center gap-1",
+                                  isActive ? t.activeClass : t.normalClass
+                                )}
+                              >
+                                <span>{t.icon}</span>
+                                <span>{t.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Set as Permanent Home Button */}
+                      <button
+                        onClick={() => {
+                          if (selectedMapPoint.owner === 'user') {
+                            setUserHome({ x: selectedMapPoint.x, y: selectedMapPoint.y });
+                            localStorage.setItem(`user_home_${friend.id}`, JSON.stringify({ x: selectedMapPoint.x, y: selectedMapPoint.y }));
+                          } else {
+                            setCharacterHome({ x: selectedMapPoint.x, y: selectedMapPoint.y });
+                            localStorage.setItem(`char_home_${friend.id}`, JSON.stringify({ x: selectedMapPoint.x, y: selectedMapPoint.y }));
+                          }
+                          const updated = locationPoints.map(p => 
+                            p.id === selectedMapPoint.id ? { ...p, type: 'home' as const } : p
+                          );
+                          saveMapPoints(updated);
+                          setSelectedMapPoint({ ...selectedMapPoint, type: 'home' as const });
+                          setMapSelectTag('home');
+                        }}
+                        className={cn(
+                          "w-full py-2 rounded-xl text-xs font-bold transition-all border border-dashed flex items-center justify-center gap-1",
+                          settings.themeId === 'rainy-cat'
+                            ? "border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
+                            : "border-emerald-600/30 text-emerald-600 hover:bg-emerald-50/50"
+                        )}
+                      >
+                        ⭐ 设为大本营原点 (重算连接与比例)
+                      </button>
+
+                      {/* Main Share/Delete Actions */}
+                      <div className="pt-2 flex flex-col gap-2">
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => {
+                              const locationMsg: ChatMessage = {
+                                role: 'user',
+                                content: `[位置] ${selectedMapPoint.name}`,
+                                type: 'location',
+                                locationName: selectedMapPoint.name,
+                                description: selectedMapPoint.fullAddr,
+                                locationData: {
+                                  locationName: selectedMapPoint.name,
+                                  fullAddress: selectedMapPoint.fullAddr,
+                                  remark: selectedMapPoint.desc,
+                                  category: selectedMapPoint.type,
+                                  distanceKm: distToMe,
+                                  coordinateX: selectedMapPoint.x,
+                                  coordinateY: selectedMapPoint.y,
+                                  homeX: userHome.x,
+                                  homeY: userHome.y,
+                                  isCharacter: false
+                                },
+                                timestamp: Date.now()
+                              };
+                              if (isOfflineMode) {
+                                setOfflineMessages(prev => [...prev, locationMsg]);
+                              } else {
+                                onSendMessage(locationMsg);
+                              }
+                              setSelectedMapPoint(null);
+                              setActiveModal(null);
+                            }}
+                            className="flex-1 py-3 rounded-full text-sm font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-md flex items-center justify-center gap-1.5 transition-all"
+                          >
+                            <Send size={15} />
+                            以我的名义分享
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              const locationMsg: ChatMessage = {
+                                role: 'assistant',
+                                content: `[位置] ${selectedMapPoint.name}`,
+                                type: 'location',
+                                locationName: selectedMapPoint.name,
+                                description: selectedMapPoint.fullAddr,
+                                locationData: {
+                                  locationName: selectedMapPoint.name,
+                                  fullAddress: selectedMapPoint.fullAddr,
+                                  remark: selectedMapPoint.desc,
+                                  category: selectedMapPoint.type,
+                                  distanceKm: distToMe,
+                                  coordinateX: selectedMapPoint.x,
+                                  coordinateY: selectedMapPoint.y,
+                                  homeX: userHome.x,
+                                  homeY: userHome.y,
+                                  isCharacter: true
+                                },
+                                timestamp: Date.now()
+                              };
+
+                              const greetings = [
+                                `我把我在【${selectedMapPoint.name}】的定位发给你啦，平时我最喜欢在这里待着了，有空我们可以一起去嘛？`,
+                                `告诉你一个秘密，这是我在【${selectedMapPoint.name}】的常驻地点哦。把定位分享给你，不要迷路啦！`,
+                                `噔噔噔！这是我在【${selectedMapPoint.name}】的实时位置分享，赶紧收藏一下吧~`
+                              ];
+                              const randomGreeting = greetings[Math.floor(Math.random() * greetings.length)];
+                              const greetingMsg: ChatMessage = {
+                                role: 'assistant',
+                                content: randomGreeting,
+                                timestamp: Date.now() - 50
+                              };
+
+                              if (isOfflineMode) {
+                                setOfflineMessages(prev => [...prev, greetingMsg, locationMsg]);
+                              } else {
+                                onSendMessage(greetingMsg);
+                                setTimeout(() => onSendMessage(locationMsg), 200);
+                              }
+                              setSelectedMapPoint(null);
+                              setActiveModal(null);
+                            }}
+                            className="flex-1 py-3 rounded-full text-sm font-bold bg-pink-600 hover:bg-pink-500 text-white shadow-md flex items-center justify-center gap-1.5 transition-all"
+                          >
+                            <Send size={15} />
+                            以角色名义分享
+                          </button>
+                        </div>
+
+                        <div className="flex gap-2 pt-1">
+                          <button
+                            onClick={() => {
+                              showToast('✅ 地点已保存！');
+                              setSelectedMapPoint(null);
+                            }}
+                            className="flex-1 py-2.5 rounded-full text-xs font-bold bg-blue-600 hover:bg-blue-500 text-white shadow-md flex items-center justify-center gap-1.5 transition-all"
+                          >
+                            <Check size={13} />
+                            保存地点
+                          </button>
+                          {(!['u-home', 'c-home'].includes(selectedMapPoint.id)) && (
+                            <button
+                              onClick={() => {
+                                const updated = locationPoints.filter(p => p.id !== selectedMapPoint.id);
+                                saveMapPoints(updated);
+                                setSelectedMapPoint(null);
+                                showToast('🗑️ 已删除该点位');
+                              }}
+                              className="flex-1 py-2.5 rounded-full text-xs font-bold bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/20 dark:hover:bg-rose-950/40 dark:text-rose-400 flex items-center justify-center gap-1.5 transition-all border border-rose-200/50 dark:border-rose-900/20"
+                            >
+                              <Trash2 size={13} />
+                              删除此点位
+                            </button>
+                          )}
+                          <button
+                            onClick={() => setSelectedMapPoint(null)}
+                            className={cn(
+                              "flex-1 py-2.5 rounded-full text-xs font-bold border transition-all",
+                              settings.themeId === 'rainy-cat'
+                                ? "bg-slate-800 hover:bg-slate-700 text-slate-300 border-white/5"
+                                : "bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200"
+                            )}
+                          >
+                            关闭
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         )}
@@ -8510,12 +9643,18 @@ ${context}
             "fixed inset-0 z-[20000] flex flex-col transition-all duration-300",
             settings.themeId === 'rainy-cat' ? "bg-black/60 backdrop-blur-xl text-white" : "bg-pink-50"
           )}>
-            {settings.fullScreenMode && (
+            {/* Top Spacer to prevent Status Bar overlap */}
+            {!settings.hideStatusBar ? (
               <div 
                 className={cn("shrink-0", settings.themeId === 'rainy-cat' ? "bg-black/60" : "bg-pink-50")}
-                style={{ height: settings.hideStatusBar ? 'env(safe-area-inset-top)' : 'max(env(safe-area-inset-top), 68px)' }}
+                style={{ height: '0px' }}
               />
-            )}
+            ) : settings.fullScreenMode ? (
+              <div 
+                className={cn("shrink-0", settings.themeId === 'rainy-cat' ? "bg-black/60" : "bg-pink-50")}
+                style={{ height: '0px' }}
+              />
+            ) : null}
             <div className={cn(
               "p-4 border-b flex justify-between items-center",
               settings.themeId === 'rainy-cat' ? "border-white/10" : "border-pink-100"
@@ -8573,12 +9712,18 @@ ${context}
             exit={{ opacity: 0, scale: 0.95 }}
             className="fixed inset-0 z-[20000] flex flex-col"
           >
-            {settings.fullScreenMode && (
+            {/* Top Spacer to prevent Status Bar overlap */}
+            {!settings.hideStatusBar ? (
               <div 
-                className="shrink-0 bg-white"
-                style={{ height: settings.hideStatusBar ? 'env(safe-area-inset-top)' : 'max(env(safe-area-inset-top), 68px)' }}
+                className="shrink-0 bg-transparent"
+                style={{ height: '0px' }}
               />
-            )}
+            ) : settings.fullScreenMode ? (
+              <div 
+                className="shrink-0 bg-transparent"
+                style={{ height: '0px' }}
+              />
+            ) : null}
             <BlindBoxApp 
               settings={settings}
               onUpdateSettings={onUpdateSettings}
@@ -8594,12 +9739,18 @@ ${context}
             "fixed inset-0 bg-black/60 backdrop-blur-sm z-[20000] flex flex-col items-center justify-center p-4",
             settings.fullScreenMode ? "pt-12" : ""
           )}>
-            {settings.fullScreenMode && (
+            {/* Top Spacer to prevent Status Bar overlap */}
+            {!settings.hideStatusBar ? (
               <div 
-                className="shrink-0 w-full"
-                style={{ height: settings.hideStatusBar ? 'env(safe-area-inset-top)' : 'max(env(safe-area-inset-top), 64px)' }}
+                className="shrink-0 w-full bg-transparent"
+                style={{ height: '0px' }}
               />
-            )}
+            ) : settings.fullScreenMode ? (
+              <div 
+                className="shrink-0 w-full bg-transparent"
+                style={{ height: '0px' }}
+              />
+            ) : null}
             <motion.div 
               initial={{ scale: 0.95, opacity: 0 }}
               animate={{ scale: 1, opacity: 1 }}
@@ -9070,7 +10221,7 @@ ${context}
             <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }} className="w-full max-w-sm bg-white rounded-3xl p-6 space-y-4 shadow-2xl">
               <h3 className="font-bold text-lg text-slate-800">添加表情包</h3>
               <div className="aspect-square w-32 mx-auto rounded-2xl overflow-hidden border-2 border-pink-100">
-                <img src={pendingStickerFile!} className="w-full h-full object-cover" />
+                <img referrerPolicy="no-referrer"  src={pendingStickerFile!} className="w-full h-full object-cover" />
               </div>
               <div className="space-y-2">
                 <label className="text-xs font-bold text-slate-400 uppercase">表情包描述 (让角色看懂它)</label>
@@ -9304,7 +10455,7 @@ function FriendProfile({ friend, settings, onBack, onStartChat, onViewMoments, o
           settings.themeId === 'rainy-cat' ? "bg-white/5 backdrop-blur-xl" : "bg-white"
         )}>
           <div className="relative group cursor-pointer" onClick={handleAvatarClick}>
-            <img src={friend.avatar} className={cn("w-16 h-16 rounded-xl object-cover transition-all duration-300", settings.themeId === 'rainy-cat' ? "bg-white/10" : "bg-slate-200", friend.isBlocked && "grayscale opacity-50")} />
+            <img referrerPolicy="no-referrer"  src={friend.avatar} className={cn("w-16 h-16 rounded-xl object-cover transition-all duration-300", settings.themeId === 'rainy-cat' ? "bg-white/10" : "bg-slate-200", friend.isBlocked && "grayscale opacity-50")} />
             <div className="absolute inset-0 bg-black/20 rounded-xl opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
               <Camera size={20} className="text-white" />
             </div>
@@ -9385,7 +10536,7 @@ function FriendProfile({ friend, settings, onBack, onStartChat, onViewMoments, o
             <div className="flex items-center gap-2">
               <div className="flex gap-1">
                 {friend.moments?.[0]?.images?.[0] ? (
-                  <img src={friend.moments[0].images[0]} className="w-8 h-8 rounded-sm object-cover" />
+                  <img referrerPolicy="no-referrer"  src={friend.moments[0].images[0]} className="w-8 h-8 rounded-sm object-cover" />
                 ) : (
                   <div className={cn(
                     "w-8 h-8 rounded-sm transition-all duration-300",
@@ -9740,23 +10891,23 @@ function FriendMoments({
       </div>
       <div className="flex-1 overflow-y-auto">
         <div className="relative h-64 mb-12">
-          <img src={friend.momentsBackground || 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?q=80&w=1000'} className="w-full h-full object-cover cursor-pointer" onClick={handleBgClick} />
+          <img referrerPolicy="no-referrer"  src={friend.momentsBackground || 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?q=80&w=1000'} className="w-full h-full object-cover cursor-pointer" onClick={handleBgClick} />
           <div className="absolute bottom-[-20px] right-4 flex items-center gap-3">
             <span className="text-white font-bold drop-shadow-md text-sm mb-4">{friend?.alias || friend?.name || '角色'}</span>
-            <img src={friend.avatar} className="w-16 h-16 rounded-xl border-2 border-white bg-slate-200 shadow-lg object-cover" />
+            <img referrerPolicy="no-referrer"  src={friend.avatar} className="w-16 h-16 rounded-xl border-2 border-white bg-slate-200 shadow-lg object-cover" />
           </div>
         </div>
         <div className="px-4 space-y-8 pb-10">
           {friend.moments && friend.moments.length > 0 ? friend.moments.map((post, idx) => (
             <div key={`${post.id}-${idx}`} className="flex gap-3">
-              <img src={friend.avatar} className="w-10 h-10 rounded-lg shrink-0" />
+              <img referrerPolicy="no-referrer"  src={friend.avatar} className="w-10 h-10 rounded-lg shrink-0" />
               <div className="flex-1">
                 <span className="font-bold text-sm block mb-1 text-blue-900">{friend?.alias || friend?.name || '角色'}</span>
                 <p className="text-sm mb-2 text-slate-800">{post.content}</p>
                 {post.images && post.images.length > 0 && (
                   <div className={cn("grid gap-1 mb-2", post.images.length === 1 ? "grid-cols-1" : "grid-cols-3")}>
                     {post.images.map((img, i) => (
-                      <img key={i} src={img} className={cn("rounded object-cover", post.images.length === 1 ? "max-h-48 w-auto" : "aspect-square w-full")} />
+                      <img referrerPolicy="no-referrer"  key={i} src={img} className={cn("rounded object-cover", post.images.length === 1 ? "max-h-48 w-auto" : "aspect-square w-full")} />
                     ))}
                   </div>
                 )}
@@ -9898,23 +11049,23 @@ function DiscoverTab({
       <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleFileChange} />
       <div className="flex-1 overflow-y-auto scroll-smooth">
         <div className="relative h-64">
-          <img src={user.momentsBackground || 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?q=80&w=1000'} className="w-full h-full object-cover cursor-pointer" onClick={handleBgClick} />
+          <img referrerPolicy="no-referrer"  src={user.momentsBackground || 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?q=80&w=1000'} className="w-full h-full object-cover cursor-pointer" onClick={handleBgClick} />
           <div className="absolute bottom-[-20px] right-4 flex items-center gap-3 z-10">
             <span className="text-white font-bold drop-shadow-lg text-base mb-4">{user?.name ?? '用户'}</span>
-            <img src={user.avatar} className="w-16 h-16 rounded-xl border-4 border-white bg-slate-200 object-cover shadow-md" />
+            <img referrerPolicy="no-referrer"  src={user.avatar} className="w-16 h-16 rounded-xl border-4 border-white bg-slate-200 object-cover shadow-md" />
           </div>
         </div>
         <div className="bg-white pt-12 pb-20">
           {moments.map((moment, idx) => (
             <div key={`${moment.id}-${idx}`} className="p-4 flex gap-3 border-b border-slate-50">
-              <img src={moment.authorAvatar} className="w-10 h-10 rounded-lg shrink-0" />
+              <img referrerPolicy="no-referrer"  src={moment.authorAvatar} className="w-10 h-10 rounded-lg shrink-0" />
               <div className="flex-1">
                 <span className="font-bold text-sm block mb-1 text-blue-900">{moment.authorName}</span>
                 <p className="text-sm mb-2 text-slate-800">{moment.content}</p>
                 {moment.images && moment.images.length > 0 && (
                   <div className={cn("grid gap-1 mb-2", moment.images.length === 1 ? "grid-cols-1" : "grid-cols-3")}>
                     {moment.images.map((img: string, i: number) => (
-                      <img key={i} src={img} className={cn("rounded object-cover", moment.images.length === 1 ? "max-h-48 w-auto" : "aspect-square w-full")} />
+                      <img referrerPolicy="no-referrer"  key={i} src={img} className={cn("rounded object-cover", moment.images.length === 1 ? "max-h-48 w-auto" : "aspect-square w-full")} />
                     ))}
                   </div>
                 )}
@@ -10045,7 +11196,7 @@ function MeTab({
         (isRabbit ? "bg-white/40 backdrop-blur-sm" : (settings.themeId === 'rainy-cat' ? "bg-white/5 backdrop-blur-xl" : (settings.appBackgroundUrl ? "bg-white/10 backdrop-blur-md" : "bg-white")))
       )} style={settings.appBackgroundUrl ? { backgroundColor: `rgba(255, 255, 255, ${Math.max(0, (settings.chatWallpaperOpacity ?? 0.8) * 0.2)})` } : {}}>
         <div className="relative group cursor-pointer" onClick={handleAvatarClick}>
-          <img src={user?.avatar} className={cn(
+          <img referrerPolicy="no-referrer"  src={user?.avatar} className={cn(
             "w-12 h-12 rounded-lg object-cover transition-all duration-300",
             settings.themeId === 'rainy-cat' ? "bg-white/10" : "bg-slate-200"
           )} />
@@ -10888,7 +12039,7 @@ function BeautificationPage({ settings, onBack, onUpdate }: { settings: AppSetti
             </div>
             {tempSettings.appBackgroundUrl && (
               <div className="mt-2 relative rounded-xl overflow-hidden aspect-video border border-slate-200">
-                <img src={tempSettings.appBackgroundUrl} className="w-full h-full object-cover" />
+                <img referrerPolicy="no-referrer"  src={tempSettings.appBackgroundUrl} className="w-full h-full object-cover" />
               </div>
             )}
           </div>
@@ -11107,7 +12258,7 @@ function FavoritesView({ user, settings, onBack, onDelete }: { user: any, settin
         "px-3 py-2 flex items-center gap-2 border-b transition-all duration-300",
         isDark ? "bg-black border-white/10" : 
         (isRabbit ? "bg-pink-50/80 backdrop-blur-md border-pink-100" : (settings.appBackgroundUrl ? "bg-white/70 backdrop-blur-md border-slate-200" : "bg-white border-slate-100"))
-      )} style={settings.fullScreenMode ? { paddingTop: settings.hideStatusBar ? 'env(safe-area-inset-top)' : 'max(env(safe-area-inset-top), 44px)' } : {}}>
+      )} style={settings.fullScreenMode ? { paddingTop: '0px' } : {}}>
         <button onClick={onBack} className="p-1 hover:bg-slate-200 rounded-full">
           <ChevronLeft size={20} />
         </button>
@@ -11195,7 +12346,7 @@ function MyMomentsPage({ user, settings, onBack, onUpdate }: { user: any, settin
   return (
     <div className="flex flex-col h-full bg-white overflow-y-auto">
       <div className="relative h-64 shrink-0">
-        <img 
+        <img referrerPolicy="no-referrer"  
           src={user.momentsBackground || 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?q=80&w=1000'} 
           className="w-full h-full object-cover cursor-pointer" 
           onClick={handleBgClick}
@@ -11206,7 +12357,7 @@ function MyMomentsPage({ user, settings, onBack, onUpdate }: { user: any, settin
         </button>
         <div className="absolute bottom-[-20px] right-4 flex items-center gap-3">
           <span className="text-white font-bold drop-shadow-lg text-lg mb-4">{user?.name ?? '用户'}</span>
-          <img src={user.avatar} className="w-16 h-16 rounded-xl border-4 border-white bg-slate-200 object-cover shadow-lg" />
+          <img referrerPolicy="no-referrer"  src={user.avatar} className="w-16 h-16 rounded-xl border-4 border-white bg-slate-200 object-cover shadow-lg" />
         </div>
       </div>
 
@@ -11243,7 +12394,7 @@ function MyMomentsPage({ user, settings, onBack, onUpdate }: { user: any, settin
           user.moments.map((moment: any, idx: number) => (
             <div key={`${moment.id}-${idx}`} className="flex gap-4">
               <div className="w-12 h-12 rounded-lg bg-slate-100 flex-shrink-0 overflow-hidden">
-                <img src={user.avatar} className="w-full h-full object-cover" />
+                <img referrerPolicy="no-referrer"  src={user.avatar} className="w-full h-full object-cover" />
               </div>
               <div className="flex-1 space-y-2">
                 <span className="font-bold text-blue-900 text-sm">{user?.name ?? '用户'}</span>
@@ -11254,7 +12405,7 @@ function MyMomentsPage({ user, settings, onBack, onUpdate }: { user: any, settin
                     moment.images.length === 1 ? "grid-cols-1" : moment.images.length <= 4 ? "grid-cols-2" : "grid-cols-3"
                   )}>
                     {moment.images.map((img: string, idx: number) => (
-                      <img key={idx} src={img} className="rounded-sm w-full aspect-square object-cover" />
+                      <img referrerPolicy="no-referrer"  key={idx} src={img} className="rounded-sm w-full aspect-square object-cover" />
                     ))}
                   </div>
                 )}
@@ -11387,7 +12538,7 @@ function PaymentPage({ user, settings, onBack, onUpdate, onAddTransaction, onAdd
       onClick={() => setBackgroundModal({ type: 'page' })}
     >
       {user.paymentBackground && (
-        <img src={user.paymentBackground} className="absolute inset-0 w-full h-full object-cover opacity-100" />
+        <img referrerPolicy="no-referrer"  src={user.paymentBackground} className="absolute inset-0 w-full h-full object-cover opacity-100" />
       )}
       
       {/* Header */}
@@ -11424,7 +12575,7 @@ function PaymentPage({ user, settings, onBack, onUpdate, onAddTransaction, onAdd
               )}
             >
               {user.balanceBackground && (
-                <img src={user.balanceBackground} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                <img referrerPolicy="no-referrer"  src={user.balanceBackground} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
               )}
               {!user.balanceBackground && (
                 <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/5 rounded-full -mr-16 -mt-16 blur-2xl group-hover:bg-blue-500/10 transition-all" />
@@ -11480,7 +12631,7 @@ function PaymentPage({ user, settings, onBack, onUpdate, onAddTransaction, onAdd
                     )}
                   >
                     {card.backgroundUrl && (
-                      <img src={card.backgroundUrl} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                      <img referrerPolicy="no-referrer"  src={card.backgroundUrl} className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
                     )}
                     <div className="relative z-10 h-full flex flex-col justify-between">
                       <div className="flex justify-between items-start">
@@ -11842,7 +12993,7 @@ function PersonaArchiveView({
         "px-3 py-2 flex items-center justify-between border-b transition-all duration-300",
         isDark ? "bg-black border-white/10" : 
         (isRabbit ? "bg-pink-50/80 backdrop-blur-md border-pink-100" : (settings.appBackgroundUrl ? "bg-white/70 backdrop-blur-md border-slate-200" : "bg-white border-slate-100"))
-      )} style={settings.fullScreenMode ? { paddingTop: settings.hideStatusBar ? 'env(safe-area-inset-top)' : 'max(env(safe-area-inset-top), 44px)' } : {}}>
+      )} style={settings.fullScreenMode ? { paddingTop: '0px' } : {}}>
         <div className="flex items-center gap-2">
           <button onClick={onBack} className="p-1 hover:bg-slate-200 rounded-full">
             <ChevronLeft size={20} />
@@ -12151,7 +13302,7 @@ function ProfileSelectorModal({ onClose, onAdd, settings }: { onClose: () => voi
                   isLocating === profile.id && "opacity-50"
                 )}
               >
-                <img src={profile.avatarUrl} alt={profile.name} className="w-12 h-12 rounded-full object-cover" />
+                <img referrerPolicy="no-referrer"  src={profile.avatarUrl} alt={profile.name} className="w-12 h-12 rounded-full object-cover" />
                 <div className="flex-1 overflow-hidden">
                   <div className="font-bold text-sm truncate">{profile.name}</div>
                   <div className="text-xs text-slate-500 truncate mt-1">{profile.persona}</div>
@@ -12224,7 +13375,7 @@ function AddFriendModal({ onClose, onAdd, settings }: { onClose: () => void, onA
         
         <div className="p-4 space-y-3">
           <div className="flex flex-col items-center gap-1.5">
-            <img src={avatarUrl} className={cn(
+            <img referrerPolicy="no-referrer"  src={avatarUrl} className={cn(
               "w-16 h-16 rounded-xl border transition-all duration-300",
               settings.themeId === 'rainy-cat' ? "bg-white/10 border-white/10" : "bg-slate-100 border-slate-200"
             )} alt="preview" />
@@ -12470,7 +13621,7 @@ function PostMomentModal({ user, friends, settings, onClose, onPost }: { user: a
         <div className="grid grid-cols-3 gap-2">
           {images.map((img, idx) => (
             <div key={idx} className="relative aspect-square">
-              <img src={img} className="w-full h-full object-cover rounded" />
+              <img referrerPolicy="no-referrer"  src={img} className="w-full h-full object-cover rounded" />
               <button 
                 onClick={() => setImages(prev => prev.filter((_, i) => i !== idx))}
                 className="absolute -top-2 -right-2 bg-black/50 text-white rounded-full p-0.5"

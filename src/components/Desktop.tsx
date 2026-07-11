@@ -85,9 +85,15 @@ function Desktop({ settings, onUpdateLayout, apps, iconMap, onOpenApp, currentTi
   };
 
   const todayUpdateList = [
-    "1、查手机与主动查岗功能优化：支持按设置数量逐个扫描所有好友聊天记录，支持关键词触发或随机概率触发“角色查用户岗”审讯互动",
-    "2、动作描写智能开关：线上聊天默认自动禁止带括号的动作描写，除非用户手动在角色设置中关闭限制",
-    "3、日程与小组件增强：优化日程提醒交互，新增桌面便签、实时时钟与快捷查岗组件，提升桌面美化体验"
+    "1、优化了线下剧情输入卡顿问题",
+    "2、优化微博角色发表微博读取人设问题",
+    "3、优化微博聊天和线上聊天互通",
+    "4、优化私聊和朋友圈互通",
+    "5、优化微博私信交互：支持2-7条短句连发、无缝切入最新记录及“正在输入中”实时状态提示",
+    "6、优化微博聊天气泡：用户侧聊天气泡文字升级为清晰纯白色",
+    "7、升级聊天时间显示：消息列表智能区分今天（显示时间）与昨天/往期（显示日期与时间）",
+    "8、优化了app顶部白条问题",
+    "9、设置中“帮助和反馈”更名为“更新日志”"
   ];
 
   const getItemSpan = (item: DesktopItem) => {
@@ -629,7 +635,7 @@ const DesktopItemRenderer = React.memo(({ item, settings, apps, iconMap, isEditM
                   style={fThemeIconBg ? { backgroundImage: `url(${fThemeIconBg})`, backgroundSize: 'cover', backgroundPosition: 'center' } : {}}
                 >
                   {fThemeIconBg ? null : fCustomIcon ? (
-                    <img src={fCustomIcon} className="w-full h-full object-cover" />
+                    <img src={fCustomIcon} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
                   ) : FolderIcon ? (
                     <FolderIcon size={8} className="text-white drop-shadow-sm" />
                   ) : null}

@@ -4,7 +4,7 @@ import { Calendar as CalendarIcon, ListTodo, Cloud, Sun, ChevronLeft, MoreVertic
 import { AppSettings, Friend } from '../../types';
 import { cn } from '../../lib/utils';
 import { get, set } from 'idb-keyval';
-import { GoogleGenAI } from "@google/genai";
+import { apiFetch } from '../../lib/apiHelper';
 
 interface ScheduleItem {
   time: string;
@@ -66,9 +66,6 @@ export default function CalendarApp({
   }, []);
 
   const fetchWeather = async (cityName: string) => {
-    const { getGeminiClient, getGeminiModel } = await import('../../lib/gemini');
-    const genAI = getGeminiClient();
-
     try {
       const prompt = `获取城市 "${cityName}" 的当前天气情况。
 请返回一个 JSON 对象，包含以下字段：
@@ -77,25 +74,22 @@ export default function CalendarApp({
 
 只返回 JSON 代码块。`;
 
-      const result = await genAI.models.generateContent({
-        model: getGeminiModel(),
-        contents: [{ role: 'user', parts: [{ text: prompt }] }],
-        config: {
-          temperature: 0.7,
-          responseMimeType: "application/json",
+      const data = await apiFetch({
+        endpoint: '/api/chat',
+        body: {
+          system_prompt: "你是一个天气查询助手。请严格输出JSON格式的天气信息。",
+          messages: [{ role: 'user', content: prompt }],
+          settings
         }
       });
 
-      const text = result.text;
-      if (!text) {
-        setWeather({ temp: 22, condition: '未知' });
-        return;
-      }
+      let text = data.text || '';
+      text = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
       
-      const data = JSON.parse(text);
-      if (data && typeof data.temp === 'number' && data.condition) {
-        setWeather(data);
-        await set('calendar_weather', data);
+      const weatherData = JSON.parse(text);
+      if (weatherData && typeof weatherData.temp === 'number' && weatherData.condition) {
+        setWeather(weatherData);
+        await set('calendar_weather', weatherData);
       }
     } catch (error) {
       console.error("Fetch weather error:", error);
@@ -122,40 +116,53 @@ export default function CalendarApp({
     setIsGenerating(true);
     try {
       const template = templates[friend.id] || "常规日程";
-      const prompt = `你现在是角色 ${friend.name}。
-角色设定：${friend.persona}
-参考模板：${template}
-
-请根据你的角色设定和参考模板，生成一份今天的详细日程安排。
-要求：
-1. 格式必须为 JSON 数组，每个对象包含 time (24小时制，如 "09:00") 和 task (具体内容)。
-2. 日程要符合角色性格和生活习惯。
-3. 包含从早到晚的 6-10 个条目。
-4. 只返回 JSON 代码块，不要有其他文字。`;
-
-      const response = await fetch('/api/chat', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          system_prompt: "你是一个专业的日程规划AI助手。请严格输出JSON数组格式的日程。",
-          messages: [{ role: 'user', content: prompt }],
-          settings
-        })
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(errText || `HTTP ${response.status}`);
+      
+      // Load user profile & recent chat history for context
+      let userName = '用户';
+      let chatContextSummary = '';
+      try {
+        const userProfile = await get('zhouzhou_ji_user_profile');
+        if (userProfile?.name) userName = userProfile.name;
+        const allChats = await get('zhouzhou_ji_chats') || {};
+        const chatHistory = (allChats[friend.id] || []).slice(-10);
+        if (chatHistory.length > 0) {
+          chatContextSummary = chatHistory.map((m: any) => `${m.role === 'user' ? userName : friend.name}: ${m.content || m.parts?.[0]?.text || ''}`).join('\n');
+        }
+      } catch (e) {
+        console.warn("Failed to load context for schedule:", e);
       }
 
-      const data = await response.json();
+      const prompt = `请扮演角色：${friend.name}。
+角色档案与人设：${friend.persona || '性格正常，生活规律'}
+用户称呼：${userName}
+近期与用户的互动上下文：
+${chatContextSummary || '暂无近期对话记录'}
+
+参考日程主题或方向：${template}
+
+请结合角色的性格人设、近期互动背景，以及符合正常人作息的生活规律，生成一份今天的详细日程安排（从早到晚 6-10 个时间点）。
+要求：
+1. 以第三人称客观描述角色的日常生活行为与作息安排（如工作、用餐、休息、日常事务或与用户的正常互动），重点体现行为活动与生活节奏，不过多渲染或描写内心心理活动。
+2. 语言表达要符合角色的身份与习惯。
+3. 必须输出且仅输出纯 JSON 数组格式，每个对象包含 time (格式如 "09:00") 和 task (具体的行为动作描述)。
+4. 不要包含任何 markdown 代码块标记以外的文字，只输出严格的 JSON。`;
+
+      const data = await apiFetch({
+        endpoint: '/api/chat',
+        body: {
+          system_prompt: "你是一个专业的日程生活规划助手。请严格输出JSON数组格式的日程安排，不要有多余文字。",
+          messages: [{ role: 'user', content: prompt }],
+          settings
+        }
+      });
+
       let text = data.text || '';
       
       // Clean up markdown code blocks if any
       text = text.replace(/```json\s*/gi, '').replace(/```\s*/g, '').trim();
 
       if (!text) {
-        throw new Error("AI 未返回内容。可能是由于内容被过滤，请尝试修改模板。");
+        throw new Error("AI 未返回内容。");
       }
       
       const items = JSON.parse(text);
@@ -173,11 +180,18 @@ export default function CalendarApp({
         throw new Error('Invalid JSON response format');
       }
     } catch (error: any) {
-      console.warn('Generate schedule fallback triggered:', error);
+      const errMsg = error?.message || String(error);
+      const isBlocked = errMsg.includes('PROHIBITED_CONTENT') || errMsg.includes('prompt_blocked') || errMsg.includes('safety') || errMsg.includes('blocked');
+      if (isBlocked) {
+        console.warn('Schedule generation safety block encountered, falling back to persona routine:', error);
+      } else {
+        console.warn('Generate schedule fallback triggered:', error);
+      }
+      
       const template = templates[friend.id] || "常规日程";
       const fallbackItems = [
         { time: "08:00", task: `${friend.name}的晨间签到与洗漱 (${template})` },
-        { time: "10:00", task: "专注核心工作与任务推进" },
+        { time: "10:00", task: "专注核心工作与日常事务推进" },
         { time: "12:30", task: "午餐时间与放松休憩" },
         { time: "15:00", task: "下午工作与协作交流" },
         { time: "18:30", task: "晚餐与休闲时间" },
@@ -348,7 +362,7 @@ export default function CalendarApp({
               className="flex flex-col items-center gap-2 group"
             >
               <div className="w-16 h-16 rounded-[2rem] overflow-hidden shadow-md border-2 border-transparent group-hover:border-pink-300 transition-all relative">
-                <img src={friend.avatar} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                <img referrerPolicy="no-referrer"  src={friend.avatar} className="w-full h-full object-cover"  />
                 {schedules[friend.id]?.date === dateString && (
                   <div className="absolute bottom-0 right-0 w-4 h-4 bg-green-500 border-2 border-white rounded-full" />
                 )}
@@ -409,7 +423,7 @@ export default function CalendarApp({
         <div className="flex-1 overflow-y-auto px-6 pb-20 space-y-4">
           <div className="bg-white/60 backdrop-blur-md rounded-[2.5rem] p-4 flex items-center justify-between mb-6">
             <div className="flex items-center gap-3 pl-2">
-              <img src={friend.avatar} className="w-10 h-10 rounded-full object-cover border-2 border-white shadow-sm" referrerPolicy="no-referrer" />
+              <img referrerPolicy="no-referrer"  src={friend.avatar} className="w-10 h-10 rounded-full object-cover border-2 border-white shadow-sm"  />
               <span className="text-sm font-black text-pink-400">今日安排</span>
             </div>
             <button 

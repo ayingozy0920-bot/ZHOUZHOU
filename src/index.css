@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@400;700&family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@300;400;500;600;700&family=Zhi+Mang+Xing&family=Dynalight&family=LXGW+WenKai+TC:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@400;700&family=JetBrains+Mono:wght@400;700&family=Space+Grotesk:wght@300;400;500;600;700&family=Zhi+Mang+Xing&family=Dynalight&family=LXGW+WenKai+TC:wght@400;700&family=ZCOOL+KuaiLe&family=Ma+Shan+Zheng&family=Noto+Serif+SC:wght@400;700&family=Liu+Jian+Mao+Cao&display=swap');
 @import "tailwindcss";
 
 @theme {
@@ -71,7 +71,9 @@
     height: 100vh !important;
     height: 100dvh !important;
     margin: 0 !important;
-    padding: 0 !important;
+    padding-top: max(env(safe-area-inset-top), 34px) !important;
+    padding-bottom: max(env(safe-area-inset-bottom), 15px) !important;
+    box-sizing: border-box !important;
     z-index: 999999 !important;
     border-radius: 0 !important;
     border: none !important;
