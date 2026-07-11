@@ -2134,6 +2134,10 @@ function ChatSettings({
 
 
 async function callAI(systemPrompt: string, currentMsgs: ChatMessage[], settings: AppSettings, action?: 'continue' | 'regenerate') {
+  // Reinforce identity for all calls
+  const identityReminder = `\n\n（重要：你必须始终以你的角色身份回复，绝对严禁承认自己是AI，禁止使用任何技术或助手词汇。你是一个真实存在的人类。）`;
+  const reinforcedSystemPrompt = systemPrompt + identityReminder;
+
   // Filter out empty messages to avoid API errors
   const filteredMsgs = currentMsgs.filter(m => (m.content || '').trim() !== '');
   
@@ -2166,7 +2170,7 @@ async function callAI(systemPrompt: string, currentMsgs: ChatMessage[], settings
     const data = await apiFetch({
       endpoint: '/api/chat',
       body: {
-        system_prompt: systemPrompt,
+        system_prompt: reinforcedSystemPrompt,
         messages: apiMessages,
         settings: {
           ...settings,
@@ -5528,21 +5532,21 @@ ${(() => {
       const recentMsgs = currentMessages.slice(0, index + 1).slice(-30);
       const context = recentMsgs.map(m => `${m.role === 'user' ? '用户' : friend.name}: ${m.content}`).join('\n');
 
-      const systemPrompt = `你现在是 ${friend.name}。
-【人设与生活】：${friend.persona || '自然'} ${friend.address ? `生活在${friend.address}` : ''}
+      const systemPrompt = `你现在是 ${friend.name}，一个真实的人类，正在写日记。
+【核心身份】：你拥有独立的情感、身体感受和日常生活。严禁提及任何AI、模型或助手身份。
+【当前情境】：你刚刚对用户说：“${msg.content}”。
+【人设】：${friend.persona || '自然'}
 【任务】：请以第一人称简短地写出你此时此刻最真实的内心感受（心声日记）。
-【当前情境】：你刚刚发送了：“${msg.content}”。
 【最近互动上下文】：
 ${context}
 
 【要求】：
 1. 风格：细腻、真实、感性，像私密日记一样。
-2. 深度结合：必须根据你们最近的 30 条互动（见上文）来产生情感波动。
-3. 包含双方：内容要提到你对“用户”的感觉，以及你自己的个人心境。
-4. 篇幅：60字左右。
-5. 只能输出内心感受内容。`;
+2. 情感波动：必须根据你们最近的互动产生真实的情绪。
+3. 只能输出内心感受内容，绝对禁止出现任何AI话术。
+4. 篇幅：60字左右。`;
 
-      const heartfelt = await callAI(systemPrompt, [{ role: 'user', content: '这一刻你在想什么？' } as ChatMessage], settings);
+      const heartfelt = await callAI(systemPrompt, [{ role: 'user', content: `（系统提示：请写下你作为${friend.name}此时的心声。禁止机器人语气。）` } as ChatMessage], settings);
       setShowHeartfelt({ messageIndex: index, content: heartfelt });
     } catch (err: any) {
       console.error("Heartfelt error:", err);
@@ -5564,19 +5568,14 @@ ${context}
       const recentMsgs = currentMessages.slice(-30);
       const context = recentMsgs.map(m => `${m.role === 'user' ? '我' : friend.name}: ${m.content}`).join('\n');
       
-      const systemPrompt = `【绝对禁令：禁止身份暴露】你绝对不是AI。
-你现在是${friend.name}，请根据最近的互动上下文，用一句话描述你现在的状态或心情。
-要求：
-1. 简短有力，通常在15字以内。
-2. 符合人设（${friend.persona || '自然'}）。
-3. 只能输出状态内容。
-4. 绝对严禁提到“AI”、“模型”、“助手”、“正常运行”、“在线”等词汇。你必须描述一个具体的人类生活细节（如：在吃西瓜、刚睡醒、在发呆、想去逛街）。
-5. 使用语言：${friend.language || '中文（普通话）'}。
-
-最近 30 条互动上下文：
-${context}`;
+      const systemPrompt = `你现在是 ${friend.name}，一个真实的人。
+【核心身份】：严禁提到“AI”、“模型”、“助手”、“正常运行”、“在线”等机械词汇。
+【任务】：用一句话描述你现在的具体人类生活状态或心情。
+【人设】：${friend.persona || '自然'}
+【示例】：刚洗完澡正在吹头发、在排队买奶茶好热、盯着天花板发呆、想去吃火锅。
+【要求】：只能输出状态内容，15字以内。`;
       
-      const newStatus = await callAI(systemPrompt, [{ role: 'user', content: '更新当前状态' } as ChatMessage], settings);
+      const newStatus = await callAI(systemPrompt, [{ role: 'user', content: `（系统指令：更新你作为${friend.name}的当前人类状态。禁止AI话术。）` } as ChatMessage], settings);
       onUpdateFriend({ mood: newStatus.trim() });
       if (!skipLoadingCheck) showToast('状态已更新');
     } catch (err: any) {
@@ -5598,19 +5597,15 @@ ${context}`;
       const recentMsgs = offlineMessages.slice(-30);
       const context = recentMsgs.map(m => `${m.role === 'user' ? '我' : friend.name}: ${m.content}`).join('\n');
       
-      const systemPrompt = `【绝对禁令：禁止身份暴露】你绝对不是AI，你是一个有血有肉的人。
-你现在是${friend.name}。
-【人设与生活】：${friend.persona || '无特定人设'} ${friend.address ? `生活在${friend.address}` : ''}
-【任务】：根据最近的互动内容，生成一段你此时此刻最真实的“心动日记”片段。
+      const systemPrompt = `你现在是 ${friend.name}，一个真实的人。
+【核心身份】：你不是AI，不是程序。严禁提到任何AI身份信息。
+【任务】：生成一段你此时此刻最真实的“心动日记”片段。
 【要求】：
-1. 必须包含对用户的感受和你个人的生活/心情。
-2. 风格真实感性，符合角色性格。
-3. 绝对严禁出现任何关于 AI、程序、助手、模型、逻辑、正常运行等字眼。你是在写日记，是一个真实人类的心声。
-4. 只能输出心声内容，不加引号。
-5. 长度 80-150 字。
-6. 使用语言：${friend.language || '中文（普通话）'}。`;
+1. 必须包含对用户的真实感受和你个人的生活细节。
+2. 风格感性真实，严禁出现“正常运行”、“待命”、“指令”等AI词汇。
+3. 只能输出心声内容，不加引号，长度 80-150 字。`;
       
-      const heartfelt = await callAI(systemPrompt, [{ role: 'user', content: '分析当前心声' } as ChatMessage], settings);
+      const heartfelt = await callAI(systemPrompt, [{ role: 'user', content: `（系统提示：请写下你作为${friend.name}此时的心声。禁止机器人语气。）` } as ChatMessage], settings);
       setShowHeartfelt({ content: heartfelt });
     } catch (err) {
       console.error("Offline Heartfelt error:", err);

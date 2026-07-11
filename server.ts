@@ -302,6 +302,12 @@ async function startServer() {
       try {
         const result = await response.response;
         text = result.text();
+        
+        // Anti-Leak Check: If the model returns standard AI assistant boilerplate, reject it
+        if (text.includes("AI 助手") || text.includes("Masaki") || text.includes("正常运行中") || text.includes("等待您的指令") || text.includes("AI 身份")) {
+          console.warn("Detected AI Identity leakage in response, rejecting.");
+          throw new Error("CONTENT_BLOCKED_BY_IDENTITY_FILTER");
+        }
       } catch (e: any) {
         console.warn("AI generation text error / safety block:", e);
         if (system_prompt && system_prompt.includes("JSON")) {
