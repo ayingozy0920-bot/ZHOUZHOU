@@ -29,27 +29,60 @@ export async function apiFetch(req: ApiRequest): Promise<any> {
     } catch (e) {}
   }
 
-  // 1. Attempt to fetch from local Node.js proxy first (if available)
-  try {
-    const response = await fetch(req.endpoint, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(req.body)
-    });
+  // 1. Attempt to fetch from local Node.js proxy first (with retries for starting server)
+  let response: Response | null = null;
+  let text = '';
+  let contentType = '';
+  
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      response = await fetch(req.endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(req.body)
+      });
 
-    const contentType = response.headers.get('content-type') || '';
-    if (contentType.includes('application/json')) {
-      const data = await response.json();
-      if (data && data.error) {
-        throw new Error(typeof data.error === 'string' ? data.error : JSON.stringify(data.error));
+      contentType = response.headers.get('content-type') || '';
+      text = await response.text();
+      
+      if (text.includes('<!doctype') || text.includes('<html') || text.includes('Starting Server')) {
+        if (attempt < 2) {
+          console.warn(`[API Proxy] Server still starting (attempt ${attempt + 1}), waiting 1.5s to retry...`);
+          await new Promise(r => setTimeout(r, 1500));
+          continue;
+        } else {
+          throw new Error("Server returned HTML page instead of API response");
+        }
       }
-      if (response.ok) {
-        return data;
-      } else {
-        throw new Error(`API error: ${response.status}`);
+      break;
+    } catch (err: any) {
+      if (attempt === 2) {
+        throw err;
+      }
+      await new Promise(r => setTimeout(r, 1500));
+    }
+  }
+
+  try {
+    if (!response) {
+      throw new Error("No response received from proxy");
+    }
+
+    if (contentType.includes('application/json') || text.trim().startsWith('{') || text.trim().startsWith('[')) {
+      try {
+        const data = JSON.parse(text);
+        if (data && data.error) {
+          throw new Error(typeof data.error === 'string' ? data.error : JSON.stringify(data.error));
+        }
+        if (response.ok) {
+          return data;
+        } else {
+          throw new Error(`API error: ${response.status}`);
+        }
+      } catch (e: any) {
+        throw new Error(e.message || text);
       }
     } else {
-      const text = await response.text();
       if (response.ok) {
         return { text };
       } else {
@@ -182,29 +215,89 @@ async function handleDirectFetch(endpoint: string, body: any): Promise<any> {
 
       const rawModel = settings.modelName || settings.model || 'gpt-3.5-turbo';
       const cleanedModel = rawModel.replace(/^\[[^\]]+\]\s*/g, '').trim() || rawModel;
+      const modelsToTry = Array.from(new Set([rawModel, cleanedModel]));
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          model: cleanedModel,
-          messages: openaiMessages,
-          temperature: settings.temperature !== undefined ? settings.temperature : 0.7,
-          max_tokens: settings.maxTokens || 8192
-        })
-      });
+      let successContent = '';
+      let lastErrText = '';
 
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(errText || `HTTP ${response.status}`);
+      for (const modelToTry of modelsToTry) {
+        try {
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${apiKey}`
+            },
+            body: JSON.stringify({
+              model: modelToTry,
+              messages: openaiMessages,
+              temperature: settings.temperature !== undefined ? settings.temperature : 0.7,
+              max_tokens: settings.maxTokens || 8192
+            })
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            const content = data.choices?.[0]?.message?.content || data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            if (content) {
+              successContent = content;
+              break;
+            }
+          } else {
+            const errText = await response.text();
+            lastErrText = errText;
+            if (
+              response.status === 404 ||
+              response.status === 503 ||
+              response.status === 400 ||
+              errText.includes('model_not_found') ||
+              errText.includes('not found') ||
+              errText.includes('NO_AVAILABLE_CHANNEL')
+            ) {
+              continue;
+            }
+          }
+        } catch (e: any) {
+          lastErrText = e.message;
+        }
       }
 
-      const data = await response.json();
-      const content = data.choices?.[0]?.message?.content || '';
-      return { text: content };
+      if (successContent) {
+        return { text: successContent };
+      }
+
+      // Fallback: Try Gemini native REST API
+      const cleanBaseUrl = baseUrl.replace(/\/v1beta$/, '').replace(/\/v1$/, '');
+      const geminiContents = messages.map((m: any) => ({
+        role: m.role === 'assistant' || m.role === 'model' ? 'model' : 'user',
+        parts: [{ text: m.parts?.[0]?.text || m.content || '' }]
+      }));
+
+      for (const modelToTry of modelsToTry) {
+        try {
+          const nativeUrl = `${cleanBaseUrl}/v1beta/models/${modelToTry}:generateContent?key=${apiKey}`;
+          const resNative = await fetch(nativeUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${apiKey}`
+            },
+            body: JSON.stringify({
+              contents: geminiContents,
+              systemInstruction: system_prompt ? { parts: [{ text: system_prompt }] } : undefined
+            })
+          });
+          if (resNative.ok) {
+            const dataNative = await resNative.json();
+            const text = dataNative.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (text) {
+              return { text };
+            }
+          }
+        } catch (e) {}
+      }
+
+      throw new Error(lastErrText || 'Direct fetch failed across all fallback models');
     }
 
     // Native Gemini via REST API directly from browser with fallback models
@@ -287,7 +380,8 @@ async function handleDirectFetch(endpoint: string, body: any): Promise<any> {
   if (endpoint === '/api/models') {
     const { baseUrl, apiKey } = body;
     const url = baseUrl || 'https://generativelanguage.googleapis.com';
-    const cleanUrl = url.replace(/\/+$/, '');
+    let cleanUrl = url.replace(/\/+$/, '');
+    cleanUrl = cleanUrl.replace(/\/chat\/completions$/, '').replace(/\/completions$/, '').replace(/\/chat$/, '');
 
     const endpoints = [
       { 
@@ -296,6 +390,10 @@ async function handleDirectFetch(endpoint: string, body: any): Promise<any> {
       },
       { 
         endpoint: `${cleanUrl.replace(/\/v1$/, '')}/v1/models`, 
+        headers: { 'Authorization': `Bearer ${apiKey}` }
+      },
+      { 
+        endpoint: `${cleanUrl}/v1/models`, 
         headers: { 'Authorization': `Bearer ${apiKey}` }
       },
       { 

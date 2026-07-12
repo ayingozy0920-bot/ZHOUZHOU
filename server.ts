@@ -203,30 +203,89 @@ async function startServer() {
 
             const rawModel = settings.modelName || settings.model || 'gpt-3.5-turbo';
             const cleanedModel = rawModel.replace(/^\[[^\]]+\]\s*/g, '').trim() || rawModel;
+            const modelsToTry = Array.from(new Set([rawModel, cleanedModel]));
 
-            const response = await fetch(url, {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`
-              },
-              body: JSON.stringify({
-                model: cleanedModel,
-                messages: openaiMessages,
-                temperature: settings.temperature || 0.7,
-                max_tokens: settings.maxTokens || 1000
-              })
-            });
+            let successData: any = null;
+            let lastProxyError = '';
 
-            if (!response.ok) {
-              const errText = await response.text();
-              console.error(`[Proxy Error] Proxy failed with ${response.status}: ${errText}`);
-              return res.status(response.status).json({ error: errText || `Proxy error ${response.status}` });
-            } else {
-              const data: any = await response.json();
-              const content = data.choices?.[0]?.message?.content || '';
-              return res.json({ text: content });
+            for (const modelToTry of modelsToTry) {
+              try {
+                const response = await fetch(url, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                  },
+                  body: JSON.stringify({
+                    model: modelToTry,
+                    messages: openaiMessages,
+                    temperature: settings.temperature || 0.7,
+                    max_tokens: settings.maxTokens || 1000
+                  })
+                });
+
+                if (response.ok) {
+                  const data: any = await response.json();
+                  const content = data.choices?.[0]?.message?.content || data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+                  if (content) {
+                    successData = { text: content };
+                    break;
+                  }
+                } else {
+                  const errText = await response.text();
+                  lastProxyError = errText;
+                  if (
+                    response.status === 404 ||
+                    response.status === 503 ||
+                    response.status === 400 ||
+                    errText.includes('model_not_found') ||
+                    errText.includes('not found') ||
+                    errText.includes('NO_AVAILABLE_CHANNEL')
+                  ) {
+                    continue;
+                  }
+                }
+              } catch (e: any) {
+                lastProxyError = e.message;
+              }
             }
+
+            if (successData) {
+              return res.json(successData);
+            }
+
+            // Fallback: Try Gemini native REST API format on the custom baseUrl if OpenAI chat completions failed
+            const cleanBaseUrl = baseUrl.replace(/\/v1beta$/, '').replace(/\/v1$/, '');
+            const geminiContents = processedMessages.map((m: any) => ({
+              role: m.role === 'assistant' || m.role === 'model' ? 'model' : 'user',
+              parts: [{ text: m.parts?.[0]?.text || m.content || '' }]
+            }));
+
+            for (const modelToTry of modelsToTry) {
+              try {
+                const nativeUrl = `${cleanBaseUrl}/v1beta/models/${modelToTry}:generateContent?key=${apiKey}`;
+                const resNative = await fetch(nativeUrl, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                  },
+                  body: JSON.stringify({
+                    contents: geminiContents,
+                    systemInstruction: system_prompt ? { parts: [{ text: system_prompt }] } : undefined
+                  })
+                });
+                if (resNative.ok) {
+                  const dataNative = await resNative.json();
+                  const text = dataNative.candidates?.[0]?.content?.parts?.[0]?.text;
+                  if (text) {
+                    return res.json({ text });
+                  }
+                }
+              } catch (e) {}
+            }
+
+            return res.status(500).json({ error: lastProxyError || 'Proxy request failed across all models' });
           }
         } catch (proxyErr: any) {
           console.error(`[Proxy Exception]`, proxyErr);
@@ -522,10 +581,12 @@ async function startServer() {
 
   app.all("/api/models", async (req, res) => {
     console.log("[DEBUG] /api/models route hit");
-    const { baseUrl, apiKey } = req.body;
+    const baseUrl = req.body?.baseUrl || req.query?.baseUrl;
+    const apiKey = req.body?.apiKey || req.query?.apiKey;
     try {
       const url = baseUrl || 'https://generativelanguage.googleapis.com';
-      const cleanUrl = url.replace(/\/+$/, '');
+      let cleanUrl = url.replace(/\/+$/, '');
+      cleanUrl = cleanUrl.replace(/\/chat\/completions$/, '').replace(/\/completions$/, '').replace(/\/chat$/, '');
       
       const endpoints = [
         { 
@@ -537,6 +598,11 @@ async function startServer() {
           endpoint: `${cleanUrl.replace(/\/v1$/, '')}/v1/models`, 
           headers: { 'Authorization': `Bearer ${apiKey}` },
           desc: 'OpenAI V1 补全接口'
+        },
+        { 
+          endpoint: `${cleanUrl}/v1/models`, 
+          headers: { 'Authorization': `Bearer ${apiKey}` },
+          desc: 'OpenAI 显式 V1 接口'
         },
         { 
           endpoint: `${cleanUrl}/v1beta/models?key=${apiKey}`, 
@@ -1080,45 +1146,12 @@ async function startServer() {
     }
   });
 
-  // Railway 代理中间件：如果在 AI Studio 运行，则将请求转发到 Railway 后端，隐藏真实地址
-  const RAILWAY_URL = "https://zhouzhou-production.up.railway.app";
-  const isRailway = process.env.RAILWAY_ENVIRONMENT_ID || process.env.RAILWAY_PROJECT_ID;
-  
-  if (!isRailway) {
-    app.use("/api", async (req, res, next) => {
-      const targetUrl = RAILWAY_URL + req.originalUrl;
-      console.log(`[Proxy] Forwarding unmatched route to Railway: ${targetUrl}`);
-      try {
-        const headersToForward: Record<string, string> = {
-          'content-type': (req.headers['content-type'] as string) || 'application/json',
-          'accept': (req.headers['accept'] as string) || 'application/json'
-        };
-        if (req.headers['authorization']) {
-          headersToForward['authorization'] = req.headers['authorization'] as string;
-        }
 
-        const response = await fetch(targetUrl, {
-          method: req.method,
-          headers: headersToForward,
-          body: ['GET', 'HEAD'].includes(req.method) ? undefined : JSON.stringify(req.body)
-        });
-        
-        response.headers.forEach((value, key) => {
-          if (!['transfer-encoding', 'content-encoding', 'connection'].includes(key.toLowerCase())) {
-            res.setHeader(key, value);
-          }
-        });
-        res.setHeader('x-proxied-by', 'ai-studio');
-        res.status(response.status);
-        
-        const arrayBuffer = await response.arrayBuffer();
-        res.send(Buffer.from(arrayBuffer));
-      } catch (e: any) {
-        console.error("[Proxy Error] Failed to reach Railway, falling back to local:", e.message);
-        res.status(503).json({ error: "Railway backend unreachable, please try again later." });
-      }
-    });
-  }
+
+  // 404 fallback for any unmatched API route to return JSON instead of HTML
+  app.use("/api/*", (req, res) => {
+    res.status(404).json({ error: `API endpoint not found: ${req.method} ${req.originalUrl}` });
+  });
 
   // Vite 中间件
   if (process.env.NODE_ENV !== "production") {
