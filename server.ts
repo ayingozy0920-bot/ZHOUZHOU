@@ -306,8 +306,8 @@ async function startServer() {
       ];
 
       const requestedModel = settings.modelName || settings.model || "gemini-2.0-flash";
-      const fallbackModels = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"];
-      const modelsToTry = Array.from(new Set([requestedModel, ...fallbackModels]));
+      const cleanedModel = requestedModel.replace(/^\[[^\]]+\]\s*/g, '').trim() || requestedModel;
+      const modelsToTry = Array.from(new Set([requestedModel, cleanedModel]));
 
       let response: any = null;
       let lastError: any = null;

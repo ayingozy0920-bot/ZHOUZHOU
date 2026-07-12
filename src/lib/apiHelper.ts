@@ -301,9 +301,9 @@ async function handleDirectFetch(endpoint: string, body: any): Promise<any> {
     }
 
     // Native Gemini via REST API directly from browser with fallback models
-    const requestedModel = settings.modelName || 'gemini-1.5-flash';
-    const fallbackModels = ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro', 'gemini-pro'];
-    const modelsToTry = Array.from(new Set([requestedModel, ...fallbackModels]));
+    const requestedModel = settings.modelName || settings.model || 'gemini-1.5-flash';
+    const cleanedModel = requestedModel.replace(/^\[[^\]]+\]\s*/g, '').trim() || requestedModel;
+    const modelsToTry = Array.from(new Set([requestedModel, cleanedModel]));
     const cleanBaseUrl = baseUrl.replace(/\/v1beta$/, '').replace(/\/v1$/, '');
 
     const contents = messages.map((m: any) => ({
