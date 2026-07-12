@@ -29,37 +29,52 @@ export async function apiFetch(req: ApiRequest): Promise<any> {
     } catch (e) {}
   }
 
-  // 1. Attempt to fetch from local Node.js proxy first (with retries for starting server)
+  // 1. Attempt to fetch from local Node.js proxy first (or Railway backend for static hosts like Netlify/GitHub Pages)
   let response: Response | null = null;
   let text = '';
   let contentType = '';
   
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      response = await fetch(req.endpoint, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(req.body)
-      });
+  const defaultRailwayBackend = 'https://zhouzhou-production.up.railway.app';
+  const customBackendUrl = (typeof window !== 'undefined' ? localStorage.getItem('CUSTOM_BACKEND_URL') : null) || defaultRailwayBackend;
+  const isStaticHost = typeof window !== 'undefined' && (window.location.hostname.includes('netlify.app') || window.location.hostname.includes('github.io') || window.location.hostname.includes('pages.dev'));
+  
+  const endpointsToTry = isStaticHost 
+    ? [`${customBackendUrl.replace(/\/+$/, '')}${req.endpoint}`, req.endpoint]
+    : [req.endpoint, `${customBackendUrl.replace(/\/+$/, '')}${req.endpoint}`];
 
-      contentType = response.headers.get('content-type') || '';
-      text = await response.text();
-      
-      if (text.includes('<!doctype') || text.includes('<html') || text.includes('Starting Server')) {
-        if (attempt < 2) {
-          console.warn(`[API Proxy] Server still starting (attempt ${attempt + 1}), waiting 1.5s to retry...`);
-          await new Promise(r => setTimeout(r, 1500));
-          continue;
+  for (const endpointToTry of endpointsToTry) {
+    let success = false;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        response = await fetch(endpointToTry, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(req.body)
+        });
+
+        contentType = response.headers.get('content-type') || '';
+        text = await response.text();
+        
+        if (text.includes('<!doctype') || text.includes('<html') || text.includes('Starting Server') || response.status === 404 || response.status === 405) {
+          if (attempt < 1 && endpointToTry.startsWith('/')) {
+            await new Promise(r => setTimeout(r, 1000));
+            continue;
+          } else {
+            throw new Error(`Server returned HTML page or status ${response.status} instead of API response`);
+          }
+        }
+        success = true;
+        break;
+      } catch (err: any) {
+        if (attempt === 1) {
+          // Try next endpoint in endpointsToTry
         } else {
-          throw new Error("Server returned HTML page instead of API response");
+          await new Promise(r => setTimeout(r, 1000));
         }
       }
+    }
+    if (success && response && response.ok) {
       break;
-    } catch (err: any) {
-      if (attempt === 2) {
-        throw err;
-      }
-      await new Promise(r => setTimeout(r, 1500));
     }
   }
 
