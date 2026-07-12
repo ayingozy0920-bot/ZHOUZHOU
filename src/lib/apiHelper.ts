@@ -36,7 +36,12 @@ export async function apiFetch(req: ApiRequest): Promise<any> {
   
   const defaultRailwayBackend = 'https://zhouzhou-production.up.railway.app';
   const customBackendUrl = (typeof window !== 'undefined' ? localStorage.getItem('CUSTOM_BACKEND_URL') : null) || defaultRailwayBackend;
-  const isStaticHost = typeof window !== 'undefined' && (window.location.hostname.includes('netlify.app') || window.location.hostname.includes('github.io') || window.location.hostname.includes('pages.dev'));
+  const isStaticHost = typeof window !== 'undefined' && (
+    window.location.hostname !== 'localhost' && 
+    window.location.hostname !== '127.0.0.1' && 
+    !window.location.hostname.includes('run.app') && 
+    !window.location.hostname.includes('ai.studio')
+  );
   
   const endpointsToTry = isStaticHost 
     ? [`${customBackendUrl.replace(/\/+$/, '')}${req.endpoint}`, req.endpoint]
