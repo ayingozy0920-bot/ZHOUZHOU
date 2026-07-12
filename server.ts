@@ -159,6 +159,12 @@ async function startServer() {
       }));
 
       let baseUrl = settings?.baseUrl;
+      if (baseUrl) {
+        baseUrl = baseUrl.trim();
+        if (!/^https?:\/\//i.test(baseUrl)) {
+          baseUrl = 'https://' + baseUrl;
+        }
+      }
       const apiKey = (baseUrl ? (settings?.apiKey || settings?.userApiKey) : (settings?.userApiKey || settings?.apiKey)) || process.env.GEMINI_API_KEY;
       
       if (baseUrl) {
@@ -341,7 +347,7 @@ async function startServer() {
         { category: "HARM_CATEGORY_UNSPECIFIED", threshold: "BLOCK_NONE" }
       ];
 
-      const requestedModel = settings.modelName || settings.model || "gemini-2.0-flash";
+      const requestedModel = settings.modelName || settings.model || "gemini-2.5-flash";
       const cleanedModel = requestedModel.replace(/^\[[^\]]+\]\s*/g, '').trim() || requestedModel;
       const modelsToTry = Array.from(new Set([requestedModel, cleanedModel]));
 

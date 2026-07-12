@@ -2174,7 +2174,7 @@ async function callAI(systemPrompt: string, currentMsgs: ChatMessage[], settings
         messages: apiMessages,
         settings: {
           ...settings,
-          modelName: settings.modelName || "gemini-1.5-flash",
+          modelName: settings.modelName || "gemini-2.5-flash",
         }
       }
     });

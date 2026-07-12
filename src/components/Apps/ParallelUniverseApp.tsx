@@ -1602,7 +1602,7 @@ function AppSettingsPage({ onBack }: { onBack: () => void }) {
   const [apiKey, setApiKey] = useState(localStorage.getItem('CUSTOM_GEMINI_API_KEY') || '');
   const [baseUrl, setBaseUrl] = useState(localStorage.getItem('CUSTOM_GEMINI_BASE_URL') || '');
   const [modelsList, setModelsList] = useState<string[]>([]);
-  const [selectedModel, setSelectedModel] = useState(localStorage.getItem('CUSTOM_GEMINI_MODEL') || 'gemini-2.0-flash');
+  const [selectedModel, setSelectedModel] = useState(localStorage.getItem('CUSTOM_GEMINI_MODEL') || 'gemini-2.5-flash');
   const [isTesting, setIsTesting] = useState(false);
   const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [apiLog, setApiLog] = useState('');
@@ -1700,65 +1700,130 @@ function AppSettingsPage({ onBack }: { onBack: () => void }) {
         if (s) globalSettings = JSON.parse(s) as AppSettings;
       } catch(e) {}
 
-      const url = baseUrl || globalSettings?.baseUrl || 'https://generativelanguage.googleapis.com';
+      let url = baseUrl || globalSettings?.baseUrl || 'https://generativelanguage.googleapis.com';
       const key = apiKey || globalSettings?.apiKey;
       
       if (!key) {
         throw new Error('未找到 API Key。');
       }
 
+      url = url.trim();
+      if (url && !/^https?:\/\//i.test(url)) {
+        url = 'https://' + url;
+      }
+
       const cleanUrl = url.replace(/\/+$/, '');
-      const modelToTest = selectedModel || 'gemini-1.5-flash';
+      const modelToTest = selectedModel || 'gemini-2.5-flash';
       
       setApiLog(prev => prev + `测试模型: ${modelToTest}\n`);
 
       const isGeminiModel = modelToTest.startsWith('gemini');
       const isGoogleEndpoint = cleanUrl.includes('googleapis.com') || cleanUrl.includes('google');
       
-      const isOpenAI = cleanUrl.endsWith('/v1') || 
-                       cleanUrl.endsWith('/v1/') || 
-                       !isGoogleEndpoint || 
-                       !isGeminiModel;
-      
-      let testEndpoint = '';
-      let testBody = {};
-      let headers: any = {
-        'Content-Type': 'application/json'
-      };
+      const testCandidates: {
+        type: 'openai' | 'gemini-native';
+        endpoint: string;
+        headers: any;
+        body: any;
+      }[] = [];
 
-      if (isOpenAI) {
-        let baseUrlClean = cleanUrl.replace(/\/+$/, '');
-        if (!baseUrlClean.endsWith('/v1') && !baseUrlClean.includes('/v1/')) {
-          baseUrlClean += '/v1';
-        }
-        testEndpoint = `${baseUrlClean}/chat/completions`;
-        headers['Authorization'] = `Bearer ${key}`;
-        testBody = {
-          model: modelToTest,
-          messages: [{ role: 'user', content: 'hello' }],
-          max_tokens: 10
-        };
-      } else {
-        testEndpoint = `${cleanUrl}/v1beta/models/${modelToTest}:generateContent?key=${key}`;
-        testBody = {
-          contents: [{ parts: [{ text: "hello" }] }],
-          generationConfig: { maxOutputTokens: 10 }
-        };
+      const cleanBaseUrl = cleanUrl.replace(/\/v1beta$/, '').replace(/\/v1$/, '');
+      let openaiBaseUrl = cleanUrl;
+      if (!openaiBaseUrl.endsWith('/v1') && !openaiBaseUrl.includes('/v1/')) {
+        openaiBaseUrl += '/v1';
       }
 
-      setApiLog(prev => prev + `请求路径: ${testEndpoint}\n`);
-      
-      const res = await fetch(testEndpoint, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(testBody)
-      });
+      if (isGeminiModel) {
+        // For Gemini models, try both native Google format and OpenAI format
+        testCandidates.push({
+          type: 'openai',
+          endpoint: `${openaiBaseUrl}/chat/completions`,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${key}`
+          },
+          body: {
+            model: modelToTest,
+            messages: [{ role: 'user', content: 'hello' }],
+            max_tokens: 10
+          }
+        });
 
-      if (res.ok) {
-         setApiLog(prev => prev + `✅ 测试成功！模型可正常调用。`);
+        testCandidates.push({
+          type: 'gemini-native',
+          endpoint: `${cleanBaseUrl}/v1beta/models/${modelToTest}:generateContent?key=${key}`,
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: {
+            contents: [{ parts: [{ text: "hello" }] }],
+            generationConfig: { maxOutputTokens: 10 }
+          }
+        });
       } else {
-         const errBody = await res.text().catch(() => 'No body');
-         throw new Error(`HTTP ${res.status}: ${errBody}`);
+        // For non-Gemini models, use OpenAI-style
+        testCandidates.push({
+          type: 'openai',
+          endpoint: `${openaiBaseUrl}/chat/completions`,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${key}`
+          },
+          body: {
+            model: modelToTest,
+            messages: [{ role: 'user', content: 'hello' }],
+            max_tokens: 10
+          }
+        });
+      }
+
+      let success = false;
+      let lastError = '';
+      let reply = '';
+      let succeededType: 'openai' | 'gemini-native' | null = null;
+      let succeededEndpoint = '';
+
+      for (const candidate of testCandidates) {
+        const maskedEndpoint = candidate.endpoint.replace(/key=[^&]+/, 'key=***');
+        setApiLog(prev => prev + `正在尝试请求 (${candidate.type === 'openai' ? 'OpenAI 兼容格式' : 'Gemini 原生格式'}): ${maskedEndpoint}\n`);
+        try {
+          const res = await fetch(candidate.endpoint, {
+            method: 'POST',
+            headers: candidate.headers,
+            body: JSON.stringify(candidate.body)
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            if (candidate.type === 'openai') {
+              reply = data.choices?.[0]?.message?.content || JSON.stringify(data);
+            } else {
+              reply = data.candidates?.[0]?.content?.parts?.[0]?.text || JSON.stringify(data);
+            }
+            succeededType = candidate.type;
+            succeededEndpoint = candidate.endpoint;
+            success = true;
+            break;
+          } else {
+            const errBody = await res.text().catch(() => 'No body');
+            lastError = `HTTP ${res.status}: ${errBody}`;
+            setApiLog(prev => prev + `❌ 该格式失败 (状态码: ${res.status}): ${errBody.substring(0, 150)}\n`);
+          }
+        } catch (e: any) {
+          lastError = e.message;
+          setApiLog(prev => prev + `⚠️ 请求异常: ${lastError}\n`);
+        }
+      }
+
+      if (success) {
+        setApiLog(prev => prev + `✅ 测试成功！最终建立连接格式: ${succeededType === 'openai' ? 'OpenAI 兼容格式' : 'Gemini 原生格式'}\n收到回复: "${reply}"\n`);
+        
+        if (reply.includes('gemini-3.5-flash') || reply.includes('Masaki') || reply.includes('masaki')) {
+          const proxyDomain = cleanUrl.replace(/^https?:\/\//i, '').split('/')[0];
+          setApiLog(prev => prev + `⚠️ [安全/代理警告提示] \n发现代理平台返回了默认的 gemini-3.5-flash 或者是 Masaki 默认提醒。这表明：\n1. 您的接口连接完全通畅，API Key 也完全正确，代理平台成功响应了您的请求。\n2. 但您请求的具体模型（如 ${modelToTest}）没有被该中转代理平台（${proxyDomain}）正确接收或执行。通常是因为该模型在您的 API Key 权限分组中未开启、或者是中转平台该模型的渠道暂时失效，因而中转平台强制降级、自动重定向到了其免费保持默认备用模型。请前往您的中转站平台（${proxyDomain}）官网控制台登录并检查您的账号分组权限、模型启用状态和配置！\n`);
+        }
+      } else {
+        throw new Error(lastError || '所有尝试格式均失败');
       }
     } catch (e) {
       setApiLog(prev => prev + `❌ [错误] 测试失败: ${e instanceof Error ? e.message : String(e)}\n`);
@@ -1773,10 +1838,16 @@ function AppSettingsPage({ onBack }: { onBack: () => void }) {
   };
 
   const handleSaveApi = () => {
-    if (apiKey) localStorage.setItem('CUSTOM_GEMINI_API_KEY', apiKey);
+    let formattedBaseUrl = baseUrl.trim();
+    if (formattedBaseUrl && !/^https?:\/\//i.test(formattedBaseUrl)) {
+      formattedBaseUrl = 'https://' + formattedBaseUrl;
+      setBaseUrl(formattedBaseUrl);
+    }
+
+    if (apiKey) localStorage.setItem('CUSTOM_GEMINI_API_KEY', apiKey.trim());
     else localStorage.removeItem('CUSTOM_GEMINI_API_KEY');
     
-    if (baseUrl) localStorage.setItem('CUSTOM_GEMINI_BASE_URL', baseUrl);
+    if (formattedBaseUrl) localStorage.setItem('CUSTOM_GEMINI_BASE_URL', formattedBaseUrl);
     else localStorage.removeItem('CUSTOM_GEMINI_BASE_URL');
     
     localStorage.setItem('CUSTOM_GEMINI_MODEL', selectedModel);

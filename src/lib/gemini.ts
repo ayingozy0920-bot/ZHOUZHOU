@@ -68,5 +68,5 @@ export const getGeminiClient = (settings?: AppSettings) => {
 };
 
 export const getGeminiModel = (settings?: AppSettings) => {
-  return settings?.modelName || (settings as any)?.model || "gemini-1.5-flash";
+  return settings?.modelName || (settings as any)?.model || "gemini-2.5-flash";
 };

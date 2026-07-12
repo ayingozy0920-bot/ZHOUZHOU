@@ -18,12 +18,20 @@ export async function apiFetch(req: ApiRequest): Promise<any> {
         if (s) storedSettings = JSON.parse(s);
       } catch (e) {}
 
+      let rawBaseUrl = customUrl || req.body.settings?.baseUrl || storedSettings?.baseUrl;
+      if (rawBaseUrl) {
+        rawBaseUrl = rawBaseUrl.trim();
+        if (!/^https?:\/\//i.test(rawBaseUrl)) {
+          rawBaseUrl = 'https://' + rawBaseUrl;
+        }
+      }
+
       req.body.settings = {
         ...storedSettings,
         ...(req.body.settings || {}),
         apiKey: customKey || req.body.settings?.apiKey || storedSettings?.apiKey,
         userApiKey: customKey || req.body.settings?.userApiKey || storedSettings?.userApiKey,
-        baseUrl: customUrl || req.body.settings?.baseUrl || storedSettings?.baseUrl,
+        baseUrl: rawBaseUrl,
         modelName: customModel || req.body.settings?.modelName || storedSettings?.modelName || storedSettings?.model
       };
     } catch (e) {}
@@ -40,50 +48,53 @@ export async function apiFetch(req: ApiRequest): Promise<any> {
   const customBackendUrl = req.body?.settings?.customBackendUrl || 
     (typeof window !== 'undefined' ? localStorage.getItem('CUSTOM_BACKEND_URL') : null) || 
     defaultRailwayBackend;
-  const isStaticHost = typeof window !== 'undefined' && (
-    window.location.hostname !== 'localhost' && 
-    window.location.hostname !== '127.0.0.1' && 
-    !window.location.hostname.includes('run.app') && 
-    !window.location.hostname.includes('ai.studio')
-  );
-  
-  const endpointsToTry = isStaticHost 
-    ? [`${customBackendUrl.replace(/\/+$/, '')}${req.endpoint}`, req.endpoint]
-    : [req.endpoint, `${customBackendUrl.replace(/\/+$/, '')}${req.endpoint}`];
+  const endpointsToTry = [
+    req.endpoint,
+    `${customBackendUrl.replace(/\/+$/, '')}${req.endpoint}`
+  ];
 
   for (const endpointToTry of endpointsToTry) {
     let success = false;
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        response = await fetch(endpointToTry, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(req.body)
-        });
+    try {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          response = await fetch(endpointToTry, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(req.body)
+          });
 
-        contentType = response.headers.get('content-type') || '';
-        text = await response.text();
-        
-        if (text.includes('<!doctype') || text.includes('<html') || text.includes('Starting Server') || response.status === 404 || response.status === 405) {
-          if (attempt < 1 && endpointToTry.startsWith('/')) {
-            await new Promise(r => setTimeout(r, 1000));
-            continue;
-          } else {
+          contentType = response.headers.get('content-type') || '';
+          text = await response.text();
+          
+          if (text.includes('<!doctype') || text.includes('<html') || response.status === 404 || response.status === 405) {
             throw new Error(`Server returned HTML page or status ${response.status} instead of API response`);
           }
-        }
-        success = true;
-        break;
-      } catch (err: any) {
-        if (attempt === 1) {
-          // Try next endpoint in endpointsToTry
-        } else {
-          await new Promise(r => setTimeout(r, 1000));
+
+          if (text.includes('Starting Server')) {
+            if (attempt < 1 && endpointToTry.startsWith('/')) {
+              await new Promise(r => setTimeout(r, 1000));
+              continue;
+            } else {
+              throw new Error(`Server is starting up`);
+            }
+          }
+          success = true;
+          break;
+        } catch (err: any) {
+          if (attempt === 1 || text.includes('<!doctype') || text.includes('<html') || response?.status === 404 || response?.status === 405) {
+            // If it is an HTML/404 page or we already finished 2 attempts, fail immediately to fall back to next endpoint
+            throw err;
+          } else {
+            await new Promise(r => setTimeout(r, 1000));
+          }
         }
       }
-    }
-    if (success && response && response.ok) {
-      break;
+      if (success && response && response.ok) {
+        break;
+      }
+    } catch (endpointError: any) {
+      console.warn(`Endpoint attempt to ${endpointToTry} failed. Continuing to next backup endpoint. Error:`, endpointError);
     }
   }
 
@@ -216,7 +227,10 @@ async function handleDirectFetch(endpoint: string, body: any): Promise<any> {
     if (!apiKey) throw new Error('API Key is missing');
 
     let baseUrl = settings?.baseUrl || 'https://generativelanguage.googleapis.com';
-    baseUrl = baseUrl.replace(/\/+$/, '');
+    baseUrl = baseUrl.trim().replace(/\/+$/, '');
+    if (baseUrl && !/^https?:\/\//i.test(baseUrl)) {
+      baseUrl = 'https://' + baseUrl;
+    }
 
     // OpenAI compatibility check: if it's not official Google Gemini URL, treat as OpenAI compatible (like Masaki, OneAPI, NewAPI)
     const isOpenAI = !baseUrl.includes('generativelanguage.googleapis.com');
@@ -363,7 +377,7 @@ async function handleDirectFetch(endpoint: string, body: any): Promise<any> {
     }
 
     // Native Gemini via REST API directly from browser with fallback models
-    const requestedModel = settings.modelName || settings.model || 'gemini-1.5-flash';
+    const requestedModel = settings.modelName || settings.model || 'gemini-2.5-flash';
     const cleanedModel = requestedModel.replace(/^\[[^\]]+\]\s*/g, '').trim() || requestedModel;
     const modelsToTry = Array.from(new Set([requestedModel, cleanedModel]));
     const cleanBaseUrl = baseUrl.replace(/\/v1beta$/, '').replace(/\/v1$/, '');

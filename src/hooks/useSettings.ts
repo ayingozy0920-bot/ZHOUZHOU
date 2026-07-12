@@ -7,7 +7,7 @@ const STORAGE_KEY = 'zhouzhou_ji_settings';
 export const DEFAULT_SETTINGS: AppSettings = {
   baseUrl: '',
   apiKey: '',
-  modelName: 'gemini-1.5-flash',
+  modelName: 'gemini-2.5-flash',
   temperature: 0.7,
   autoSummaryThreshold: 10, // Default to 10 rounds
   callBackground: 'https://images.unsplash.com/photo-1516339901600-2e1a62dc0c45?auto=format&fit=crop&q=80&w=1920',
