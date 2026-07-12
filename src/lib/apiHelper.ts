@@ -217,6 +217,44 @@ async function handleDirectFetch(endpoint: string, body: any): Promise<any> {
     // OpenAI compatibility check: if it's not official Google Gemini URL, treat as OpenAI compatible (like Masaki, OneAPI, NewAPI)
     const isOpenAI = !baseUrl.includes('generativelanguage.googleapis.com');
     if (isOpenAI) {
+      const rawModel = settings.modelName || settings.model || 'gpt-3.5-turbo';
+      const cleanedModel = rawModel.replace(/^\[[^\]]+\]\s*/g, '').trim() || rawModel;
+      const modelsToTry = Array.from(new Set([rawModel, cleanedModel]));
+      const isGeminiModel = modelsToTry.some(m => m.toLowerCase().includes('gemini'));
+
+      const cleanBaseUrl = baseUrl.replace(/\/v1beta$/, '').replace(/\/v1$/, '');
+      const geminiContents = messages.map((m: any) => ({
+        role: m.role === 'assistant' || m.role === 'model' ? 'model' : 'user',
+        parts: [{ text: m.parts?.[0]?.text || m.content || '' }]
+      }));
+
+      // 1. If it's a Gemini model on custom base URL, try Gemini native REST API FIRST to preserve systemInstruction!
+      if (isGeminiModel) {
+        for (const modelToTry of modelsToTry) {
+          try {
+            const nativeUrl = `${cleanBaseUrl}/v1beta/models/${modelToTry}:generateContent?key=${apiKey}`;
+            const resNative = await fetch(nativeUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+              },
+              body: JSON.stringify({
+                contents: geminiContents,
+                systemInstruction: system_prompt ? { parts: [{ text: system_prompt }] } : undefined
+              })
+            });
+            if (resNative.ok) {
+              const dataNative = await resNative.json();
+              const text = dataNative.candidates?.[0]?.content?.parts?.[0]?.text;
+              if (text) {
+                return { text };
+              }
+            }
+          } catch (e) {}
+        }
+      }
+
       let url = baseUrl;
       if (!url.includes('/chat/completions')) {
         if (url.endsWith('/v1')) {
@@ -232,10 +270,6 @@ async function handleDirectFetch(endpoint: string, body: any): Promise<any> {
           content: m.parts?.[0]?.text || m.content || ''
         }))
       ];
-
-      const rawModel = settings.modelName || settings.model || 'gpt-3.5-turbo';
-      const cleanedModel = rawModel.replace(/^\[[^\]]+\]\s*/g, '').trim() || rawModel;
-      const modelsToTry = Array.from(new Set([rawModel, cleanedModel]));
 
       let successContent = '';
       let lastErrText = '';
@@ -286,35 +320,31 @@ async function handleDirectFetch(endpoint: string, body: any): Promise<any> {
         return { text: successContent };
       }
 
-      // Fallback: Try Gemini native REST API
-      const cleanBaseUrl = baseUrl.replace(/\/v1beta$/, '').replace(/\/v1$/, '');
-      const geminiContents = messages.map((m: any) => ({
-        role: m.role === 'assistant' || m.role === 'model' ? 'model' : 'user',
-        parts: [{ text: m.parts?.[0]?.text || m.content || '' }]
-      }));
-
-      for (const modelToTry of modelsToTry) {
-        try {
-          const nativeUrl = `${cleanBaseUrl}/v1beta/models/${modelToTry}:generateContent?key=${apiKey}`;
-          const resNative = await fetch(nativeUrl, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${apiKey}`
-            },
-            body: JSON.stringify({
-              contents: geminiContents,
-              systemInstruction: system_prompt ? { parts: [{ text: system_prompt }] } : undefined
-            })
-          });
-          if (resNative.ok) {
-            const dataNative = await resNative.json();
-            const text = dataNative.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (text) {
-              return { text };
+      // Fallback: Try Gemini native REST API (if not already tried)
+      if (!isGeminiModel) {
+        for (const modelToTry of modelsToTry) {
+          try {
+            const nativeUrl = `${cleanBaseUrl}/v1beta/models/${modelToTry}:generateContent?key=${apiKey}`;
+            const resNative = await fetch(nativeUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${apiKey}`
+              },
+              body: JSON.stringify({
+                contents: geminiContents,
+                systemInstruction: system_prompt ? { parts: [{ text: system_prompt }] } : undefined
+              })
+            });
+            if (resNative.ok) {
+              const dataNative = await resNative.json();
+              const text = dataNative.candidates?.[0]?.content?.parts?.[0]?.text;
+              if (text) {
+                return { text };
+              }
             }
-          }
-        } catch (e) {}
+          } catch (e) {}
+        }
       }
 
       throw new Error(lastErrText || 'Direct fetch failed across all fallback models');

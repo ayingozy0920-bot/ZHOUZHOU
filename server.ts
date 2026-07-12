@@ -167,6 +167,44 @@ async function startServer() {
           const isOpenAI = !baseUrl.includes('generativelanguage.googleapis.com');
           
           if (isOpenAI) {
+            const rawModel = settings.modelName || settings.model || 'gpt-3.5-turbo';
+            const cleanedModel = rawModel.replace(/^\[[^\]]+\]\s*/g, '').trim() || rawModel;
+            const modelsToTry = Array.from(new Set([rawModel, cleanedModel]));
+            const isGeminiModel = modelsToTry.some(m => m.toLowerCase().includes('gemini'));
+
+            const cleanBaseUrl = baseUrl.replace(/\/v1beta$/, '').replace(/\/v1$/, '');
+            const geminiContents = processedMessages.map((m: any) => ({
+              role: m.role === 'assistant' || m.role === 'model' ? 'model' : 'user',
+              parts: [{ text: m.parts?.[0]?.text || m.content || '' }]
+            }));
+
+            // 1. If it's a Gemini model on custom base URL, try Gemini native REST API FIRST to preserve systemInstruction!
+            if (isGeminiModel) {
+              for (const modelToTry of modelsToTry) {
+                try {
+                  const nativeUrl = `${cleanBaseUrl}/v1beta/models/${modelToTry}:generateContent?key=${apiKey}`;
+                  const resNative = await fetch(nativeUrl, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify({
+                      contents: geminiContents,
+                      systemInstruction: system_prompt ? { parts: [{ text: system_prompt }] } : undefined
+                    })
+                  });
+                  if (resNative.ok) {
+                    const dataNative = await resNative.json();
+                    const text = dataNative.candidates?.[0]?.content?.parts?.[0]?.text;
+                    if (text) {
+                      return res.json({ text });
+                    }
+                  }
+                } catch (e) {}
+              }
+            }
+
             let url = baseUrl;
             if (!url.includes('/chat/completions')) {
               if (url.endsWith('/v1')) {
@@ -200,10 +238,6 @@ async function startServer() {
                 return { role, content: text };
               })
             ];
-
-            const rawModel = settings.modelName || settings.model || 'gpt-3.5-turbo';
-            const cleanedModel = rawModel.replace(/^\[[^\]]+\]\s*/g, '').trim() || rawModel;
-            const modelsToTry = Array.from(new Set([rawModel, cleanedModel]));
 
             let successData: any = null;
             let lastProxyError = '';
@@ -254,35 +288,31 @@ async function startServer() {
               return res.json(successData);
             }
 
-            // Fallback: Try Gemini native REST API format on the custom baseUrl if OpenAI chat completions failed
-            const cleanBaseUrl = baseUrl.replace(/\/v1beta$/, '').replace(/\/v1$/, '');
-            const geminiContents = processedMessages.map((m: any) => ({
-              role: m.role === 'assistant' || m.role === 'model' ? 'model' : 'user',
-              parts: [{ text: m.parts?.[0]?.text || m.content || '' }]
-            }));
-
-            for (const modelToTry of modelsToTry) {
-              try {
-                const nativeUrl = `${cleanBaseUrl}/v1beta/models/${modelToTry}:generateContent?key=${apiKey}`;
-                const resNative = await fetch(nativeUrl, {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${apiKey}`
-                  },
-                  body: JSON.stringify({
-                    contents: geminiContents,
-                    systemInstruction: system_prompt ? { parts: [{ text: system_prompt }] } : undefined
-                  })
-                });
-                if (resNative.ok) {
-                  const dataNative = await resNative.json();
-                  const text = dataNative.candidates?.[0]?.content?.parts?.[0]?.text;
-                  if (text) {
-                    return res.json({ text });
+            // Fallback: Try Gemini native REST API format on the custom baseUrl if OpenAI chat completions failed (if not already tried)
+            if (!isGeminiModel) {
+              for (const modelToTry of modelsToTry) {
+                try {
+                  const nativeUrl = `${cleanBaseUrl}/v1beta/models/${modelToTry}:generateContent?key=${apiKey}`;
+                  const resNative = await fetch(nativeUrl, {
+                    method: 'POST',
+                    headers: {
+                      'Content-Type': 'application/json',
+                      'Authorization': `Bearer ${apiKey}`
+                    },
+                    body: JSON.stringify({
+                      contents: geminiContents,
+                      systemInstruction: system_prompt ? { parts: [{ text: system_prompt }] } : undefined
+                    })
+                  });
+                  if (resNative.ok) {
+                    const dataNative = await resNative.json();
+                    const text = dataNative.candidates?.[0]?.content?.parts?.[0]?.text;
+                    if (text) {
+                      return res.json({ text });
+                    }
                   }
-                }
-              } catch (e) {}
+                } catch (e) {}
+              }
             }
 
             return res.status(500).json({ error: lastProxyError || 'Proxy request failed across all models' });
