@@ -5,9 +5,9 @@ import { get, set } from 'idb-keyval';
 const STORAGE_KEY = 'zhouzhou_ji_settings';
 
 export const DEFAULT_SETTINGS: AppSettings = {
-  baseUrl: 'https://api.openai.com/v1',
+  baseUrl: '',
   apiKey: '',
-  modelName: 'gpt-3.5-turbo',
+  modelName: 'gemini-1.5-flash',
   temperature: 0.7,
   autoSummaryThreshold: 10, // Default to 10 rounds
   callBackground: 'https://images.unsplash.com/photo-1516339901600-2e1a62dc0c45?auto=format&fit=crop&q=80&w=1920',
@@ -268,6 +268,9 @@ export function useSettings() {
           }
 
           setSettings(finalSettings);
+          try {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(finalSettings));
+          } catch (e) {}
         }
       } catch (e) {
         console.error('Failed to load settings:', e);
@@ -284,6 +287,9 @@ export function useSettings() {
     setSettings(newSettings);
     try {
       await set(STORAGE_KEY, newSettings);
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(newSettings));
+      } catch (e) {}
     } catch (e) {
       console.error('Failed to save settings:', e);
     }

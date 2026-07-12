@@ -213,11 +213,17 @@ async function startServer() {
                 url = `${url}/v1/chat/completions`;
               }
             }
+            let systemPromptPrepended = false;
             const openaiMessages = [
               { role: 'system', content: system_prompt },
               ...processedMessages.map((m: any) => {
                 const role = m.role === 'model' ? 'assistant' : m.role;
-                const text = m.parts?.[0]?.text || m.content || '';
+                let text = m.parts?.[0]?.text || m.content || '';
+                
+                if (system_prompt && !systemPromptPrepended && (role === 'user' || m.role === 'user')) {
+                  systemPromptPrepended = true;
+                  text = `[System Instructions / Character Persona - ALWAYS REMAIN IN CHARACTER]:\n${system_prompt}\n\n[Conversation Start]:\n${text}`;
+                }
                 
                 if (m.type === 'image' && m.resolvedImage) {
                   const dataUrl = `data:${m.resolvedImage.mimeType};base64,${m.resolvedImage.data}`;

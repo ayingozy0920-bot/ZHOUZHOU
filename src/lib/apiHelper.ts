@@ -267,12 +267,20 @@ async function handleDirectFetch(endpoint: string, body: any): Promise<any> {
           url = `${url}/v1/chat/completions`;
         }
       }
+      let systemPromptPrepended = false;
       const openaiMessages = [
         { role: 'system', content: system_prompt },
-        ...messages.map((m: any) => ({
-          role: m.role === 'model' || m.role === 'assistant' ? 'assistant' : 'user',
-          content: m.parts?.[0]?.text || m.content || ''
-        }))
+        ...messages.map((m: any) => {
+          const role = m.role === 'model' || m.role === 'assistant' ? 'assistant' : 'user';
+          let text = m.parts?.[0]?.text || m.content || '';
+          
+          if (system_prompt && !systemPromptPrepended && role === 'user') {
+            systemPromptPrepended = true;
+            text = `[System Instructions / Character Persona - ALWAYS REMAIN IN CHARACTER]:\n${system_prompt}\n\n[Conversation Start]:\n${text}`;
+          }
+          
+          return { role, content: text };
+        })
       ];
 
       let successContent = '';
