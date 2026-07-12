@@ -4,7 +4,6 @@ compatibility_date = "2025-06-01"
 
 [site]
 bucket = "./dist"
-entry-point = "workers-site"
 
 [vars]
 APP_URL = ""
