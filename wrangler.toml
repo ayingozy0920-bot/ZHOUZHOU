@@ -1,0 +1,10 @@
+name = "zhouzhou-app"
+main = "workers-site/index.js"
+compatibility_date = "2025-06-01"
+
+[site]
+bucket = "./dist"
+entry-point = "workers-site"
+
+[vars]
+APP_URL = ""
