@@ -408,7 +408,8 @@ export default function SettingsApp({
       }
       
       const model = form.modelName;
-      setApiLog(prev => prev + `使用模型 ${model} 进行测试...\n`);
+      const cleanedModel = model.replace(/^\[[^\]]+\]\s*/g, '').trim() || model;
+      setApiLog(prev => prev + `使用模型 ${model} (实际发送参数: ${cleanedModel}) 进行测试...\n`);
       
       const data = await apiFetch({
         endpoint: '/api/chat',

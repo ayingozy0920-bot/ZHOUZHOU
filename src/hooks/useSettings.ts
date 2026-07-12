@@ -283,7 +283,6 @@ export function useSettings() {
     const newSettings = { ...settings, ...updates };
     setSettings(newSettings);
     try {
-      // 仅保存到 idb，避免 localStorage 空间不足导致崩溃
       await set(STORAGE_KEY, newSettings);
     } catch (e) {
       console.error('Failed to save settings:', e);

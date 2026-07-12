@@ -58,7 +58,9 @@ export async function apiFetch(req: ApiRequest): Promise<any> {
     }
   } catch (error: any) {
     const hasCustomBaseUrl = req.body?.settings?.baseUrl;
-    if (hasCustomBaseUrl || (error.message && (error.message.includes('PROHIBITED_CONTENT') || error.message.includes('safety') || error.message.includes('blocked') || error.message.includes('API key') || error.message.includes('429') || error.message.includes('quota')))) {
+    const isMissingBackend = error.message && (error.message.includes('405') || error.message.includes('404') || error.message.includes('Failed to fetch'));
+    
+    if (!isMissingBackend && (hasCustomBaseUrl || (error.message && (error.message.includes('PROHIBITED_CONTENT') || error.message.includes('safety') || error.message.includes('blocked') || error.message.includes('API key') || error.message.includes('429') || error.message.includes('quota'))))) {
       throw error;
     }
     console.warn(`Local fetch to ${req.endpoint} failed. Falling back to direct client-side fetch...`, error);
@@ -159,10 +161,17 @@ async function handleDirectFetch(endpoint: string, body: any): Promise<any> {
     let baseUrl = settings?.baseUrl || 'https://generativelanguage.googleapis.com';
     baseUrl = baseUrl.replace(/\/+$/, '');
 
-    // OpenAI compatibility check
-    const isOpenAI = baseUrl.endsWith('/v1');
+    // OpenAI compatibility check: if it's not official Google Gemini URL, treat as OpenAI compatible (like Masaki, OneAPI, NewAPI)
+    const isOpenAI = !baseUrl.includes('generativelanguage.googleapis.com');
     if (isOpenAI) {
-      const url = `${baseUrl}/chat/completions`;
+      let url = baseUrl;
+      if (!url.includes('/chat/completions')) {
+        if (url.endsWith('/v1')) {
+          url = `${url}/chat/completions`;
+        } else {
+          url = `${url}/v1/chat/completions`;
+        }
+      }
       const openaiMessages = [
         { role: 'system', content: system_prompt },
         ...messages.map((m: any) => ({
@@ -171,6 +180,9 @@ async function handleDirectFetch(endpoint: string, body: any): Promise<any> {
         }))
       ];
 
+      const rawModel = settings.modelName || settings.model || 'gpt-3.5-turbo';
+      const cleanedModel = rawModel.replace(/^\[[^\]]+\]\s*/g, '').trim() || rawModel;
+
       const response = await fetch(url, {
         method: 'POST',
         headers: {
@@ -178,7 +190,7 @@ async function handleDirectFetch(endpoint: string, body: any): Promise<any> {
           'Authorization': `Bearer ${apiKey}`
         },
         body: JSON.stringify({
-          model: settings.modelName || settings.model || 'gpt-3.5-turbo',
+          model: cleanedModel,
           messages: openaiMessages,
           temperature: settings.temperature !== undefined ? settings.temperature : 0.7,
           max_tokens: settings.maxTokens || 8192
@@ -191,7 +203,8 @@ async function handleDirectFetch(endpoint: string, body: any): Promise<any> {
       }
 
       const data = await response.json();
-      return { text: data.choices?.[0]?.message?.content || '' };
+      const content = data.choices?.[0]?.message?.content || '';
+      return { text: content };
     }
 
     // Native Gemini via REST API directly from browser with fallback models
@@ -238,7 +251,13 @@ async function handleDirectFetch(endpoint: string, body: any): Promise<any> {
 
         if (!response.ok) {
           const errText = await response.text();
-          if (response.status === 404 || errText.includes('NOT_FOUND') || errText.includes('not found')) {
+          if (
+            response.status === 404 ||
+            response.status === 503 ||
+            errText.includes('NOT_FOUND') ||
+            errText.includes('not found') ||
+            errText.includes('model_not_found')
+          ) {
             lastErr = new Error(errText);
             continue;
           }
@@ -261,6 +280,7 @@ async function handleDirectFetch(endpoint: string, body: any): Promise<any> {
     }
 
     const generatedText = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
     return { text: generatedText };
   }
 

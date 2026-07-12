@@ -190,7 +190,7 @@ export default function App() {
       const dateStr = now.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
       const startTime = new Date(messages[0]?.timestamp || Date.now()).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false });
 
-      const context = messages.slice(-200).map(m => `${m.role === 'user' ? '我' : (friend?.name || '角色')}: ${m.content}`).join('\n');
+      const context = messages.slice(-200).map(m => `${m.role === 'user' ? (user?.name || '用户') : (friend?.name || '角色')}: ${m.content}`).join('\n');
       
       let roundTitle = '';
       if (range) {
@@ -204,60 +204,60 @@ export default function App() {
         roundTitle = `【第 ${startRound}-${endRound} 轮对话总结】\n\n`;
       }
 
-      const onlinePrompt = customPrompt || `##停止角色扮演，请根据从【${dateStr} ${startTime}】至当前时间点的全部对话内容，生成一份结构化的剧情总结报告。
+      const onlinePrompt = customPrompt || `请你以【${friend?.name || '角色'}】（也就是你本人）的视角，作为第一人称“我”，根据从【${dateStr} ${startTime}】至当前时间点的全部对话内容，生成一份你自己的私人记忆总结日记。与你对话的人是【${user?.name || '用户'}】（也就是总结中的“对方”或“${user?.name || '用户'}”）。
 
 报告格式与内容要求：
 
-一、 分时段剧情流水账
-请按时间顺序，以分条目形式总结每一轮关键对话。
+一、 剧情流水分段记忆
+请按时间顺序，以分条目形式总结你在这段时间内的关键经历和对话。
 
 格式：
-[年/月/日]起始时间-结束时间：地点：[具体位置]
+[年/月/日]起始时间-结束时间：
 -起因： [简述]
--经过： [简述核心互动与对话要点]
--结果： [简述该轮互动的直接后果或进展]
+-经过： [简述你与${user?.name || '用户'}的核心互动与对话要点]
+-我的感受与结果： [简述你的内心感受以及该轮互动的直接后果]
 要求：
 1. 每条总结需标有序号。
-2. 单条总结尽量精简，控制在100字以内。
-3. 只收录重要事件与关键转折点，但必须包含所有关键约定、关键物品、关键信息的交接或揭示，禁止省略。
+2. 必须以第一人称（“我”）的口吻叙述。
+3. 单条总结尽量精简，控制在100字左右。
+4. 必须包含所有关键约定、关键物品、关键信息的交接，禁止省略。
 
 二、 核心要素提炼与分析
-在完成分条总结后，请额外生成以下条目的内容：
+在完成分段记忆后，请额外记录以下条目的内容：
 
-1. 人设性格复盘：
--核心特质：[例如：外冷内热、骄傲但重诺]
--校准检查：基于所有互动，评估${friend?.name || '角色'}的核心性格表现是否一致。如发现偏离，需在后续互动中立即修正。
+1. 你的内心自我剖析：
+-当时的心境与特质表现：[总结你在这次互动中展现出的情感与态度]
+-对${user?.name || '用户'}的情感变化：[分析你对对方的感情有何微妙的改变]
 2. 不可遗忘的重要节点：
--关键事件/转折点：[按时间顺序列出真正改变关系或推动核心剧情的事件]
--约定与承诺：[记录所有约定，无论大小]
+-关键事件/转折点：[按时间顺序列出真正改变你们关系或推动剧情的事件]
+-约定与承诺：[记录你们之间的所有约定，无论大小，这些是你必须记住的]
 -信物与纪念日：[记录所有重要物品、地点或日期]
 3. 关系动态评估：
--当前关系阶段：[参考情感发展系统进行判断]
--关系定性：[用一句话精确定义当前关系]
-4. 主要人物互动与关系演进：
--重点总结主要角色之间导致关系变化的显著互动、情感状态变化或关系发展。
+-当前关系阶段：[你认为你们现在处于什么关系阶段？]
+-关系定性：[用一句话精确定义你目前对这段关系的看法]
 
 行文规范与用途说明：
--采用精炼的语句进行概述。报告中首次登场的人名、地名、特有称号及核心情节要素，需进行突出显示。
--此报告旨在为后续内容创作提供核心参考依据，其首要任务是维护故事线的连贯性、角色行为的稳定性与世界设定的统一性，有效防止关键情节、人物关联与背景设定的遗漏或偏离。
--确保内容客观中立、条理清晰。所有结论必须严格依据原始素材得出，杜绝任何形式的主观推测或延伸。`;
+-务必始终保持第一人称“我”（代表${friend?.name || '角色'}），称呼对方为“${user?.name || '用户'}”或相应的昵称。
+-此报告是你的私人长期记忆库，帮助你在未来的互动中回忆起这些细节，绝对不能遗忘关键情节和设定。
+-确保内容符合你的人物性格，带着你的角色设定和语气来记录这份记忆。`;
 
-      const offlineTemplate = `请以第三方旁观者的客观视角，根据以下线下见面的完整对话内容，生成一份字数约500字的记忆总结。
+      const offlineTemplate = `请你以【${friend?.name || '角色'}】（也就是你本人）的视角，作为第一人称“我”，根据以下你们线下见面的完整对话内容，生成一份字数约500字的私人记忆日记总结。与你对话的人是【${user?.name || '用户'}】。
+
 请严格分为以下板块输出：
 
-【剧情标题：请在这里写一个匹配本次剧情核心的精炼标题】
+【记忆标题：请在这里写一个匹配本次经历核心的精炼标题】
 
-【核心记忆】
-（精炼总结本次线下见面的核心情感、转折或灵魂共鸣）
+【核心感受】
+（精炼总结你在本次线下见面中的核心情感、心情转折或灵魂共鸣，必须使用第一人称“我”的语气）
 
-【剧情事件】
-（详细梳理本次见面发生的关键事件、剧情推进及人物对话互动）
+【经历事件】
+（详细梳理本次见面发生的关键事件、剧情推进及你与对方的对话互动过程）
 
-【共同经历】
-（记录本次见面中的独特共同经历、地点、信物、约定或小互动）
+【共同回忆】
+（记录本次见面中的独特共同经历、地点、信物、你们之间的约定或小互动）
 
 【核心标签词语】
-（列出3-6个能够完美匹配本次剧情核心的标签词，如：#初次心动 #雨中漫步 #久别重逢 等）`;
+（列出3-6个能够完美匹配本次记忆核心的标签词，如：#初次心动 #雨中漫步 #久别重逢 等）`;
 
       const finalPrompt = type === 'offline' 
         ? `${offlineTemplate}\n\n对话内容：\n${context}`
@@ -1185,7 +1185,7 @@ ${recentMemories}
           )}
         style={{ 
           background: settings.themeId === 'pink-cat' ? '#fffafb' : settings.themeId === 'ocean-blue' ? '#f0f9ff' : '#000',
-          paddingBottom: 'max(env(safe-area-inset-bottom), 15px)',
+          paddingBottom: settings.fullScreenMode ? '0px' : 'max(env(safe-area-inset-bottom), 15px)',
           boxSizing: 'border-box',
           transform: 'translateZ(0)' // Traps Portals and fixed elements within the shell
         }}
@@ -1241,7 +1241,7 @@ ${recentMemories}
         {!settings.hideStatusBar && (
           <div className={cn(
             "w-full flex items-center justify-between px-4 z-[100001] pointer-events-none transition-all duration-500 system-bar",
-            "absolute top-0 left-0 right-0 bg-black/20 backdrop-blur-md"
+            "relative flex-shrink-0 bg-black/20 backdrop-blur-md"
           )} style={{ height: 'max(env(safe-area-inset-top), 34px)', minHeight: '24px' }}>
             {/* Left: Time */}
             <div className="flex items-center justify-start h-full flex-col justify-center">
@@ -1250,8 +1250,8 @@ ${recentMemories}
               ) : (
                 <span className={cn(
                   "text-sm font-bold tracking-tight",
-                  settings.themeId === 'normal' && !settings.fullScreenMode ? "text-white" : 
-                  settings.themeId === 'normal' ? "text-slate-900" : "text-white"
+                  settings.themeId === 'normal' ? "text-white" : 
+                  settings.themeId === 'pink-cat' ? "text-slate-900" : "text-white"
                 )}>
                   {time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false })}
                 </span>
@@ -1272,20 +1272,20 @@ ${recentMemories}
               ) : (
                 <div className={cn(
                   "flex items-center gap-1.5",
-                  (settings.themeId === 'normal' || settings.themeId === 'pink-cat') && !settings.fullScreenMode ? "text-white" : 
-                  (settings.themeId === 'normal' || settings.themeId === 'pink-cat') ? "text-slate-900" : "text-white"
+                  settings.themeId === 'normal' ? "text-white" : 
+                  settings.themeId === 'pink-cat' ? "text-slate-900" : "text-white"
                 )}>
                   <Signal size={14} />
                   <Wifi size={14} />
                   <div className={cn(
                     "relative w-6 h-3 border rounded-sm flex items-center px-0.5",
-                    (settings.themeId === 'normal' || settings.themeId === 'pink-cat') && !settings.fullScreenMode ? "border-white/60" : 
-                    (settings.themeId === 'normal' || settings.themeId === 'pink-cat') ? "border-slate-900/40" : "border-white/60"
+                    settings.themeId === 'normal' ? "border-white/60" : 
+                    settings.themeId === 'pink-cat' ? "border-slate-900/40" : "border-white/60"
                   )}>
                     <div className={cn(
                       "h-full rounded-px",
-                      (settings.themeId === 'normal' || settings.themeId === 'pink-cat') && !settings.fullScreenMode ? "bg-white" : 
-                      (settings.themeId === 'normal' || settings.themeId === 'pink-cat') ? "bg-slate-900" : "bg-white"
+                      settings.themeId === 'normal' ? "bg-white" : 
+                      settings.themeId === 'pink-cat' ? "bg-slate-900" : "bg-white"
                     )} style={{ width: '80%' }} />
                   </div>
                   <span className="text-[11px] font-bold">80%</span>
@@ -1316,7 +1316,7 @@ ${recentMemories}
           <div 
           className="flex-1 relative overflow-hidden flex flex-col"
           style={{ 
-            marginTop: settings.hideStatusBar ? 0 : 'max(env(safe-area-inset-top), 34px)',
+            marginTop: (settings.hideStatusBar && settings.fullScreenMode) ? 'env(safe-area-inset-top)' : '0px',
             transform: 'translateZ(0)',
             height: '100%'
           }}

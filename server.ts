@@ -40,6 +40,82 @@ function addApiLog(type: string, status: number | 'error', url: string, error?: 
   logToFile(`API Log - Type: ${type}, Status: ${status}, URL: ${url}, Error: ${error || 'None'}`);
 }
 
+function parseDataUrl(dataUrl: string) {
+  if (!dataUrl) return null;
+  const matches = dataUrl.match(/^data:([a-zA-Z0-9]+\/[a-zA-Z0-9-.+]+);base64,(.*)$/);
+  if (matches && matches.length === 3) {
+    return {
+      mimeType: matches[1],
+      data: matches[2]
+    };
+  }
+  return null;
+}
+
+async function fetchImageAsBase64(url: string): Promise<{ mimeType: string, data: string } | null> {
+  try {
+    if (!url) return null;
+    
+    // If it's a data URL already, parse it directly
+    if (url.startsWith('data:')) {
+      const parsed = parseDataUrl(url);
+      if (parsed) {
+        return parsed;
+      }
+    }
+
+    let targetUrl = url;
+    // Extract from proxy if needed
+    if (url.includes('/api/proxy-image?url=')) {
+      try {
+        const urlObj = new URL(url, 'http://localhost');
+        const decoded = urlObj.searchParams.get('url');
+        if (decoded) {
+          targetUrl = decoded;
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    // Ensure it's an absolute URL
+    if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
+      const localPort = process.env.DEFAULT_APP_PORT || process.env.PORT || 3000;
+      targetUrl = `http://127.0.0.1:${localPort}${targetUrl.startsWith('/') ? '' : '/'}${targetUrl}`;
+    }
+
+    console.log(`[Image Resolver] Fetching image from: ${targetUrl}`);
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 seconds timeout
+
+    const response = await fetch(targetUrl, {
+      signal: controller.signal,
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'image/*'
+      }
+    });
+    clearTimeout(timeoutId);
+
+    if (!response.ok) {
+      console.warn(`[Image Resolver] Failed to fetch image: status ${response.status}`);
+      return null;
+    }
+
+    const contentType = response.headers.get("content-type") || "image/jpeg";
+    const arrayBuffer = await response.arrayBuffer();
+    const base64Data = Buffer.from(arrayBuffer).toString('base64');
+    
+    return {
+      mimeType: contentType,
+      data: base64Data
+    };
+  } catch (error: any) {
+    console.error("[Image Resolver] Error fetching image:", error.message);
+    return null;
+  }
+}
+
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.DEFAULT_APP_PORT || process.env.PORT || 3000);
@@ -50,18 +126,45 @@ async function startServer() {
   app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
   // API 路由
+  app.use("/api", (req, res, next) => {
+    console.log(`[DEBUG] API request: ${req.method} ${req.url}`);
+    console.log(`[DEBUG] Request body: ${JSON.stringify(req.body).substring(0, 100)}`);
+    next();
+  });
+
+  app.options("/api/*", cors());
+  
   app.post("/api/chat", async (req, res) => {
+    console.log("[DEBUG] /api/chat route hit");
     const { system_prompt, messages, settings } = req.body;
+
+    console.log(`[API Chat] Model: ${settings?.modelName || 'default'}, System Prompt Length: ${system_prompt?.length || 0}`);
+    if (system_prompt && system_prompt.length > 500) {
+      console.log(`[API Chat] System Prompt Snippet: ${system_prompt.substring(0, 500)}...`);
+    } else {
+      console.log(`[API Chat] System Prompt: ${system_prompt}`);
+    }
     
     try {
+      // Pre-resolve all image messages to base64 structure
+      const processedMessages = await Promise.all((messages || []).map(async (m: any) => {
+        let imageResult: { mimeType: string, data: string } | null = null;
+        if (m.type === 'image' && m.mediaUrl) {
+          imageResult = await fetchImageAsBase64(m.mediaUrl);
+        }
+        return {
+          ...m,
+          resolvedImage: imageResult
+        };
+      }));
+
       let baseUrl = settings?.baseUrl;
       const apiKey = (baseUrl ? (settings?.apiKey || settings?.userApiKey) : (settings?.userApiKey || settings?.apiKey)) || process.env.GEMINI_API_KEY;
       
       if (baseUrl) {
         try {
           baseUrl = baseUrl.replace(/\/+$/, '');
-          // 只要提供了 baseUrl，就优先尝试 OpenAI 兼容路径
-          const isOpenAI = true;
+          const isOpenAI = !baseUrl.includes('generativelanguage.googleapis.com');
           
           if (isOpenAI) {
             let url = baseUrl;
@@ -74,11 +177,32 @@ async function startServer() {
             }
             const openaiMessages = [
               { role: 'system', content: system_prompt },
-              ...messages.map((m: any) => ({
-                role: m.role === 'model' ? 'assistant' : m.role,
-                content: m.parts?.[0]?.text || m.content || ''
-              }))
+              ...processedMessages.map((m: any) => {
+                const role = m.role === 'model' ? 'assistant' : m.role;
+                const text = m.parts?.[0]?.text || m.content || '';
+                
+                if (m.type === 'image' && m.resolvedImage) {
+                  const dataUrl = `data:${m.resolvedImage.mimeType};base64,${m.resolvedImage.data}`;
+                  return {
+                    role,
+                    content: [
+                      { type: 'text', text: text },
+                      {
+                        type: 'image_url',
+                        image_url: {
+                          url: dataUrl
+                        }
+                      }
+                    ]
+                  };
+                }
+                
+                return { role, content: text };
+              })
             ];
+
+            const rawModel = settings.modelName || settings.model || 'gpt-3.5-turbo';
+            const cleanedModel = rawModel.replace(/^\[[^\]]+\]\s*/g, '').trim() || rawModel;
 
             const response = await fetch(url, {
               method: 'POST',
@@ -87,7 +211,7 @@ async function startServer() {
                 'Authorization': `Bearer ${apiKey}`
               },
               body: JSON.stringify({
-                model: settings.modelName || settings.model || 'gpt-3.5-turbo',
+                model: cleanedModel,
                 messages: openaiMessages,
                 temperature: settings.temperature || 0.7,
                 max_tokens: settings.maxTokens || 1000
@@ -100,7 +224,8 @@ async function startServer() {
               return res.status(response.status).json({ error: errText || `Proxy error ${response.status}` });
             } else {
               const data: any = await response.json();
-              return res.json({ text: data.choices?.[0]?.message?.content || '' });
+              const content = data.choices?.[0]?.message?.content || '';
+              return res.json({ text: content });
             }
           }
         } catch (proxyErr: any) {
@@ -143,16 +268,28 @@ async function startServer() {
           });
 
           response = await genModel.generateContent({
-            contents: messages.map((msg: any) => ({
-              role: msg.role === 'assistant' ? 'model' : 'user',
-              parts: [{ text: msg.parts?.[0]?.text || msg.content || '' }]
-            }))
+            contents: processedMessages.map((msg: any) => {
+              const role = msg.role === 'assistant' ? 'model' : 'user';
+              const text = msg.parts?.[0]?.text || msg.content || '';
+              const parts: any[] = [{ text }];
+              
+              if (msg.type === 'image' && msg.resolvedImage) {
+                parts.push({
+                  inlineData: {
+                    mimeType: msg.resolvedImage.mimeType,
+                    data: msg.resolvedImage.data
+                  }
+                });
+              }
+              
+              return { role, parts };
+            })
           });
           break;
         } catch (err: any) {
           lastError = err;
           const msg = err?.message || '';
-          if (msg.includes('404') || msg.includes('NOT_FOUND') || msg.includes('not found') || msg.includes('PROHIBITED_CONTENT') || msg.includes('prompt_blocked')) {
+          if (msg.includes('404') || msg.includes('NOT_FOUND') || msg.includes('not found') || msg.includes('model_not_found') || msg.includes('PROHIBITED_CONTENT') || msg.includes('prompt_blocked')) {
             continue;
           }
           throw err;
@@ -383,7 +520,8 @@ async function startServer() {
     res.json(apiLogs);
   });
 
-  app.post("/api/models", async (req, res) => {
+  app.all("/api/models", async (req, res) => {
+    console.log("[DEBUG] /api/models route hit");
     const { baseUrl, apiKey } = req.body;
     try {
       const url = baseUrl || 'https://generativelanguage.googleapis.com';
@@ -794,6 +932,14 @@ async function startServer() {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 seconds timeout
 
+    let referer = '';
+    try {
+      const parsedUrl = new URL(imageUrl);
+      referer = parsedUrl.origin + '/';
+    } catch (e) {
+      // ignore
+    }
+
     try {
       const response = await fetch(imageUrl, {
         signal: controller.signal,
@@ -802,7 +948,8 @@ async function startServer() {
           'Accept': 'image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8',
           'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
           'Cache-Control': 'no-cache',
-          'Pragma': 'no-cache'
+          'Pragma': 'no-cache',
+          ...(referer ? { 'Referer': referer } : {})
         }
       });
       clearTimeout(timeoutId);
@@ -968,7 +1115,7 @@ async function startServer() {
         res.send(Buffer.from(arrayBuffer));
       } catch (e: any) {
         console.error("[Proxy Error] Failed to reach Railway, falling back to local:", e.message);
-        next();
+        res.status(503).json({ error: "Railway backend unreachable, please try again later." });
       }
     });
   }

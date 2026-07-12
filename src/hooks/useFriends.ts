@@ -403,25 +403,31 @@ export function useFriends() {
   };
 
   const importMessages = (friendId: string, messages: ChatMessage[]) => {
-    const newChats = {
-      ...chats,
-      [friendId]: messages
-    };
-    saveChats(newChats);
+    setChats(prevChats => {
+      const newChats = {
+        ...prevChats,
+        [friendId]: messages
+      };
+      set(CHATS_KEY, newChats).catch(console.error);
+      return newChats;
+    });
     
     if (messages.length > 0) {
       const lastMsg = messages[messages.length - 1];
-      const newFriends = friends.map(f => {
-        if (f.id === friendId) {
-          return {
-            ...f,
-            lastMessage: lastMsg.content,
-            lastTime: formatMessageTimestamp(lastMsg.timestamp)
-          };
-        }
-        return f;
+      setFriends(prevFriends => {
+        const newFriends = prevFriends.map(f => {
+          if (f.id === friendId) {
+            return {
+              ...f,
+              lastMessage: lastMsg.content,
+              lastTime: formatMessageTimestamp(lastMsg.timestamp)
+            };
+          }
+          return f;
+        });
+        set(FRIENDS_KEY, newFriends).catch(console.error);
+        return newFriends;
       });
-      saveFriends(newFriends);
     }
   };
 

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronLeft, Brain, BookOpen, History, MessageSquare, Sparkles } from 'lucide-react';
-import { Friend, ChatMessage, OnlineMemoryEntry, OfflinePlotEntry } from '../../types';
+import { ChevronLeft, Brain, BookOpen, History, MessageSquare, Sparkles, Plus, Trash2 } from 'lucide-react';
+import { Friend, ChatMessage, OnlineMemoryEntry, OfflinePlotEntry, CoreMemoryEntry } from '../../types';
 import { cn } from '../../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -10,22 +10,34 @@ interface RoleMemoryPageProps {
   memory: {
     onlineMemories: OnlineMemoryEntry[];
     offlinePlots: OfflinePlotEntry[];
+    coreMemories?: CoreMemoryEntry[];
   };
+  onAddCoreMemory?: (content: string) => void;
+  onDeleteCoreMemory?: (memoryId: string) => void;
   onBack: () => void;
 }
 
-export default function RoleMemoryPage({ friend, memory, onBack }: RoleMemoryPageProps) {
-  const [activeTab, setActiveTab] = useState<'online' | 'offline'>('online');
+export default function RoleMemoryPage({ friend, memory, onAddCoreMemory, onDeleteCoreMemory, onBack }: RoleMemoryPageProps) {
+  const [activeTab, setActiveTab] = useState<'online' | 'offline' | 'core'>('online');
   const [activeOnlineSubTab, setActiveOnlineSubTab] = useState<'chat' | 'weibo'>('chat');
   const [activeOfflineSubTab, setActiveOfflineSubTab] = useState<'summary' | 'logs'>('summary');
   const [selectedPlot, setSelectedPlot] = useState<OfflinePlotEntry | null>(null);
   const [selectedOnlineMemory, setSelectedOnlineMemory] = useState<OnlineMemoryEntry | null>(null);
   const [modalTab, setModalTab] = useState<'summary' | 'logs'>('summary');
   const [modalRoot, setModalRoot] = useState<HTMLElement | null>(null);
+  const [newCoreMemory, setNewCoreMemory] = useState('');
+  const [isAddingCoreMemory, setIsAddingCoreMemory] = useState(false);
 
   useEffect(() => {
     setModalRoot(document.getElementById('modal-root'));
   }, []);
+
+  const handleAddCoreMemory = () => {
+    if (!newCoreMemory.trim() || !onAddCoreMemory) return;
+    onAddCoreMemory(newCoreMemory.trim());
+    setNewCoreMemory('');
+    setIsAddingCoreMemory(false);
+  };
 
   return (
     <div className="flex flex-col h-full bg-[#FFF9F9] text-[#4A4A4A] font-sans">
@@ -44,20 +56,29 @@ export default function RoleMemoryPage({ friend, memory, onBack }: RoleMemoryPag
           <button
             onClick={() => setActiveTab('online')}
             className={cn(
-              "flex-1 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 flex items-center justify-center gap-2",
+              "flex-1 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 flex items-center justify-center gap-1 sm:gap-2",
               activeTab === 'online' ? "bg-pink-400 text-white shadow-md" : "text-pink-300"
             )}
           >
-            <Sparkles size={16} /> 线上记忆
+            <Sparkles size={14} /> 线上记忆
           </button>
           <button
             onClick={() => setActiveTab('offline')}
             className={cn(
-              "flex-1 py-2.5 rounded-xl text-sm font-bold transition-all duration-300 flex items-center justify-center gap-2",
+              "flex-1 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 flex items-center justify-center gap-1 sm:gap-2",
               activeTab === 'offline' ? "bg-pink-400 text-white shadow-md" : "text-pink-300"
             )}
           >
-            <BookOpen size={16} /> 线下记忆
+            <BookOpen size={14} /> 线下记忆
+          </button>
+          <button
+            onClick={() => setActiveTab('core')}
+            className={cn(
+              "flex-1 py-2.5 rounded-xl text-xs font-bold transition-all duration-300 flex items-center justify-center gap-1 sm:gap-2",
+              activeTab === 'core' ? "bg-pink-400 text-white shadow-md" : "text-pink-300"
+            )}
+          >
+            <Brain size={14} /> 核心设定
           </button>
         </div>
       </div>
@@ -135,7 +156,7 @@ export default function RoleMemoryPage({ friend, memory, onBack }: RoleMemoryPag
                 ))
               )}
             </motion.div>
-          ) : (
+          ) : activeTab === 'offline' ? (
             <motion.div
               key="offline"
               initial={{ opacity: 0, y: 10 }}
@@ -202,6 +223,58 @@ export default function RoleMemoryPage({ friend, memory, onBack }: RoleMemoryPag
                       <p className="text-sm leading-relaxed text-slate-600 line-clamp-3 whitespace-pre-wrap">
                         {activeOfflineSubTab === 'summary' ? plot.summary : (plot.logs[plot.logs.length - 1]?.content || '无内容')}
                       </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </motion.div>
+          ) : (
+            <motion.div
+              key="core"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              className="h-full flex flex-col space-y-4"
+            >
+              <button
+                onClick={() => setIsAddingCoreMemory(true)}
+                className="bg-white p-4 rounded-[24px] shadow-sm border border-pink-50 flex items-center justify-center gap-2 text-pink-500 font-bold hover:bg-pink-50 transition-colors active:scale-[0.98]"
+              >
+                <Plus size={18} />
+                添加核心设定
+              </button>
+
+              {!memory.coreMemories || memory.coreMemories.length === 0 ? (
+                <div className="py-20 text-center space-y-4">
+                  <div className="w-20 h-20 bg-pink-50 rounded-full flex items-center justify-center mx-auto">
+                    <Brain size={40} className="text-pink-200" />
+                  </div>
+                  <p className="text-sm text-pink-300">还没有核心设定记录哦~</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {memory.coreMemories.map((entry) => (
+                    <div 
+                      key={entry.id}
+                      className="bg-white p-4 rounded-3xl shadow-sm border border-pink-50 relative group flex gap-3 items-start"
+                    >
+                      <div className="absolute top-0 left-0 w-1 h-full bg-purple-300 rounded-l-3xl" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm leading-relaxed text-slate-700 whitespace-pre-wrap pl-1">
+                          {entry.content}
+                        </p>
+                        <span className="text-[10px] text-slate-300 mt-2 block pl-1">
+                          {new Date(entry.timestamp).toLocaleDateString()}
+                        </span>
+                      </div>
+                      {onDeleteCoreMemory && (
+                        <button
+                          onClick={() => onDeleteCoreMemory(entry.id)}
+                          className="w-8 h-8 rounded-full flex items-center justify-center text-slate-300 hover:text-red-400 hover:bg-red-50 shrink-0 transition-colors"
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -337,6 +410,60 @@ export default function RoleMemoryPage({ friend, memory, onBack }: RoleMemoryPag
                     {selectedOnlineMemory.content}
                   </div>
                 </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+        </AnimatePresence>,
+        modalRoot
+      )}
+      {/* Add Core Memory Modal */}
+      {modalRoot && createPortal(
+        <AnimatePresence>
+          {isAddingCoreMemory && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="fixed inset-0 z-[200] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 sm:p-6 pointer-events-auto overflow-y-auto pt-16 sm:pt-6"
+            >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-[#FFF9F9] w-full max-w-md rounded-[32px] overflow-hidden flex flex-col shadow-2xl relative my-auto"
+            >
+              <div className="p-6 pb-4 flex items-center justify-between border-b border-pink-50">
+                <h3 className="font-bold text-pink-500 truncate pr-4 text-lg">添加核心设定</h3>
+                <button 
+                  onClick={() => setIsAddingCoreMemory(false)}
+                  className="w-10 h-10 bg-pink-50 rounded-full flex items-center justify-center text-pink-400"
+                >
+                  <ChevronLeft size={24} className="rotate-[-90deg]" />
+                </button>
+              </div>
+              
+              <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                <p className="text-xs text-slate-400">
+                  核心设定会以最高优先级注入到角色的记忆中，角色绝对不会遗忘。适合记录非常重要的约定、称呼或者角色设定。
+                </p>
+                <textarea
+                  className="w-full bg-white border border-pink-100 rounded-2xl p-4 text-sm text-slate-700 placeholder:text-slate-300 focus:outline-none focus:border-pink-300 resize-none h-32"
+                  placeholder="例如：你必须叫我'主人'，或者'我们在2024年夏天一起去看了海'..."
+                  value={newCoreMemory}
+                  onChange={(e) => setNewCoreMemory(e.target.value)}
+                  autoFocus
+                />
+              </div>
+
+              <div className="p-4 border-t border-pink-50 bg-white">
+                <button
+                  onClick={handleAddCoreMemory}
+                  disabled={!newCoreMemory.trim()}
+                  className="w-full py-3 bg-pink-500 text-white rounded-2xl font-bold disabled:opacity-50 transition-opacity active:scale-[0.98]"
+                >
+                  保存设定
+                </button>
               </div>
             </motion.div>
           </motion.div>
