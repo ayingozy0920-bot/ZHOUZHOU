@@ -34,8 +34,12 @@ export async function apiFetch(req: ApiRequest): Promise<any> {
   let text = '';
   let contentType = '';
   
-  const defaultRailwayBackend = 'https://zhouzhou-production.up.railway.app';
-  const customBackendUrl = (typeof window !== 'undefined' ? localStorage.getItem('CUSTOM_BACKEND_URL') : null) || defaultRailwayBackend;
+  const defaultRailwayBackend = ((import.meta as any).env?.VITE_BACKEND_URL as string) || 
+    ((import.meta as any).env?.VITE_CUSTOM_BACKEND_URL as string) || 
+    'https://zhouzhou-production.up.railway.app';
+  const customBackendUrl = req.body?.settings?.customBackendUrl || 
+    (typeof window !== 'undefined' ? localStorage.getItem('CUSTOM_BACKEND_URL') : null) || 
+    defaultRailwayBackend;
   const isStaticHost = typeof window !== 'undefined' && (
     window.location.hostname !== 'localhost' && 
     window.location.hostname !== '127.0.0.1' && 
@@ -237,7 +241,7 @@ async function handleDirectFetch(endpoint: string, body: any): Promise<any> {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`
+                'x-goog-api-key': apiKey
               },
               body: JSON.stringify({
                 contents: geminiContents,
@@ -329,7 +333,7 @@ async function handleDirectFetch(endpoint: string, body: any): Promise<any> {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey}`
+                'x-goog-api-key': apiKey
               },
               body: JSON.stringify({
                 contents: geminiContents,

@@ -133,6 +133,7 @@ export interface AppSettings {
   temperature?: number;
   apiPresets: ApiPreset[];
   autoSummaryThreshold: number;
+  customBackendUrl?: string;
   callBackground?: string;
   isCallBackgroundEnabled?: boolean;
   isInsBubbleEnabled?: boolean;
